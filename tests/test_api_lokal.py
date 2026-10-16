@@ -140,3 +140,19 @@ def test_einstellungen_teilweise_speichern(setup):
     client.put("/api/einstellungen", json={"sperrliste": ["Acme"]})
     data = client.get("/api/einstellungen").json()
     assert data["sperrliste"] == ["Acme"] and data["strukturierung_bereiche"] == {"Beruf": "lokal"}
+
+
+def test_lokal_eingestellt_ohne_modell_bleibt_privat(tmp_path, monkeypatch):
+    """Bereich auf lokal, aber kein Ollama-Modell konfiguriert: trotzdem nie an Claude."""
+    monkeypatch.setattr(main, "ollama_status", lambda url, timeout=2.0: {"erreichbar": False, "modelle": []})
+    claude = FakeClient(payload())
+    app = create_app(Settings(db_path=tmp_path / "t.db", anthropic_api_key="", ollama_model=""),
+                     Strukturierer(claude, "m"), HashingProvider())
+    client = TestClient(app)
+    client.post("/api/lessons", json=lesson_json(bereich="Beruf", titel="Geheimes Bankgespräch Beruf"))
+    client.put("/api/einstellungen", json={"strukturierung_bereiche": {"Beruf": "lokal"}})
+    assert client.get("/api/status").json()["modi"]["Beruf"] == "manuell"
+    client.post("/api/erfassen", json={"text": "Unterlagen vor Bankgespräch", "bereich": "Immobilien"})
+    assert "Geheimes" not in claude.calls[-1]["messages"][0]["content"]
+    r = client.post("/api/erfassen", json={"text": "Bankgespräch", "bereich": "Beruf"}).json()
+    assert r["modus"] == "sofort" and r["entwurf"]["ki_verwendet"] is False

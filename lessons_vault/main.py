@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 import hmac
+import json
 import logging
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
+import anthropic
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from . import __version__, db
+from .briefing import BriefingSchreiber, lokale_checkliste, rangliste
 from .compliance import lesson_text_fuer_pruefung, pruefen
 from .config import Settings, load_settings
 from .embeddings import EmbeddingFehler, EmbeddingProvider, create_provider, lesson_text, modell_installiert, ollama_status
@@ -37,7 +40,7 @@ from .models import (
 )
 from .repository import Invalid, NotFound, Repository
 from .search import Filter, Suche, suchbegriffe
-from .structuring import BasisStrukturierer, OllamaStrukturierer, create_strukturierer, manueller_entwurf
+from .structuring import BasisStrukturierer, OllamaStrukturierer, Strukturierer, create_strukturierer, manueller_entwurf
 from .worker import Hintergrund
 
 log = logging.getLogger("lessons_vault")
@@ -56,6 +59,16 @@ class CompliancePruefung(BaseModel):
     bereich: str = ""
 
 
+class BriefingAnfrage(BaseModel):
+    situation: str = Field(min_length=3, max_length=2000)
+    bereich: str = ""
+
+
+class FeedbackIn(BaseModel):
+    lesson_id: str
+    bewertung: Literal["hilfreich", "nicht_relevant", ""]
+
+
 class ImportErgebnis(BaseModel):
     importiert: int
     uebersprungen: int
@@ -67,6 +80,7 @@ def create_app(
     strukturierer: BasisStrukturierer | None = None,
     provider: EmbeddingProvider | None = None,
     lokal: OllamaStrukturierer | None = None,
+    schreiber: BriefingSchreiber | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
     conn = db.connect(settings.db_path)
@@ -78,6 +92,9 @@ def create_app(
     strukturierer = strukturierer or create_strukturierer(settings.anthropic_api_key, settings.claude_model, settings.claude_effort)
     if lokal is None and settings.ollama_model:
         lokal = OllamaStrukturierer(settings.ollama_url, settings.ollama_model)
+    if schreiber is None:
+        claude_client = strukturierer.client if isinstance(strukturierer, Strukturierer) else None
+        schreiber = BriefingSchreiber(claude_client, settings.claude_model, settings.claude_effort)
     suche = Suche(repo, provider)
     ollama_cache: dict[str, Any] = {"zeit": 0.0, "status": {"erreichbar": False, "modelle": []}}
 
@@ -107,8 +124,18 @@ def create_app(
         return modus
 
     def lokale_bereiche(einst: Einstellungen | None = None) -> set[str]:
+        """Bereiche, die nie an Claude gehen dürfen.
+
+        Maßgeblich ist die Einstellung, nicht der wirksame Modus: Auch wenn gerade kein lokales Modell
+        läuft und deshalb manuell erfasst wird, bleibt ein auf "lokal" gestellter Bereich privat.
+        """
         einst = einst or repo.einstellungen()
-        return {b.name for b in repo.bereiche() if modus_fuer(b.name, einst) == "lokal"}
+        privat = set()
+        for b in repo.bereiche():
+            eingestellt = einst.strukturierung_bereiche.get(b.name, einst.strukturierung_standard)
+            if eingestellt == "lokal" or modus_fuer(b.name, einst) == "lokal":
+                privat.add(b.name)
+        return privat
 
     def verarbeite_lokal(eintrag: EntwurfEintrag) -> Entwurf:
         assert lokal is not None
@@ -394,6 +421,92 @@ def create_app(
             log.warning("%s", exc)
             treffer = suche.suchen(q, "volltext", filt, limit)
         return [{"lesson": t.lesson, "score": t.score, "gefunden_durch": t.gefunden_durch} for t in treffer]
+
+    # Briefing ----------------------------------------------------------------
+    def briefing_antwort(briefing_id: str) -> dict[str, Any]:
+        data = repo.briefing_holen(briefing_id)
+        treffer = []
+        for t in data.pop("treffer"):
+            try:
+                lesson = repo.holen(t["lesson_id"])
+            except NotFound:
+                continue  # inzwischen gelöscht
+            treffer.append({**t, "lesson": lesson})
+        einst = repo.einstellungen()
+        lokale = lokale_bereiche(einst)
+        if data["bereich"] and data["bereich"] in lokale:
+            ki_moeglich, ki_hinweis = False, "Der gewählte Bereich wird lokal verarbeitet, daher keine Claude-Zusammenfassung."
+        elif not schreiber.verfuegbar:
+            ki_moeglich, ki_hinweis = False, "Claude ist nicht eingerichtet (ANTHROPIC_API_KEY fehlt)."
+        else:
+            ausgeschlossen = sum(1 for t in treffer if t["lesson"].bereich in lokale)
+            ki_moeglich = ausgeschlossen < len(treffer)
+            ki_hinweis = (f"{ausgeschlossen} Lesson(s) aus lokalen Bereichen sind nicht in der Zusammenfassung." if ausgeschlossen else "")
+        return {**data, "treffer": treffer, "ki_moeglich": ki_moeglich and bool(treffer), "ki_hinweis": ki_hinweis}
+
+    @app.post("/api/briefing", dependencies=deps, status_code=201)
+    def briefing_erstellen(anfrage: BriefingAnfrage) -> dict[str, Any]:
+        vorgabe = anfrage.bereich if anfrage.bereich and repo.bereich_existiert(anfrage.bereich) else ""
+        try:
+            vektor = provider.embed([anfrage.situation], "query")[0]
+        except EmbeddingFehler:
+            vektor = None
+        feedback = [
+            (lid, bewertung, vec if modell == provider.name else None)
+            for lid, bewertung, vec, modell in repo.feedback_alle()
+        ]
+        try:
+            treffer = rangliste(suche, anfrage.situation, vorgabe, feedback, vektor)
+        except EmbeddingFehler:
+            treffer = rangliste(suche, anfrage.situation, vorgabe, feedback, vektor, modus="volltext")
+        gespeichert = [
+            {k: v for k, v in t.as_dict().items() if k != "lesson"} | {"lesson_id": t.lesson.id} for t in treffer
+        ]
+        briefing_id = repo.briefing_anlegen(
+            anfrage.situation, vorgabe, gespeichert, lokale_checkliste([t.lesson for t in treffer]),
+            vektor, provider.name if vektor is not None else "",
+        )
+        return briefing_antwort(briefing_id)
+
+    @app.get("/api/briefings", dependencies=deps)
+    def briefings_liste(limit: int = Query(20, ge=1, le=100)) -> list[dict[str, Any]]:
+        return repo.briefings(limit)
+
+    @app.get("/api/briefing/{briefing_id}", dependencies=deps)
+    def briefing_holen(briefing_id: str) -> dict[str, Any]:
+        return briefing_antwort(briefing_id)
+
+    @app.delete("/api/briefing/{briefing_id}", dependencies=deps, status_code=204)
+    def briefing_loeschen(briefing_id: str) -> None:
+        repo.briefing_loeschen(briefing_id)
+
+    @app.post("/api/briefing/{briefing_id}/zusammenfassung", dependencies=deps)
+    def briefing_zusammenfassung(briefing_id: str, neu: bool = False) -> dict[str, Any]:
+        data = briefing_antwort(briefing_id)
+        if data["zusammenfassung"] and not neu:
+            return data
+        if not data["ki_moeglich"]:
+            raise HTTPException(status_code=409, detail=data["ki_hinweis"] or "Keine Zusammenfassung möglich.")
+        lokale = lokale_bereiche()
+        # Datenschutz: Lessons aus lokal verarbeiteten Bereichen gehen nie an Claude.
+        lessons = [t["lesson"] for t in data["treffer"] if t["lesson"].bereich not in lokale]
+        try:
+            ergebnis = schreiber.schreiben(data["situation"], lessons)
+        except anthropic.APIConnectionError as exc:
+            raise HTTPException(status_code=502, detail="Claude nicht erreichbar. Die Checkliste unten gilt trotzdem.") from exc
+        except anthropic.RateLimitError as exc:
+            raise HTTPException(status_code=502, detail="Claude-Limit erreicht, später erneut versuchen.") from exc
+        except anthropic.APIStatusError as exc:
+            raise HTTPException(status_code=502, detail=f"Claude-Fehler {exc.status_code}.") from exc
+        except (RuntimeError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        repo.briefing_ki_setzen(briefing_id, ergebnis["zusammenfassung"], ergebnis["checkliste"], f"claude:{schreiber.model}")
+        return briefing_antwort(briefing_id)
+
+    @app.post("/api/briefing/{briefing_id}/feedback", dependencies=deps)
+    def briefing_feedback(briefing_id: str, data: FeedbackIn) -> dict[str, str]:
+        repo.feedback_setzen(briefing_id, data.lesson_id, data.bewertung or None)
+        return repo.feedback_fuer_briefing(briefing_id)
 
     # Bestand ---------------------------------------------------------------
     @app.get("/api/export", dependencies=deps)

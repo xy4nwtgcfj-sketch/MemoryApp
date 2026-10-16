@@ -319,6 +319,90 @@ class Repository:
         with self.conn:
             return self.conn.execute("UPDATE entwuerfe SET status = 'wartet' WHERE status = 'in_arbeit'").rowcount
 
+    # Briefings -------------------------------------------------------------
+    def briefing_anlegen(
+        self,
+        situation: str,
+        bereich: str,
+        treffer: list[dict[str, Any]],
+        checkliste: list[dict[str, str]],
+        embedding: np.ndarray | None,
+        embedding_modell: str,
+    ) -> str:
+        briefing_id = str(uuid.uuid4())
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO briefings(id, situation, bereich, treffer_json, checkliste_json, embedding, embedding_modell, erstellt_am) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (briefing_id, situation.strip(), bereich, json.dumps(treffer, ensure_ascii=False),
+                 json.dumps(checkliste, ensure_ascii=False), vector_to_blob(embedding), embedding_modell, jetzt()),
+            )
+        return briefing_id
+
+    def briefing_holen(self, briefing_id: str) -> dict[str, Any]:
+        row = self.conn.execute(
+            "SELECT id, situation, bereich, treffer_json, checkliste_json, zusammenfassung, ki_checkliste_json, ki_modell, erstellt_am "
+            "FROM briefings WHERE id = ?",
+            (briefing_id,),
+        ).fetchone()
+        if row is None:
+            raise NotFound(briefing_id)
+        data = dict(row)
+        data["treffer"] = json.loads(data.pop("treffer_json"))
+        data["checkliste"] = json.loads(data.pop("checkliste_json"))
+        raw = data.pop("ki_checkliste_json")
+        data["ki_checkliste"] = json.loads(raw) if raw else None
+        data["feedback"] = self.feedback_fuer_briefing(briefing_id)
+        return data
+
+    def briefing_ki_setzen(self, briefing_id: str, zusammenfassung: str, checkliste: list[dict[str, str]], modell: str) -> None:
+        with self.conn:
+            self.conn.execute(
+                "UPDATE briefings SET zusammenfassung = ?, ki_checkliste_json = ?, ki_modell = ? WHERE id = ?",
+                (zusammenfassung, json.dumps(checkliste, ensure_ascii=False), modell, briefing_id),
+            )
+
+    def briefings(self, limit: int = 20) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT b.id, b.situation, b.bereich, b.erstellt_am, json_array_length(b.treffer_json) AS anzahl, "
+            "(SELECT COUNT(*) FROM briefing_feedback f WHERE f.briefing_id = b.id AND f.bewertung = 'hilfreich') AS hilfreich "
+            "FROM briefings b ORDER BY b.erstellt_am DESC LIMIT ?",
+            (limit,),
+        )
+        return [dict(r) for r in rows]
+
+    def briefing_loeschen(self, briefing_id: str) -> None:
+        with self.conn:
+            if self.conn.execute("DELETE FROM briefings WHERE id = ?", (briefing_id,)).rowcount == 0:
+                raise NotFound(briefing_id)
+
+    def feedback_setzen(self, briefing_id: str, lesson_id: str, bewertung: str | None) -> None:
+        self.briefing_holen(briefing_id)
+        self.holen(lesson_id)
+        with self.conn:
+            if bewertung:
+                self.conn.execute(
+                    "INSERT INTO briefing_feedback(briefing_id, lesson_id, bewertung, datum) VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT(briefing_id, lesson_id) DO UPDATE SET bewertung = excluded.bewertung, datum = excluded.datum",
+                    (briefing_id, lesson_id, bewertung, jetzt()),
+                )
+            else:
+                self.conn.execute(
+                    "DELETE FROM briefing_feedback WHERE briefing_id = ? AND lesson_id = ?", (briefing_id, lesson_id)
+                )
+
+    def feedback_fuer_briefing(self, briefing_id: str) -> dict[str, str]:
+        rows = self.conn.execute("SELECT lesson_id, bewertung FROM briefing_feedback WHERE briefing_id = ?", (briefing_id,))
+        return {r["lesson_id"]: r["bewertung"] for r in rows}
+
+    def feedback_alle(self, ausser_briefing: str = "") -> list[tuple[str, str, np.ndarray | None, str]]:
+        rows = self.conn.execute(
+            "SELECT f.lesson_id, f.bewertung, b.embedding, b.embedding_modell FROM briefing_feedback f "
+            "JOIN briefings b ON b.id = f.briefing_id WHERE f.briefing_id != ?",
+            (ausser_briefing,),
+        )
+        return [(r["lesson_id"], r["bewertung"], blob_to_vector(r["embedding"]), r["embedding_modell"]) for r in rows]
+
     def statistik(self) -> dict[str, Any]:
         q = self.conn.execute
         gesamt = q("SELECT COUNT(*) FROM lessons").fetchone()[0]
@@ -332,6 +416,11 @@ class Repository:
             "SUM(CASE WHEN erfassung_sekunden <= 30 THEN 1 ELSE 0 END) FROM lessons WHERE erfassung_sekunden IS NOT NULL"
         ).fetchone()
         offene_entwuerfe = q("SELECT COUNT(*) FROM entwuerfe").fetchone()[0]
+        briefings = q("SELECT COUNT(*) FROM briefings").fetchone()[0]
+        briefings_bewertet = q("SELECT COUNT(DISTINCT briefing_id) FROM briefing_feedback").fetchone()[0]
+        briefings_hilfreich = q(
+            "SELECT COUNT(DISTINCT briefing_id) FROM briefing_feedback WHERE bewertung = 'hilfreich'"
+        ).fetchone()[0]
         ohne_massnahme = q("SELECT COUNT(*) FROM lessons WHERE massnahme = '' AND status != 'überholt'").fetchone()[0]
         return {
             "gesamt": gesamt,
@@ -345,4 +434,7 @@ class Repository:
             "erfassungen_unter_30s": dauer[2] or 0,
             "ohne_massnahme": ohne_massnahme,
             "offene_entwuerfe": offene_entwuerfe,
+            "briefings": briefings,
+            "briefings_bewertet": briefings_bewertet,
+            "briefings_hilfreich": briefings_hilfreich,
         }

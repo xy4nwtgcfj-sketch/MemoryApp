@@ -104,6 +104,32 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX idx_entwuerfe_status ON entwuerfe(status, erstellt_am);
     """,
+    # Version 3: Briefings und Feedback
+    """
+    CREATE TABLE briefings (
+        id                 TEXT PRIMARY KEY,
+        situation          TEXT NOT NULL,
+        bereich            TEXT NOT NULL DEFAULT '',
+        treffer_json       TEXT NOT NULL DEFAULT '[]',
+        checkliste_json    TEXT NOT NULL DEFAULT '[]',
+        zusammenfassung    TEXT NOT NULL DEFAULT '',
+        ki_checkliste_json TEXT NOT NULL DEFAULT '',
+        ki_modell          TEXT NOT NULL DEFAULT '',
+        embedding          BLOB,
+        embedding_modell   TEXT NOT NULL DEFAULT '',
+        erstellt_am        TEXT NOT NULL
+    );
+    CREATE INDEX idx_briefings_erstellt ON briefings(erstellt_am);
+
+    CREATE TABLE briefing_feedback (
+        briefing_id TEXT NOT NULL REFERENCES briefings(id) ON DELETE CASCADE,
+        lesson_id   TEXT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+        bewertung   TEXT NOT NULL CHECK (bewertung IN ('hilfreich', 'nicht_relevant')),
+        datum       TEXT NOT NULL,
+        PRIMARY KEY (briefing_id, lesson_id)
+    );
+    CREATE INDEX idx_feedback_lesson ON briefing_feedback(lesson_id);
+    """,
 ]
 
 

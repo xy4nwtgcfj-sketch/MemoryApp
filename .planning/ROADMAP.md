@@ -10,6 +10,7 @@ Projekt) vor weiterer Investition geprüft.
 
 - [x] **Phase 1: Erfassen und Finden** - Datenmodell, KI-Erfassung per Text/Sprache, Volltext- und semantische Suche, Startbestand
 - [x] **Phase 1.1: Lokale KI (INSERTED)** - Ollama für Embeddings und Hintergrund-Strukturierung, Routing pro Bereich, Messskript für Windows
+- [ ] **Phase 1.2: Manuelles Briefing (INSERTED)** - Situation beschreiben, Top 5 Lessons, Checkliste, Claude-Zusammenfassung, Feedback
 - [ ] **Phase 2: Briefings** - Manuelles und kalenderbasiertes Briefing, Erinnerungen, alle Bereiche
 - [ ] **Phase 3: Muster** - Monatliche Auswertung und Dashboard
 
@@ -54,10 +55,27 @@ Plans:
 - [x] 01.1-02: API und UI für Routing (Standard und pro Bereich), Prüfen-Liste, Entwürfe in der Suche
 - [x] 01.1-03: Messskript, Windows-Einrichtung (Ollama, Autostart), Doku
 
+### Phase 1.2: Manuelles Briefing (INSERTED)
+**Goal**: Vor einer Aufgabe ("Projektplanung für Welle 4 schreiben") holt Stefan mit einem Satz die 5 wichtigsten eigenen Erfahrungen samt Checkliste.
+**Depends on**: Phase 1.1
+**Requirements**: BRIEF-01, BRIEF-02, BRIEF-06, BRIEF-07
+**Begründung (Abweichung vom Konzept)**: Ohne Abruf misst die Phase-1-Abnahme nur das Erfassen. Das Konzept sagt, der Wert entsteht beim Wiederfinden. Nur der manuelle Teil wird vorgezogen; Kalender und Erinnerungen bleiben in Phase 2. Entscheidung von Stefan am 2026-10-16.
+**Success Criteria** (what must be TRUE):
+  1. Eine Situationsbeschreibung liefert höchstens 5 Lessons, nie überholte, sortiert nach Relevanz × Schweregrad × Bestätigungen
+  2. Aus den Lessons entsteht eine kopierbare Checkliste, ohne Cloud lokal aus den Maßnahmen, mit Claude auf die Situation zugeschnitten
+  3. Claude-Zusammenfassung stützt sich nur auf die gelieferten Lessons; jeder Checklistenpunkt verweist auf seine Lesson
+  4. Feedback hilfreich/nicht relevant verschiebt das Ranking bei ähnlichen Situationen
+  5. Lessons aus Bereichen im Modus lokal gehen nicht an Claude
+**Plans**: 2 plans
+
+Plans:
+- [ ] 01.2-01: Ranking, Speicherung, Feedback, Claude-Zusammenfassung, API
+- [ ] 01.2-02: Briefing-Ansicht, Verlauf, Erfolgskriterium in der Statistik
+
 ### Phase 2: Briefings
 **Goal**: Vor einem relevanten Termin bekommt Stefan die 5 wichtigsten Lessons, ohne danach zu suchen.
 **Depends on**: Phase 1 (inkl. Abnahme)
-**Requirements**: BRIEF-01, BRIEF-02, BRIEF-03, BRIEF-04, BRIEF-05
+**Requirements**: BRIEF-03, BRIEF-04, BRIEF-05 (BRIEF-01/02 vorgezogen in 1.2)
 **Success Criteria** (what must be TRUE):
   1. "Besichtigung Wuppertal morgen" liefert 5 Lessons, überholte nie
   2. Feedback verschiebt das Ranking messbar
@@ -76,11 +94,12 @@ Plans:
 
 ## Progress
 
-**Execution Order:** 1 → 1.1 → 2 → 3
+**Execution Order:** 1 → 1.1 → 1.2 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Erfassen und Finden | 5/5 | Built, Abnahme ausstehend | 2026-10-16 |
 | 1.1 Lokale KI | 3/3 | Built, Messung auf E5 ausstehend | 2026-10-16 |
+| 1.2 Manuelles Briefing | 0/2 | In progress | - |
 | 2. Briefings | 0/TBD | Not started | - |
 | 3. Muster | 0/TBD | Not started | - |

@@ -38,6 +38,36 @@ Regeln:
 """
 
 
+def claude_json(
+    client: Any,
+    model: str,
+    effort: str,
+    system: str,
+    user_message: str,
+    schema: dict[str, Any],
+    use_fallbacks: bool = True,
+    max_tokens: int = 8000,
+) -> dict[str, Any]:
+    """Ein Claude-Aufruf mit erzwungenem JSON-Schema. Wirft RuntimeError bei Ablehnung oder Abbruch."""
+    kwargs: dict[str, Any] = dict(
+        model=model,
+        max_tokens=max_tokens,
+        system=system,
+        messages=[{"role": "user", "content": user_message}],
+        output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
+    )
+    if use_fallbacks:
+        # Server-seitiger Fallback, falls ein Sicherheitsklassifikator ablehnt.
+        kwargs.update(betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+    response = client.beta.messages.create(**kwargs)
+    if response.stop_reason == "refusal":
+        raise RuntimeError("Claude hat die Anfrage abgelehnt.")
+    if response.stop_reason == "max_tokens":
+        raise RuntimeError("Antwort von Claude wurde abgeschnitten.")
+    text = next((b.text for b in response.content if getattr(b, "type", "") == "text"), "")
+    return json.loads(text)
+
+
 def build_schema(bereiche: list[str]) -> dict[str, Any]:
     text = {"type": "string"}
     return {
@@ -216,23 +246,7 @@ class Strukturierer(BasisStrukturierer):
         return self.client is not None
 
     def _call(self, schema: dict[str, Any], user_message: str) -> dict[str, Any]:
-        kwargs: dict[str, Any] = dict(
-            model=self.model,
-            max_tokens=8000,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
-            output_config={"effort": self.effort, "format": {"type": "json_schema", "schema": schema}},
-        )
-        if self.use_fallbacks:
-            # Server-seitiger Fallback, falls ein Sicherheitsklassifikator ablehnt.
-            kwargs.update(betas=["server-side-fallback-2026-07-01"], fallbacks="default")
-        response = self.client.beta.messages.create(**kwargs)
-        if response.stop_reason == "refusal":
-            raise RuntimeError("Claude hat die Strukturierung abgelehnt.")
-        if response.stop_reason == "max_tokens":
-            raise RuntimeError("Antwort von Claude wurde abgeschnitten.")
-        text = next((b.text for b in response.content if getattr(b, "type", "") == "text"), "")
-        return json.loads(text)
+        return claude_json(self.client, self.model, self.effort, SYSTEM_PROMPT, user_message, schema, self.use_fallbacks)
 
 
 class OllamaStrukturierer(BasisStrukturierer):

@@ -28,7 +28,10 @@ class FakeClient:
             raise self.error
         return SimpleNamespace(
             stop_reason=self.stop_reason,
-            content=[SimpleNamespace(type="thinking", thinking=""), SimpleNamespace(type="text", text=json.dumps(self.payload))],
+            content=[
+                SimpleNamespace(type="thinking", thinking=""),
+                SimpleNamespace(type="text", text=json.dumps(self.payload(kwargs) if callable(self.payload) else self.payload)),
+            ],
         )
 
 

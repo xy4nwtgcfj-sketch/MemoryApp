@@ -53,12 +53,17 @@
 - [x] **LOCAL-06**: Liste "Prüfen" mit Zähler; Entwürfe übernehmen, als Bestätigung zählen, Rückfrage beantworten, neu strukturieren, verwerfen; Rohtexte sind durchsuchbar
 - [x] **LOCAL-07**: Messskript für Windows (RAM-Bestückung, Embedding-, Strukturierungszeiten, Beispielergebnisse je Modell, optional Claude-Vergleich)
 
+### Manuelles Briefing (BRIEF), Phase 1.2 (vorgezogen)
+
+- [ ] **BRIEF-01**: Manuelles Briefing aus Freitext, Top 5 nach Relevanz × Schweregrad × Bestätigungen, überholte ausgeschlossen
+- [ ] **BRIEF-02**: Feedback hilfreich / nicht relevant pro Lesson, fließt bei ähnlichen Situationen ins Ranking ein
+- [ ] **BRIEF-06**: Checkliste aus den Lessons, kopierbar; mit Claude auf die Situation zugeschnitten und mit Quellenverweis
+- [ ] **BRIEF-07**: Claude-Zusammenfassung "Worauf du achten solltest"; Briefings werden gespeichert und sind wieder aufrufbar
+
 ## v2 Requirements
 
 ### Briefing (BRIEF), Phase 2
 
-- **BRIEF-01**: Manuelles Briefing aus Freitext ("Besichtigung Wuppertal morgen"), Top 5 nach Relevanz × Schweregrad × Bestätigungen, überholte ausgeschlossen
-- **BRIEF-02**: Feedback hilfreich / nicht relevant pro Lesson, fließt ins Ranking ein
 - **BRIEF-03**: Google-Calendar-Anbindung, automatisches Vorabend-Briefing
 - **BRIEF-04**: Wöchentliche Erfassungs-Erinnerung (Freitag 17:00) und 5-Minuten-Erinnerung nach Terminen mit Schlagwort
 - **BRIEF-05**: Alle Bereiche aktiv
@@ -89,12 +94,13 @@
 | SRCH-01..04 | Phase 1 | Built (UAT ausstehend) |
 | OPS-01..05 | Phase 1 | Built (UAT ausstehend) |
 | LOCAL-01..07 | Phase 1.1 | Built (UAT ausstehend) |
-| BRIEF-01..05 | Phase 2 | Deferred |
+| BRIEF-01, 02, 06, 07 | Phase 1.2 | Pending |
+| BRIEF-03..05 | Phase 2 | Deferred |
 | PATT-01..04 | Phase 3 | Deferred |
 
 **Coverage:**
-- v1 requirements: 30 total
-- Mapped to phases: 30
+- v1 requirements: 34 total
+- Mapped to phases: 34
 - Unmapped: 0
 
 ---
