@@ -17,6 +17,7 @@ playwright = pytest.importorskip("playwright.sync_api")
 uvicorn = pytest.importorskip("uvicorn")
 
 from lessons_vault import main  # noqa: E402
+from lessons_vault.briefing import BRIEFING_PROMPT  # noqa: E402
 from lessons_vault.config import Settings  # noqa: E402
 from lessons_vault.embeddings import HashingProvider  # noqa: E402
 from lessons_vault.main import create_app  # noqa: E402
@@ -37,7 +38,20 @@ def free_port() -> int:
 
 @pytest.fixture(scope="module")
 def server(tmp_path_factory):
-    fake = FakeClient(payload(situation="Termin bei der Bank für eine vermietete Wohnung, Herr Meier als Berater."))
+    entwurf = payload(situation="Termin bei der Bank für eine vermietete Wohnung, Herr Meier als Berater.")
+
+    def antwort(kwargs):
+        if kwargs["system"] == BRIEFING_PROMPT:
+            return {
+                "zusammenfassung": "Fordere die Unterlagenliste der Bank vorab an und prüfe die WEG-Protokolle vor dem Angebot.",
+                "checkliste": [
+                    {"punkt": "Unterlagenliste der Bank anfordern und abhaken", "lesson_nr": 1},
+                    {"punkt": "WEG-Protokolle der letzten drei Jahre lesen", "lesson_nr": 2},
+                ],
+            }
+        return entwurf
+
+    fake = FakeClient(antwort)
     mp = pytest.MonkeyPatch()
     mp.setattr(main, "ollama_status", lambda url, timeout=2.0: {"erreichbar": True, "modelle": ["qwen2.5:7b"]})
     ollama = OllamaMock(payload(bereich="Beruf", titel="Cutover-Personal früh bestätigen", lesson="Vor jedem Cutover die Personalplanung schriftlich bestätigen lassen."))
@@ -184,4 +198,36 @@ def test_lokaler_ablauf(server, page):
     expect(page.get_by_role("heading", name="KI-Strukturierung")).to_be_visible()
     expect(page.locator("#ki-Beruf")).to_have_value("lokal")
     shot(page, "08-einstellungen-ki")
+    assert page.errors == []
+
+
+def test_briefing(server, page):
+    base, _ = server
+    expect = playwright.expect
+    page.goto(f"{base}/#/briefing")
+    page.fill("#briefing-text", "Bankgespräch für die nächste Wohnung vorbereiten")
+    page.get_by_role("button", name="Briefing erstellen").click()
+    expect(page.get_by_text("Fordere die Unterlagenliste der Bank vorab an")).to_be_visible()
+    expect(page.get_by_text("Auf die Situation zugeschnitten (Claude)")).to_be_visible()
+    expect(page.locator(".checklist li")).to_have_count(2)
+    expect(page.locator(".why").first).to_contain_text("Relevanz")
+    text = page.locator("#briefing-result").inner_text()
+    assert "überholt" not in text and "null" not in text
+    shot(page, "09-briefing")
+
+    page.locator(".feedback .up").first.click()
+    expect(page.locator(".feedback .up").first).to_have_attribute("aria-pressed", "true")
+    page.locator(".feedback .down").nth(1).click()
+    expect(page.locator(".result.abgewertet")).to_have_count(1)
+
+    # Verlauf und Wiederaufruf
+    page.goto(f"{base}/#/briefing")
+    page.reload()
+    expect(page.get_by_role("heading", name="Frühere Briefings")).to_be_visible()
+    expect(page.locator("a.result").first).to_contain_text("1 hilfreich")
+    page.locator("a.result").first.click()
+    expect(page.get_by_text("Fordere die Unterlagenliste der Bank vorab an")).to_be_visible()
+
+    page.goto(f"{base}/#/einstellungen")
+    expect(page.get_by_text("1 von 1 (1 bewertet)")).to_be_visible()
     assert page.errors == []

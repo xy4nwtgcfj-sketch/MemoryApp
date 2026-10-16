@@ -272,3 +272,19 @@ details summary { cursor: pointer; font-weight: 600; min-height: 44px; display: 
 .badge.st-wartet, .badge.st-in_arbeit { color: var(--accent); }
 .badge.st-fertig { color: var(--ok-text); background: var(--ok-bg); border-color: transparent; }
 .badge.st-fehler { color: var(--danger); }
+
+.tabbar a[hidden] { display: none; }
+
+.summary { font-size: 1.02rem; margin: 6px 0 0; }
+.checklist { list-style: none; padding: 0; margin: 8px 0 0; }
+.checklist li { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.checklist li:last-child { border-bottom: 0; }
+.checklist input { width: 22px; height: 22px; margin: 1px 0 0; flex: none; }
+.checklist .src { display: block; font-size: .8rem; color: var(--muted); }
+.checklist input:checked + span { text-decoration: line-through; color: var(--muted); }
+.why { font-size: .8rem; color: var(--muted); margin: 6px 0 0; }
+.feedback { display: flex; gap: 8px; margin-top: 10px; }
+.feedback button { min-height: 40px; padding: 6px 12px; font-weight: 500; font-size: .9rem; }
+.feedback button[aria-pressed="true"].up { background: var(--ok-bg); color: var(--ok-text); border-color: transparent; }
+.feedback button[aria-pressed="true"].down { background: var(--surface-2); color: var(--muted); text-decoration: line-through; }
+.result.abgewertet { opacity: .55; }

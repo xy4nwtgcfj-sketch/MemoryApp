@@ -61,9 +61,11 @@ Erfassen und zuverlässiges Wiederfinden funktionieren.
 | Claude-Modell `claude-opus-5-5` mit effort `low`, konfigurierbar | Strukturierung ist einfach, Latenz zählt (30-Sekunden-Ziel). Modell per Umgebungsvariable tauschbar. | — Pending |
 | Lokale KI über Ollama: Embeddings bge-m3, Strukturierung asynchron im Hintergrund | Bosgame E5 (Ryzen 5 5300U, 32 GB DDR4, keine GPU) ist für interaktive lokale Strukturierung zu langsam; im Hintergrund zählt Qualität vor Tempo. Erfassung bleibt unter 30 s. | — Pending (Messung) |
 | Strukturierungsmodus pro Bereich; lokal-Bereiche nie an Claude, auch nicht als Kandidaten | Ermöglicht z. B. Beruf lokal (Compliance) und Immobilien über Claude (Qualität, Rückfrage) | — Pending |
+| Manuelles Briefing aus Phase 2 vorgezogen (Phase 1.2), Kalender/Erinnerungen bleiben in Phase 2 | Ohne Abruf misst die Abnahme nur das Erfassen; Wert entsteht laut Konzept beim Wiederfinden. Entscheidung Stefan. | — Pending |
+| Strukturierung vorerst über Claude, lokal umschaltbar | Qualität und Rückfrage im Dialog; Umstieg später ohne Umbau. Entscheidung Stefan. | — Pending |
 | Single-User ohne Rechtemodell | Offene Frage 1 unbeantwortet; Teilen später ist ein eigener Meilenstein. Datenmodell enthält keine Owner-Spalte. | ⚠️ Revisit |
 | Sprache über Browser-Spracherkennung (Web Speech API), Whisper später | Kein zusätzlicher Dienst. Einschränkung: Chrome schickt Audio an Google, Safari/iOS nutzt Apple-Dienste. Für berufliche Inhalte kritisch, siehe Compliance. | ⚠️ Revisit |
 | Alle fünf Bereiche angelegt, nur Beruf und Immobilien aktiv | Konzept fordert Fokus in Phase 1, Bereiche bleiben konfigurierbar. | — Pending |
 
 ---
-*Last updated: 2026-10-16 after Phase 1.1 (Lokale KI)*
+*Last updated: 2026-10-16 after Phase 1.2 (Manuelles Briefing)*

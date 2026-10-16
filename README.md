@@ -3,9 +3,9 @@
 Ein zweites Gedächtnis für Erfahrungen. Lessons in unter 30 Sekunden erfassen (Text oder Sprache),
 eine KI strukturiert sie, und du findest sie wieder, wenn eine ähnliche Situation bevorsteht.
 
-Stand: Phase 1 "Erfassen und Finden" plus Phase 1.1 "Lokale KI" (siehe `.planning/ROADMAP.md`).
-Briefings und Mustererkennung folgen nach der Abnahme von Phase 1 (drei Wochen echte Nutzung,
-mindestens 10 neue Lessons).
+Stand: Phase 1 "Erfassen und Finden", Phase 1.1 "Lokale KI" und Phase 1.2 "Manuelles Briefing"
+(siehe `.planning/ROADMAP.md`). Kalender-Briefings, Erinnerungen und Mustererkennung folgen nach der
+Abnahme von Phase 1 (drei Wochen echte Nutzung, mindestens 10 neue Lessons).
 
 ## Funktionen
 
@@ -14,7 +14,17 @@ mindestens 10 neue Lessons).
   - **Lokal (Hintergrund):** Der Rohtext ist sofort gespeichert. Ein lokales Modell auf dem PC strukturiert
     ihn in 1 bis 3 Minuten, der Entwurf landet unter **Prüfen**.
   - **Manuell:** Formular selbst ausfüllen.
-- **Prüfen:** Lokal strukturierte Entwürfe übernehmen, korrigieren, Rückfrage beantworten, neu strukturieren
+- **Briefing:** Vor einer Aufgabe die Situation in einem Satz beschreiben ("Projektplanung für Rollout
+  Welle 4 schreiben"). Du bekommst:
+  - die bis zu 5 wichtigsten eigenen Lessons, sortiert nach Relevanz × Schweregrad × wie oft erlebt,
+    überholte nie, mit Begründung je Lesson,
+  - eine Checkliste zum Abhaken und Kopieren (aus deinen Maßnahmen, mit Claude auf die Situation
+    zugeschnitten und mit Quellenangabe je Punkt),
+  - eine kurze Claude-Zusammenfassung "Worauf du achten solltest", nur aus deinen Lessons.
+
+  Mit "Hilfreich" / "Nicht relevant" verbesserst du künftige Briefings zu ähnlichen Situationen.
+  Frühere Briefings bleiben abrufbar.
+- **Prüfen** (nur sichtbar, wenn ein Bereich lokal strukturiert wird): Lokal strukturierte Entwürfe übernehmen, korrigieren, Rückfrage beantworten, neu strukturieren
   oder verwerfen. Der Zähler in der Leiste zeigt offene Entwürfe.
 - **Dubletten:** Ähnliche Lessons werden erkannt; "Als Bestätigung zählen" erhöht den Zähler, ab 2× wird
   eine Lesson "bestätigt".
@@ -132,6 +142,9 @@ Einstellungen → Importieren. Pflicht: `titel` (max. 80 Zeichen), `situation`, 
 - **Lokal-Modus:** Nichts verlässt den PC (Ollama läuft lokal).
 - **Claude-Modus:** An die Claude API gehen der Erfassungstext, eine Rückfrage-Antwort sowie Titel und Regel
   von bis zu fünf ähnlichen Lessons aus Bereichen, die nicht auf "lokal" stehen.
+- **Briefing-Zusammenfassung:** An Claude gehen die Situationsbeschreibung und die vollständigen Texte der
+  gefundenen Lessons, ausgenommen Lessons aus Bereichen auf "lokal". Ist ein lokaler Bereich als Filter
+  gewählt, gibt es keine Zusammenfassung; Lessons und Checkliste kommen dann rein lokal.
 - **Voyage** (nur falls statt Ollama gewählt): Lesson-Texte und Suchanfragen.
 - **Spracherkennung** läuft über den Browser: Chrome schickt Audio an Google, Safari nutzt Apple-Dienste.
   Für vertrauliche Inhalte tippen. Lokales Whisper ist als nächster Schritt vorgemerkt.

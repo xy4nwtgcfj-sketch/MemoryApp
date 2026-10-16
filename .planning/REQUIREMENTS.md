@@ -55,10 +55,10 @@
 
 ### Manuelles Briefing (BRIEF), Phase 1.2 (vorgezogen)
 
-- [ ] **BRIEF-01**: Manuelles Briefing aus Freitext, Top 5 nach Relevanz × Schweregrad × Bestätigungen, überholte ausgeschlossen
-- [ ] **BRIEF-02**: Feedback hilfreich / nicht relevant pro Lesson, fließt bei ähnlichen Situationen ins Ranking ein
-- [ ] **BRIEF-06**: Checkliste aus den Lessons, kopierbar; mit Claude auf die Situation zugeschnitten und mit Quellenverweis
-- [ ] **BRIEF-07**: Claude-Zusammenfassung "Worauf du achten solltest"; Briefings werden gespeichert und sind wieder aufrufbar
+- [x] **BRIEF-01**: Manuelles Briefing aus Freitext, Top 5 nach Relevanz × Schweregrad × Bestätigungen, überholte ausgeschlossen
+- [x] **BRIEF-02**: Feedback hilfreich / nicht relevant pro Lesson, fließt bei ähnlichen Situationen ins Ranking ein
+- [x] **BRIEF-06**: Checkliste aus den Lessons, kopierbar; mit Claude auf die Situation zugeschnitten und mit Quellenverweis
+- [x] **BRIEF-07**: Claude-Zusammenfassung "Worauf du achten solltest"; Briefings werden gespeichert und sind wieder aufrufbar
 
 ## v2 Requirements
 
@@ -94,7 +94,7 @@
 | SRCH-01..04 | Phase 1 | Built (UAT ausstehend) |
 | OPS-01..05 | Phase 1 | Built (UAT ausstehend) |
 | LOCAL-01..07 | Phase 1.1 | Built (UAT ausstehend) |
-| BRIEF-01, 02, 06, 07 | Phase 1.2 | Pending |
+| BRIEF-01, 02, 06, 07 | Phase 1.2 | Built (UAT ausstehend) |
 | BRIEF-03..05 | Phase 2 | Deferred |
 | PATT-01..04 | Phase 3 | Deferred |
 

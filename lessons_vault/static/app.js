@@ -105,8 +105,11 @@ async function bereiche(refresh = false) {
 
 async function refreshStats() {
   try {
-    const s = await api("/api/statistik");
+    const [s, status] = await Promise.all([api("/api/statistik"), api("/api/status").catch(() => null)]);
     statsEl.textContent = `${s.gesamt} Lessons · ${s.neu_erfasst_7_tage} diese Woche`;
+    // "Prüfen" nur zeigen, wenn lokal strukturiert wird oder Entwürfe offen sind.
+    const lokalAktiv = status && (status.modus_standard === "lokal" || Object.values(status.modi || {}).includes("lokal"));
+    document.querySelector('.tabbar a[data-tab="pruefen"]').hidden = !(s.offene_entwuerfe || lokalAktiv || location.hash.startsWith("#/pruefen") || location.hash.startsWith("#/entwurf"));
     const badge = document.getElementById("pruefen-count");
     badge.hidden = !s.offene_entwuerfe;
     badge.textContent = s.offene_entwuerfe || "";
@@ -222,7 +225,10 @@ function startTimer() {
   if (!capture.start) capture.start = Date.now();
 }
 
-function speechButton(textarea) {
+function speechButton(textarea, {
+  onStart = startTimer,
+  onResult = (text) => { capture.text = text; capture.quelle = "sprache"; },
+} = {}) {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return null;
   let recognition = null;
@@ -236,7 +242,7 @@ function speechButton(textarea) {
   };
   button.addEventListener("click", () => {
     if (recognition) return stop();
-    startTimer();
+    onStart();
     recognition = new SR();
     recognition.lang = "de-DE";
     recognition.continuous = true;
@@ -251,8 +257,7 @@ function speechButton(textarea) {
         else interim += r[0].transcript;
       }
       textarea.value = (base + finalText + interim).trimStart();
-      capture.text = textarea.value;
-      capture.quelle = "sprache";
+      onResult(textarea.value);
     };
     recognition.onerror = (event) => {
       toast(event.error === "not-allowed" ? "Mikrofon nicht erlaubt. Braucht HTTPS (tailscale serve) und Freigabe im Browser." : `Spracherkennung: ${event.error}`);
@@ -504,6 +509,217 @@ async function showDraft(container, entwurf, { entwurfId = null } = {}) {
   container.replaceChildren(el("div", {}, parts));
   updateMissing(form.read());
   container.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// ----------------------------------------------------------------- Briefing
+const briefingState = { situation: "", bereich: "" };
+
+function checklistText(situation, items) {
+  return [`Checkliste: ${situation}`, "", ...items.map((i) => `- [ ] ${i.punkt}`)].join("\n");
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = el("textarea", { style: "position:fixed;opacity:0" });
+    area.value = text;
+    document.body.append(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    return ok;
+  }
+}
+
+function whyLine(t) {
+  const l = t.lesson;
+  const teile = [`Relevanz ${Math.round(t.relevanz * 100)} %`, `Schwere ${l.schweregrad}`];
+  if (l.bestaetigungen > 1) teile.push(`${l.bestaetigungen}× erlebt`);
+  if (t.faktoren.feedback > 1.01) teile.push("früher hilfreich");
+  if (t.faktoren.feedback < 0.99) teile.push("früher als unpassend markiert");
+  return teile.join(" · ");
+}
+
+async function viewBriefing(id) {
+  const situation = el("textarea", {
+    id: "briefing-text",
+    rows: 3,
+    placeholder: "Was steht an? z. B. \u201EProjektplanung für Rollout Welle 4 schreiben\u201C oder \u201EBesichtigung in Wuppertal morgen\u201C",
+    oninput: () => { briefingState.situation = situation.value; },
+  });
+  situation.value = briefingState.situation;
+  const result = el("div", { id: "briefing-result" });
+  const bereichListe = (await bereiche().catch(() => [])).filter((b) => b.aktiv);
+  const chips = el("div", { class: "chips", role: "group", "aria-label": "Bereich (optional)" });
+  const renderChips = () => chips.replaceChildren(...bereichListe.map((b) => el("button", {
+    type: "button",
+    class: "chip",
+    "aria-pressed": String(briefingState.bereich === b.name),
+    onclick: () => { briefingState.bereich = briefingState.bereich === b.name ? "" : b.name; renderChips(); },
+  }, b.name)));
+  renderChips();
+  const mic = speechButton(situation, { onStart: () => {}, onResult: (t) => { briefingState.situation = t; } });
+
+  const go = async () => {
+    const text = situation.value.trim();
+    if (text.length < 3) { situation.focus(); return toast("Beschreib kurz, was ansteht."); }
+    goBtn.disabled = true;
+    result.replaceChildren(el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), " Suche passende Erfahrungen …"));
+    try {
+      const data = await api("/api/briefing", { method: "POST", body: { situation: text, bereich: briefingState.bereich } });
+      history.replaceState(null, "", `#/briefing/${data.id}`);
+      showBriefing(result, data);
+    } catch (err) {
+      result.replaceChildren(errorNotice(err));
+    } finally {
+      goBtn.disabled = false;
+    }
+  };
+  const goBtn = el("button", { type: "button", class: "primary", onclick: go }, "Briefing erstellen");
+
+  render(
+    el("h2", {}, "Briefing"),
+    el("p", { class: "muted small", style: "margin-top:0" }, "Beschreib die anstehende Situation in einem Satz. Du bekommst deine wichtigsten Erfahrungen dazu und eine Checkliste."),
+    el("label", { for: "briefing-text", class: "sr-only" }, "Situation"),
+    situation,
+    bereichListe.length > 1 ? chips : null,
+    el("div", { class: "actions" }, goBtn, mic),
+    result,
+  );
+
+  if (id) {
+    try {
+      const data = await api(`/api/briefing/${encodeURIComponent(id)}`);
+      situation.value = briefingState.situation = data.situation;
+      showBriefing(result, data);
+    } catch (err) {
+      result.replaceChildren(errorNotice(err));
+    }
+  } else {
+    showVerlauf(result);
+  }
+}
+
+async function showVerlauf(container) {
+  try {
+    const verlauf = await api("/api/briefings?limit=10");
+    if (!verlauf.length) return;
+    container.replaceChildren(
+      el("h2", {}, "Frühere Briefings"),
+      ...verlauf.map((b) => el("a", { class: "card result", href: `#/briefing/${b.id}` },
+        el("p", { class: "rule" }, b.situation),
+        el("div", { class: "badges" },
+          el("span", { class: "badge" }, formatDate(b.erstellt_am)),
+          el("span", { class: "badge" }, `${b.anzahl} Lessons`),
+          b.hilfreich ? el("span", { class: "badge status-bestätigt" }, `${b.hilfreich} hilfreich`) : null,
+          b.bereich ? el("span", { class: "badge" }, b.bereich) : null))),
+    );
+  } catch { /* Verlauf ist optional */ }
+}
+
+function showBriefing(container, data) {
+  if (!data.treffer.length) {
+    container.replaceChildren(
+      el("div", { class: "notice info" },
+        el("strong", {}, "Dazu hast du noch keine Erfahrungen gespeichert."),
+        "Probier andere Stichworte oder ohne Bereichsfilter. Und nach der Aufgabe: ",
+        el("a", { href: "#/erfassen" }, "eine Lesson erfassen"), "."),
+    );
+    return;
+  }
+  const feedback = { ...data.feedback };
+  const summaryCard = el("div", { class: "card" }, el("strong", {}, "Worauf du achten solltest"));
+  const checklistCard = el("div", { class: "card" });
+
+  const renderChecklist = (items, quelle) => {
+    const titel = Object.fromEntries(data.treffer.map((t) => [t.lesson.id, t.lesson.titel]));
+    checklistCard.replaceChildren(
+      el("div", { class: "row" },
+        el("strong", { class: "grow" }, "Checkliste"),
+        el("button", {
+          type: "button",
+          onclick: async () => toast((await copyText(checklistText(data.situation, items))) ? "Checkliste kopiert." : "Kopieren nicht möglich."),
+        }, "Kopieren")),
+      el("p", { class: "muted small", style: "margin:4px 0 0" }, quelle),
+      el("ul", { class: "checklist" }, items.map((item, i) => el("li", {},
+        el("input", { type: "checkbox", id: `cl-${i}` }),
+        el("label", { for: `cl-${i}`, style: "margin:0;font-weight:400" },
+          el("span", {}, item.punkt),
+          titel[item.lesson_id] ? el("span", { class: "src" }, `aus: ${titel[item.lesson_id]}`) : null)))),
+    );
+  };
+
+  const loadSummary = async (neu = false) => {
+    summaryCard.replaceChildren(el("strong", {}, "Worauf du achten solltest"),
+      el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), " Claude fasst zusammen …"));
+    try {
+      const res = await api(`/api/briefing/${data.id}/zusammenfassung${neu ? "?neu=true" : ""}`, { method: "POST" });
+      showSummary(res);
+    } catch (err) {
+      summaryCard.replaceChildren(el("strong", {}, "Worauf du achten solltest"),
+        el("div", { class: "notice warn" }, err.message),
+        el("button", { type: "button", onclick: () => loadSummary(neu) }, "Erneut versuchen"));
+    }
+  };
+
+  const showSummary = (res) => {
+    summaryCard.replaceChildren(
+      el("strong", {}, "Worauf du achten solltest"),
+      el("p", { class: "summary" }, res.zusammenfassung || "Claude sah keinen klaren Bezug zu dieser Situation. Die Lessons unten sind trotzdem die besten Treffer."),
+      res.ki_hinweis ? el("p", { class: "muted small" }, res.ki_hinweis) : null,
+      el("p", { class: "muted small" }, "Zusammengefasst von Claude, nur aus deinen Lessons. ",
+        el("button", { type: "button", class: "ghost", style: "min-height:32px;padding:2px 6px", onclick: () => loadSummary(true) }, "Neu formulieren")),
+    );
+    if (res.ki_checkliste?.length) renderChecklist(res.ki_checkliste, "Auf die Situation zugeschnitten (Claude)");
+  };
+
+  renderChecklist(data.checkliste, "Aus den Maßnahmen deiner Lessons");
+
+  const lessonCards = data.treffer.map((t) => {
+    const l = t.lesson;
+    const card = el("div", { class: `card result ${feedback[l.id] === "nicht_relevant" ? "abgewertet" : ""}` });
+    const up = el("button", { type: "button", class: "up" }, "👍 Hilfreich");
+    const down = el("button", { type: "button", class: "down" }, "Nicht relevant");
+    const sync = () => {
+      up.setAttribute("aria-pressed", String(feedback[l.id] === "hilfreich"));
+      down.setAttribute("aria-pressed", String(feedback[l.id] === "nicht_relevant"));
+      card.classList.toggle("abgewertet", feedback[l.id] === "nicht_relevant");
+    };
+    const send = async (bewertung) => {
+      const neu = feedback[l.id] === bewertung ? "" : bewertung;
+      try {
+        const res = await api(`/api/briefing/${data.id}/feedback`, { method: "POST", body: { lesson_id: l.id, bewertung: neu } });
+        Object.keys(feedback).forEach((k) => delete feedback[k]);
+        Object.assign(feedback, res);
+        sync();
+      } catch (err) { toast(err.message); }
+    };
+    up.addEventListener("click", () => send("hilfreich"));
+    down.addEventListener("click", () => send("nicht_relevant"));
+    sync();
+    card.append(...[
+      el("a", { href: `#/lesson/${l.id}`, style: "color:inherit;text-decoration:none" },
+        el("h3", {}, l.titel),
+        el("p", { class: "rule" }, l.lesson)),
+      l.massnahme ? el("p", { class: "small", style: "margin:6px 0 0" }, el("strong", { style: "display:inline" }, "Maßnahme: "), l.massnahme) : null,
+      badges(l),
+      el("p", { class: "why" }, whyLine(t)),
+      el("div", { class: "feedback", role: "group", "aria-label": "War das hilfreich?" }, up, down),
+    ].filter(Boolean));
+    return card;
+  });
+
+  container.replaceChildren(
+    data.ki_moeglich || data.zusammenfassung ? summaryCard : (data.ki_hinweis ? el("p", { class: "muted small" }, data.ki_hinweis) : null),
+    checklistCard,
+    el("h2", {}, `Deine Erfahrungen (${data.treffer.length})`),
+    el("p", { class: "muted small", style: "margin-top:0" }, "Markiere, was dir geholfen hat. Das verbessert künftige Briefings zu ähnlichen Situationen."),
+    ...lessonCards,
+  );
+  if (data.zusammenfassung) showSummary(data);
+  else if (data.ki_moeglich) loadSummary();
 }
 
 // ------------------------------------------------------------------- Prüfen
@@ -888,6 +1104,7 @@ async function viewEinstellungen() {
     ["Neu erfasst, letzte 7 Tage (Ziel ≥ 1)", `${stat.neu_erfasst_7_tage}`],
     ["Neu erfasst, letzte 30 Tage", `${stat.neu_erfasst_30_tage}`],
     ["Ø Erfassungsdauer (Ziel < 30 s)", stat.erfassung_sekunden_schnitt == null ? "noch keine Messung" : `${stat.erfassung_sekunden_schnitt} s (${stat.erfassungen_unter_30s}/${stat.erfassungen_gemessen} unter 30 s)`],
+    ["Briefings mit mind. einer hilfreichen Lesson (Ziel: jedes)", stat.briefings ? `${stat.briefings_hilfreich} von ${stat.briefings} (${stat.briefings_bewertet} bewertet)` : "noch kein Briefing"],
     ["Lessons ohne Maßnahme", `${stat.ohne_massnahme}`],
   ];
 
@@ -1019,6 +1236,8 @@ async function viewEinstellungen() {
 // ------------------------------------------------------------------- Router
 const routes = [
   [/^#\/erfassen$/, viewErfassen, "erfassen"],
+  [/^#\/briefing$/, viewBriefing, "briefing"],
+  [/^#\/briefing\/([\w-]+)$/, viewBriefing, "briefing"],
   [/^#\/pruefen$/, viewPruefen, "pruefen"],
   [/^#\/entwurf\/([\w-]+)$/, viewEntwurf, "pruefen"],
   [/^#\/suche$/, viewSuche, "suche"],

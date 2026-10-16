@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-10-16)
 
 **Core value:** Erfahrungen im richtigen Moment wiederfinden; dafür muss Erfassen schnell und Wiederfinden zuverlässig sein.
-**Current focus:** Einrichtung auf dem E5, Messung lokaler Modelle, dann Phase-1-Abnahme (Nutzung)
+**Current focus:** Einrichtung auf dem E5, Startbestand, dann Phase-1-Abnahme (Nutzung inkl. Briefings)
 
 ## Current Position
 
-Phase: 1.1 of 3 (Lokale KI, eingeschoben)
-Plan: 3 of 3 in current phase
-Status: Phase complete, Messung auf E5 und 3-Wochen-Abnahme ausstehend
-Last activity: 2026-10-16 — Phase 1.1 gebaut und automatisiert verifiziert (90 Tests)
+Phase: 1.2 of 3 (Manuelles Briefing, eingeschoben)
+Plan: 2 of 2 in current phase
+Status: Phase complete, Einrichtung und 3-Wochen-Abnahme ausstehend
+Last activity: 2026-10-16 — Phase 1.2 gebaut und automatisiert verifiziert (102 Tests)
 
 Progress: [███░░░░░░░] 33%
 
@@ -37,5 +37,5 @@ Siehe PROJECT.md Key Decisions. Wichtigste: Voyage statt nicht existierendem "Cl
 ## Session Continuity
 
 Last session: 2026-10-16
-Stopped at: Phase 1.1 complete
+Stopped at: Phase 1.2 complete
 Resume file: None
