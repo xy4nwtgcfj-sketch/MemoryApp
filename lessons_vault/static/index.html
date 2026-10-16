@@ -1,1 +1,31 @@
-<!doctype html><title>x</title>
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Lessons Vault</title>
+  <meta name="description" content="Persönliche Lessons-Learned-Datenbank">
+  <meta name="theme-color" content="#1f3a5f" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1720" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Lessons">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1 id="title">Lessons Vault</h1>
+    <span id="stats" class="stats" aria-live="polite"></span>
+  </header>
+  <main id="view" tabindex="-1"></main>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <nav class="tabbar" aria-label="Hauptnavigation">
+    <a href="#/erfassen" data-tab="erfassen"><span aria-hidden="true">＋</span>Erfassen</a>
+    <a href="#/suche" data-tab="suche"><span aria-hidden="true">⌕</span>Suchen</a>
+    <a href="#/einstellungen" data-tab="einstellungen"><span aria-hidden="true">⚙</span>Einstellungen</a>
+  </nav>
+  <script src="app.js" type="module"></script>
+</body>
+</html>

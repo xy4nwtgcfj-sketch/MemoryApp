@@ -1,0 +1,21 @@
+{
+  "name": "Lessons Vault",
+  "short_name": "Lessons",
+  "description": "Persönliche Lessons-Learned-Datenbank",
+  "lang": "de",
+  "start_url": "./#/erfassen",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f5f1",
+  "theme_color": "#1f3a5f",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Lesson erfassen", "url": "./#/erfassen" },
+    { "name": "Suchen", "url": "./#/suche" }
+  ]
+}
