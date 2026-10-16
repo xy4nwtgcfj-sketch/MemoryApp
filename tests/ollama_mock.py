@@ -17,6 +17,7 @@ class OllamaMock:
         self.chat_requests = []
         self.embed_requests = []
         self._hash = HashingProvider()
+        self.modelle = ["bge-m3:latest", "qwen2.5:7b"]
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.read() or b"{}")
@@ -34,6 +35,11 @@ class OllamaMock:
                 "prompt_eval_count": 900, "prompt_eval_duration": 30_000_000_000,
                 "eval_count": 250, "eval_duration": 10_000_000_000,
             })
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": m} for m in self.modelle]})
+        if request.url.path == "/api/pull":
+            self.modelle.append(body["model"])
+            return httpx.Response(200, json={"status": "success"})
         return httpx.Response(404)
 
     def client(self) -> httpx.Client:

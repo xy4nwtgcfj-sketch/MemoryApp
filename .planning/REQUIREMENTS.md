@@ -45,13 +45,13 @@
 
 ### Lokale KI (LOCAL), Phase 1.1
 
-- [ ] **LOCAL-01**: Embeddings über Ollama (Standard bge-m3), Anbieter wählbar; Lessons ohne passendes Embedding werden automatisch nachindexiert
-- [ ] **LOCAL-02**: Strukturierung über ein lokales Ollama-Modell mit JSON-Schema, gleicher Prompt wie Claude
-- [ ] **LOCAL-03**: Lokale Strukturierung läuft im Hintergrund; Erfassung endet mit dem Speichern des Rohtexts
-- [ ] **LOCAL-04**: Strukturierungsmodus global (automatisch, Claude, lokal, manuell) und pro Bereich überschreibbar; Bereich bei der Erfassung optional vorwählbar
-- [ ] **LOCAL-05**: Bereiche im Modus lokal werden nie an Claude gesendet, auch nicht als Dubletten-Kandidaten
-- [ ] **LOCAL-06**: Liste "Prüfen" mit Zähler; Entwürfe übernehmen, als Bestätigung zählen, Rückfrage beantworten, neu strukturieren, verwerfen; Rohtexte sind durchsuchbar
-- [ ] **LOCAL-07**: Messskript für Windows (RAM-Bestückung, Embedding-, Strukturierungszeiten, Beispielergebnisse je Modell, optional Claude-Vergleich)
+- [x] **LOCAL-01**: Embeddings über Ollama (Standard bge-m3), Anbieter wählbar; Lessons ohne passendes Embedding werden automatisch nachindexiert
+- [x] **LOCAL-02**: Strukturierung über ein lokales Ollama-Modell mit JSON-Schema, gleicher Prompt wie Claude
+- [x] **LOCAL-03**: Lokale Strukturierung läuft im Hintergrund; Erfassung endet mit dem Speichern des Rohtexts
+- [x] **LOCAL-04**: Strukturierungsmodus global (automatisch, Claude, lokal, manuell) und pro Bereich überschreibbar; Bereich bei der Erfassung optional vorwählbar
+- [x] **LOCAL-05**: Bereiche im Modus lokal werden nie an Claude gesendet, auch nicht als Dubletten-Kandidaten
+- [x] **LOCAL-06**: Liste "Prüfen" mit Zähler; Entwürfe übernehmen, als Bestätigung zählen, Rückfrage beantworten, neu strukturieren, verwerfen; Rohtexte sind durchsuchbar
+- [x] **LOCAL-07**: Messskript für Windows (RAM-Bestückung, Embedding-, Strukturierungszeiten, Beispielergebnisse je Modell, optional Claude-Vergleich)
 
 ## v2 Requirements
 
@@ -88,7 +88,7 @@
 | COMP-01..03 | Phase 1 | Built (UAT ausstehend) |
 | SRCH-01..04 | Phase 1 | Built (UAT ausstehend) |
 | OPS-01..05 | Phase 1 | Built (UAT ausstehend) |
-| LOCAL-01..07 | Phase 1.1 | Pending |
+| LOCAL-01..07 | Phase 1.1 | Built (UAT ausstehend) |
 | BRIEF-01..05 | Phase 2 | Deferred |
 | PATT-01..04 | Phase 3 | Deferred |
 

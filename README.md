@@ -1,99 +1,142 @@
 # Lessons Vault
 
 Ein zweites Gedächtnis für Erfahrungen. Lessons in unter 30 Sekunden erfassen (Text oder Sprache),
-Claude strukturiert sie, und du findest sie wieder, wenn eine ähnliche Situation bevorsteht.
+eine KI strukturiert sie, und du findest sie wieder, wenn eine ähnliche Situation bevorsteht.
 
-Stand: Phase 1 "Erfassen und Finden" (siehe `.planning/ROADMAP.md`). Briefings und Mustererkennung folgen
-erst nach der Abnahme von Phase 1 (drei Wochen echte Nutzung, mindestens 10 neue Lessons).
+Stand: Phase 1 "Erfassen und Finden" plus Phase 1.1 "Lokale KI" (siehe `.planning/ROADMAP.md`).
+Briefings und Mustererkennung folgen nach der Abnahme von Phase 1 (drei Wochen echte Nutzung,
+mindestens 10 neue Lessons).
 
 ## Funktionen
 
-- **Erfassen:** Stichworte tippen oder diktieren → Claude füllt Titel, Situation, Ereignis, Regel, Maßnahme,
-  Bereich, Tags und Schweregrad. Höchstens eine Rückfrage. Du prüfst und speicherst.
-- **Dubletten:** Ähnliche bestehende Lessons werden erkannt; "Als Bestätigung zählen" erhöht den Zähler,
-  ab 2× wird eine Lesson automatisch "bestätigt".
-- **Suche:** Volltext (findet Wortteile: "Bank" findet "Finanzierungsbankgespräch", umlauttolerant),
-  semantisch und hybrid. Filter nach Bereich, Status, Schweregrad, Zeitraum.
-- **Datenschutz-Warnung:** Firmen, Personen, "Kunde X", Kontaktdaten und in "Beruf" auch Beträge und Zahlen
-  lösen eine Warnung aus. Eigene Sperrliste (z. B. Kundennamen) unter Einstellungen.
-- **Bestand:** JSON-Import (Startbestand) und Export (Backup). Erfolgskriterien unter Einstellungen.
-- **Ohne Cloud nutzbar:** Ohne API-Keys funktioniert alles außer der KI-Strukturierung und der echten Semantik.
+- **Erfassen:** Stichworte tippen oder diktieren, optional einen Bereich antippen. Je nach Einstellung:
+  - **Claude (sofort):** Entwurf in wenigen Sekunden, höchstens eine Rückfrage.
+  - **Lokal (Hintergrund):** Der Rohtext ist sofort gespeichert. Ein lokales Modell auf dem PC strukturiert
+    ihn in 1 bis 3 Minuten, der Entwurf landet unter **Prüfen**.
+  - **Manuell:** Formular selbst ausfüllen.
+- **Prüfen:** Lokal strukturierte Entwürfe übernehmen, korrigieren, Rückfrage beantworten, neu strukturieren
+  oder verwerfen. Der Zähler in der Leiste zeigt offene Entwürfe.
+- **Dubletten:** Ähnliche Lessons werden erkannt; "Als Bestätigung zählen" erhöht den Zähler, ab 2× wird
+  eine Lesson "bestätigt".
+- **Suche:** Volltext (findet Wortteile: "Bank" findet "Finanzierungsbankgespräch"), semantisch, hybrid,
+  mit Filtern. Ungeprüfte Entwürfe werden mit durchsucht.
+- **Datenschutz-Warnung** bei Firmen, Personen, "Kunde X", Kontaktdaten, in "Beruf" auch Beträge und Zahlen.
+  Eigene Sperrliste unter Einstellungen.
 
-## Installation auf dem Home-PC
+## Einrichtung auf dem Home-PC (Windows 11)
 
-Voraussetzung: Python 3.11 oder neuer, Tailscale auf PC und Smartphone.
+### 1. Programme installieren
 
-```bash
-git clone <repo> lessons-vault && cd lessons-vault
-cp .env.example .env          # Keys eintragen (siehe unten)
-./scripts/start.sh            # Windows: powershell -File scripts\start.ps1
+- **Python 3.11 oder neuer** von python.org (Haken bei "Add python.exe to PATH" setzen)
+- **Git** (oder das Projekt als ZIP herunterladen)
+- **Ollama für Windows** von ollama.com. Startet danach automatisch mit Windows (Symbol im Infobereich).
+- **Tailscale** auf PC und Smartphone
+
+### 2. Modelle laden (PowerShell)
+
+```powershell
+ollama pull bge-m3        # Embeddings für die semantische Suche, ca. 1,2 GB
+ollama pull qwen2.5:7b    # Strukturierung im Hintergrund, ca. 4,7 GB
 ```
 
-Die App läuft dann auf `http://127.0.0.1:8765`, nur lokal erreichbar.
+### 3. App einrichten und starten
 
-### Zugriff vom Smartphone über Tailscale (HTTPS)
+```powershell
+git clone <repo> C:\LessonsVault
+cd C:\LessonsVault
+copy .env.example .env    # öffnen und ggf. ANTHROPIC_API_KEY eintragen
+powershell -ExecutionPolicy Bypass -File scripts\start.ps1
+```
 
-Mikrofon und PWA-Installation brauchen HTTPS. Tailscale liefert das ohne offenen Port:
+Beim ersten Start wird eine eigene Python-Umgebung angelegt. Danach läuft die App unter
+`http://127.0.0.1:8765`, nur am PC selbst erreichbar.
 
-```bash
+### 4. Messung auf deinem PC
+
+```powershell
+.venv\Scripts\python scripts\benchmark_lokal.py --pull
+```
+
+Lädt fehlende Testmodelle (gemma3:4b, qwen2.5:7b, gemma3:12b, zusammen ca. 16 GB), misst Zeiten und schreibt
+`benchmark-ergebnis-<datum>.md` mit den Ergebnissen jedes Modells zum Vergleichen. Prüft außerdem die
+RAM-Bestückung: Ein einzelner Riegel (Single-Channel) halbiert die Geschwindigkeit lokaler Modelle.
+Mit `--claude` wird Claude als Referenz mitgemessen. Das bessere Modell trägst du danach als
+`LV_OLLAMA_MODEL` in `.env` ein.
+
+### 5. Zugriff vom Smartphone (HTTPS über Tailscale)
+
+```powershell
 tailscale serve --bg 8765
 ```
 
-Danach ist die App unter `https://<pc-name>.<tailnet>.ts.net` erreichbar, nur für Geräte in deinem Tailnet.
-(HTTPS-Zertifikate müssen im Tailscale-Adminbereich unter "DNS" aktiviert sein.)
-Auf dem iPhone in Safari öffnen → Teilen → "Zum Home-Bildschirm". Auf Android in Chrome → "App installieren".
+Danach ist die App unter `https://<pc-name>.<tailnet>.ts.net` erreichbar, nur für deine Geräte.
+(HTTPS-Zertifikate müssen im Tailscale-Adminbereich unter "DNS" aktiviert sein.) Mikrofon und
+App-Installation brauchen dieses HTTPS. iPhone: Safari → Teilen → "Zum Home-Bildschirm".
+Android: Chrome → "App installieren".
 
-Optional zusätzlich `LV_TOKEN` in `.env` setzen und den Token in der App unter Einstellungen eintragen.
+### 6. Autostart
 
-### Autostart
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-autostart.ps1
+```
 
-- **Linux:** systemd-User-Service mit `ExecStart=/pfad/lessons-vault/scripts/start.sh`.
-- **Windows:** Aufgabenplanung → "Beim Anmelden" → `powershell -File C:\pfad\lessons-vault\scripts\start.ps1`.
+Startet die App bei der Anmeldung unsichtbar (60 Sekunden verzögert, damit Ollama schon läuft).
+Protokoll: `data\server.log`. Entfernen: `Unregister-ScheduledTask -TaskName "Lessons Vault"`.
+Damit die App auch ohne Anmeldung nach einem Neustart läuft, in Windows die automatische Anmeldung
+aktivieren oder den Rechner nicht herunterfahren.
 
 ### Backup
 
-`scripts/backup.sh` erzeugt eine konsistente Kopie unter `backups/` und behält die letzten 30.
-Zusätzlich regelmäßig "Exportieren" in der App nutzen (JSON, lesbar und versionsunabhängig).
+Regelmäßig "Exportieren" unter Einstellungen (JSON). Zusätzlich die Datei `data\lessons.db`
+in ein Cloud- oder NAS-Backup aufnehmen, am besten, während die App nicht schreibt.
+
+## KI-Einstellungen
+
+Unter Einstellungen → KI-Strukturierung:
+
+- **Standard:** Automatisch (Claude, wenn ein API-Key da ist, sonst lokal, sonst manuell), Claude, Lokal, Manuell.
+- **Pro Bereich überschreibbar**, zum Beispiel Beruf → Lokal, Immobilien → Claude.
+- Bereiche auf **Lokal** werden **nie** an Claude geschickt, auch nicht als Vergleichskandidaten für die
+  Dublettenprüfung anderer Bereiche.
+
+Wenn Ollama mal nicht läuft, geht nichts verloren: Entwürfe warten, Embeddings werden automatisch
+nachgeholt, die Suche fällt auf Volltext zurück.
 
 ## Konfiguration (`.env`)
 
 | Variable | Bedeutung | Standard |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Claude für die Strukturierung | leer = manuelle Erfassung |
-| `LV_CLAUDE_MODEL` | Claude-Modell | `claude-opus-5-5` |
-| `LV_CLAUDE_EFFORT` | Denkaufwand (`low` bis `max`) | `low` (schnell) |
-| `VOYAGE_API_KEY` | Voyage AI für semantische Suche | leer = lokaler Fallback |
-| `LV_VOYAGE_MODEL` | Voyage-Modell | `voyage-3.5` |
-| `LV_EMBEDDINGS` | `auto`, `voyage` oder `lokal` | `auto` |
+| `ANTHROPIC_API_KEY` | Claude für die sofortige Strukturierung | leer = keine Cloud-KI |
+| `LV_CLAUDE_MODEL` / `LV_CLAUDE_EFFORT` | Claude-Modell und Denkaufwand | `claude-opus-5-5` / `low` |
+| `LV_OLLAMA_URL` | Adresse von Ollama | `http://127.0.0.1:11434` |
+| `LV_OLLAMA_MODEL` | Lokales Modell für die Strukturierung, leer = aus | `qwen2.5:7b` |
+| `LV_OLLAMA_EMBED_MODEL` | Lokales Embedding-Modell | `bge-m3` |
+| `LV_EMBEDDINGS` | `ollama`, `voyage`, `lokal` oder `auto` | `auto` (Vorlage: `ollama`) |
+| `VOYAGE_API_KEY` / `LV_VOYAGE_MODEL` | Alternative: Embeddings über Voyage AI | leer / `voyage-3.5` |
 | `LV_DB_PATH` | SQLite-Datei | `data/lessons.db` |
-| `LV_TOKEN` | Optionaler Bearer-Token | leer |
+| `LV_TOKEN` | Optionaler Bearer-Token zusätzlich zu Tailscale | leer |
 
-**Zu Embeddings:** Anthropic bietet kein eigenes Embedding-Modell an und empfiehlt Voyage AI. Ohne Voyage-Key
-nutzt die App einen lokalen Zeichen-n-Gramm-Vektor. Der ist tolerant für Wortteile und Tippfehler, versteht
-aber keine Bedeutung ("Kredit" findet nicht "Darlehen"). Nach einem Wechsel des Anbieters in den
-Einstellungen "Neu indexieren" drücken.
+Nach einem Wechsel des Embedding-Modells werden alle Lessons im Hintergrund automatisch neu indexiert.
 
 ## Startbestand
 
 `startbestand/vorlage.json` enthält drei als BEISPIEL markierte Lessons, die Form und Abstraktionsgrad
-zeigen. Kopiere die Datei, ersetze die Beispiele durch deine 20 bis 30 eigenen Lessons (bisherige Wellen,
-erster Objektkauf) und importiere sie unter Einstellungen → Importieren. Die Beispiel-Lessons danach in der
-App löschen, falls du sie mitimportiert hast.
-
-Felder: `titel` (max. 80 Zeichen), `situation`, `ereignis`, `lesson` (ein Satz als Regel), `bereich`,
-`schweregrad` (1–5) sind Pflicht; `massnahme`, `tags`, `bestaetigungen` (wie oft erlebt) und `erstellt_am`
-(`YYYY-MM-DD`) optional.
+zeigen. Ersetze sie durch deine 20 bis 30 eigenen Lessons und importiere die Datei unter
+Einstellungen → Importieren. Pflicht: `titel` (max. 80 Zeichen), `situation`, `ereignis`, `lesson`
+(ein Satz als Regel), `bereich`, `schweregrad` (1–5). Optional: `massnahme`, `tags`, `bestaetigungen`,
+`erstellt_am` (`YYYY-MM-DD`).
 
 ## Datenschutz und Compliance
 
 - Daten liegen ausschließlich in der SQLite-Datei auf dem Home-PC.
-- An die **Claude API** gehen: dein Erfassungstext, die Antwort auf eine Rückfrage sowie Titel und Regel von
-  bis zu fünf ähnlichen bestehenden Lessons (für die Dublettenprüfung).
-- An **Voyage AI** (falls aktiv) gehen die Texte der Lessons und deine Suchanfragen.
+- **Lokal-Modus:** Nichts verlässt den PC (Ollama läuft lokal).
+- **Claude-Modus:** An die Claude API gehen der Erfassungstext, eine Rückfrage-Antwort sowie Titel und Regel
+  von bis zu fünf ähnlichen Lessons aus Bereichen, die nicht auf "lokal" stehen.
+- **Voyage** (nur falls statt Ollama gewählt): Lesson-Texte und Suchanfragen.
 - **Spracherkennung** läuft über den Browser: Chrome schickt Audio an Google, Safari nutzt Apple-Dienste.
-  Für berufliche Inhalte lieber tippen oder zuerst die Richtlinien prüfen.
-- **Vor der Nutzung mit beruflichen Einträgen** mit den internen Deloitte-Richtlinien zu persönlichen
-  Notizen und KI-Tools abgleichen. Die Eigennamen-Warnung ist eine Hilfe, keine Garantie.
+  Für vertrauliche Inhalte tippen. Lokales Whisper ist als nächster Schritt vorgemerkt.
+- Vor der Nutzung mit beruflichen Einträgen mit den internen Deloitte-Richtlinien abgleichen.
+  Die Eigennamen-Warnung ist eine Hilfe, keine Garantie.
 
 ## Entwicklung
 
@@ -102,6 +145,7 @@ pip install -r requirements-dev.txt
 python -m pytest            # inkl. Browser-Test, falls Playwright + Chromium vorhanden
 ```
 
-Aufbau: `lessons_vault/` (FastAPI, SQLite mit Trigram-FTS5, Claude-Strukturierung, Embeddings, Compliance),
-`lessons_vault/static/` (PWA ohne Build-Schritt), `.planning/` (GSD-Planung: Projekt, Anforderungen,
-Roadmap, Phasenpläne, Verifikation).
+Linux/macOS: `./scripts/start.sh`. Aufbau: `lessons_vault/` (FastAPI, SQLite mit Trigram-FTS5,
+Claude- und Ollama-Strukturierung, Hintergrund-Worker, Embeddings, Compliance),
+`lessons_vault/static/` (PWA ohne Build-Schritt), `scripts/` (Start, Autostart, Messung, Backup),
+`.planning/` (GSD-Planung).

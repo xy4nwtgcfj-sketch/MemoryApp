@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-10-16)
 
 **Core value:** Erfahrungen im richtigen Moment wiederfinden; dafür muss Erfassen schnell und Wiederfinden zuverlässig sein.
-**Current focus:** Phase 1 Abnahme (Nutzung)
+**Current focus:** Einrichtung auf dem E5, Messung lokaler Modelle, dann Phase-1-Abnahme (Nutzung)
 
 ## Current Position
 
-Phase: 1 of 3 (Erfassen und Finden)
-Plan: 5 of 5 in current phase
-Status: Phase complete, human verification and 3-Wochen-Abnahme ausstehend
-Last activity: 2026-10-16 — Phase 1 gebaut und automatisiert verifiziert (60 Tests)
+Phase: 1.1 of 3 (Lokale KI, eingeschoben)
+Plan: 3 of 3 in current phase
+Status: Phase complete, Messung auf E5 und 3-Wochen-Abnahme ausstehend
+Last activity: 2026-10-16 — Phase 1.1 gebaut und automatisiert verifiziert (90 Tests)
 
 Progress: [███░░░░░░░] 33%
 
@@ -25,7 +25,9 @@ Siehe PROJECT.md Key Decisions. Wichtigste: Voyage statt nicht existierendem "Cl
 ### Pending Todos
 
 - Startbestand (20 bis 30 Lessons) schreiben und importieren
-- API-Keys in .env eintragen, auf Home-PC deployen, tailscale serve einrichten
+- Auf E5 (Windows 11) einrichten: Python, Ollama, Modelle, .env, tailscale serve, Autostart
+- benchmark_lokal.py ausführen und LV_OLLAMA_MODEL festlegen
+- Später: Whisper lokal statt Browser-Spracherkennung
 
 ### Blockers/Concerns
 
@@ -35,5 +37,5 @@ Siehe PROJECT.md Key Decisions. Wichtigste: Voyage statt nicht existierendem "Cl
 ## Session Continuity
 
 Last session: 2026-10-16
-Stopped at: Phase 1 complete
+Stopped at: Phase 1.1 complete
 Resume file: None

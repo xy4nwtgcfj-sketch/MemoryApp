@@ -59,9 +59,11 @@ Erfassen und zuverlässiges Wiederfinden funktionieren.
 | Hybrid-Suche per Reciprocal Rank Fusion | Robust ohne Score-Kalibrierung zwischen BM25 und Kosinus. | — Pending |
 | Dublettenprüfung zweistufig: Embedding-Kandidaten, dann Urteil durch Claude im selben Strukturierungs-Call | Kein zusätzlicher API-Call, Erfassung bleibt schnell. | — Pending |
 | Claude-Modell `claude-opus-5-5` mit effort `low`, konfigurierbar | Strukturierung ist einfach, Latenz zählt (30-Sekunden-Ziel). Modell per Umgebungsvariable tauschbar. | — Pending |
+| Lokale KI über Ollama: Embeddings bge-m3, Strukturierung asynchron im Hintergrund | Bosgame E5 (Ryzen 5 5300U, 32 GB DDR4, keine GPU) ist für interaktive lokale Strukturierung zu langsam; im Hintergrund zählt Qualität vor Tempo. Erfassung bleibt unter 30 s. | — Pending (Messung) |
+| Strukturierungsmodus pro Bereich; lokal-Bereiche nie an Claude, auch nicht als Kandidaten | Ermöglicht z. B. Beruf lokal (Compliance) und Immobilien über Claude (Qualität, Rückfrage) | — Pending |
 | Single-User ohne Rechtemodell | Offene Frage 1 unbeantwortet; Teilen später ist ein eigener Meilenstein. Datenmodell enthält keine Owner-Spalte. | ⚠️ Revisit |
 | Sprache über Browser-Spracherkennung (Web Speech API), Whisper später | Kein zusätzlicher Dienst. Einschränkung: Chrome schickt Audio an Google, Safari/iOS nutzt Apple-Dienste. Für berufliche Inhalte kritisch, siehe Compliance. | ⚠️ Revisit |
 | Alle fünf Bereiche angelegt, nur Beruf und Immobilien aktiv | Konzept fordert Fokus in Phase 1, Bereiche bleiben konfigurierbar. | — Pending |
 
 ---
-*Last updated: 2026-10-16 after project initialization (gsd new-project --auto aus Konzept v0.1)*
+*Last updated: 2026-10-16 after Phase 1.1 (Lokale KI)*

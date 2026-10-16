@@ -9,7 +9,7 @@ Projekt) vor weiterer Investition geprüft.
 ## Phases
 
 - [x] **Phase 1: Erfassen und Finden** - Datenmodell, KI-Erfassung per Text/Sprache, Volltext- und semantische Suche, Startbestand
-- [ ] **Phase 1.1: Lokale KI (INSERTED)** - Ollama für Embeddings und Hintergrund-Strukturierung, Routing pro Bereich, Messskript für Windows
+- [x] **Phase 1.1: Lokale KI (INSERTED)** - Ollama für Embeddings und Hintergrund-Strukturierung, Routing pro Bereich, Messskript für Windows
 - [ ] **Phase 2: Briefings** - Manuelles und kalenderbasiertes Briefing, Erinnerungen, alle Bereiche
 - [ ] **Phase 3: Muster** - Monatliche Auswertung und Dashboard
 
@@ -50,9 +50,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01.1-01: Ollama-Anbindung (Embeddings, Strukturierung), thread-sichere DB, Entwurfs-Warteschlange mit Hintergrund-Worker
-- [ ] 01.1-02: API und UI für Routing (Standard und pro Bereich), Prüfen-Liste, Entwürfe in der Suche
-- [ ] 01.1-03: Messskript, Windows-Einrichtung (Ollama, Autostart), Doku
+- [x] 01.1-01: Ollama-Anbindung (Embeddings, Strukturierung), thread-sichere DB, Entwurfs-Warteschlange mit Hintergrund-Worker
+- [x] 01.1-02: API und UI für Routing (Standard und pro Bereich), Prüfen-Liste, Entwürfe in der Suche
+- [x] 01.1-03: Messskript, Windows-Einrichtung (Ollama, Autostart), Doku
 
 ### Phase 2: Briefings
 **Goal**: Vor einem relevanten Termin bekommt Stefan die 5 wichtigsten Lessons, ohne danach zu suchen.
@@ -81,6 +81,6 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Erfassen und Finden | 5/5 | Built, Abnahme ausstehend | 2026-10-16 |
-| 1.1 Lokale KI | 0/3 | In progress | - |
+| 1.1 Lokale KI | 3/3 | Built, Messung auf E5 ausstehend | 2026-10-16 |
 | 2. Briefings | 0/TBD | Not started | - |
 | 3. Muster | 0/TBD | Not started | - |
