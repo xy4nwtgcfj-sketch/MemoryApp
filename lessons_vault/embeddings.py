@@ -96,11 +96,75 @@ class VoyageProvider:
         return [v / (np.linalg.norm(v) or 1.0) for v in vectors]
 
 
-def create_provider(kind: str, voyage_api_key: str, voyage_model: str) -> EmbeddingProvider:
+class OllamaEmbeddings:
+    """Lokale Embeddings über Ollama (Standard: bge-m3, mehrsprachig)."""
+
+    semantisch = True
+    # Erfahrungswerte für bge-m3; mit scripts/benchmark_lokal.py am eigenen Bestand prüfen.
+    dublettenschwelle = 0.85
+    kandidatenschwelle = 0.5
+
+    def __init__(self, url: str, model: str, client: httpx.Client | None = None, query_timeout: float = 8.0):
+        self.url = url.rstrip("/")
+        self.model = model
+        self.name = f"ollama:{model}"
+        self.query_timeout = query_timeout
+        self._client = client or httpx.Client(timeout=120.0)
+
+    def embed(self, texts: list[str], input_type: InputType = "document") -> list[np.ndarray]:
+        if not texts:
+            return []
+        # Suchanfragen mit kurzem Timeout: Läuft gerade eine lokale Strukturierung, wartet Ollama
+        # sonst womöglich minutenlang. Die Suche fällt dann auf Volltext zurück.
+        timeout = self.query_timeout if input_type == "query" else 120.0
+        try:
+            response = self._client.post(
+                f"{self.url}/api/embed",
+                json={"model": self.model, "input": texts, "keep_alive": "30m"},
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            vectors = [np.asarray(v, dtype=np.float32) for v in response.json()["embeddings"]]
+        except (httpx.HTTPError, KeyError, ValueError) as exc:
+            raise EmbeddingFehler(f"Ollama-Embedding fehlgeschlagen: {exc}") from exc
+        if len(vectors) != len(texts):
+            raise EmbeddingFehler("Ollama lieferte eine unerwartete Anzahl Embeddings")
+        return [v / (np.linalg.norm(v) or 1.0) for v in vectors]
+
+
+def ollama_status(url: str, timeout: float = 2.0) -> dict[str, object]:
+    """Ist Ollama erreichbar, welche Modelle sind installiert?"""
+    try:
+        response = httpx.get(f"{url.rstrip('/')}/api/tags", timeout=timeout)
+        response.raise_for_status()
+        modelle = [m["name"] for m in response.json().get("models", [])]
+        return {"erreichbar": True, "modelle": modelle}
+    except (httpx.HTTPError, KeyError, ValueError):
+        return {"erreichbar": False, "modelle": []}
+
+
+def modell_installiert(name: str, modelle: list[str]) -> bool:
+    """Ollama meldet 'bge-m3:latest', konfiguriert ist oft nur 'bge-m3'."""
+    return any(m == name or m == f"{name}:latest" for m in modelle)
+
+
+def create_provider(
+    kind: str,
+    voyage_api_key: str,
+    voyage_model: str,
+    ollama_url: str = "",
+    ollama_embed_model: str = "",
+) -> EmbeddingProvider:
     if kind == "voyage" or (kind == "auto" and voyage_api_key):
         if not voyage_api_key:
             raise ValueError("LV_EMBEDDINGS=voyage erfordert VOYAGE_API_KEY")
         return VoyageProvider(voyage_api_key, voyage_model)
+    if kind == "ollama":
+        return OllamaEmbeddings(ollama_url, ollama_embed_model)
+    if kind == "auto" and ollama_url and ollama_embed_model:
+        status = ollama_status(ollama_url)
+        if status["erreichbar"] and modell_installiert(ollama_embed_model, status["modelle"]):  # type: ignore[arg-type]
+            return OllamaEmbeddings(ollama_url, ollama_embed_model)
     return HashingProvider()
 
 

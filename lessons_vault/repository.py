@@ -10,7 +10,7 @@ from typing import Any, Iterable
 
 import numpy as np
 
-from .models import Bereich, Einstellungen, Lesson, LessonImport, LessonIn, LessonUpdate
+from .models import Bereich, Einstellungen, Entwurf, EntwurfEintrag, Lesson, LessonImport, LessonIn, LessonUpdate
 
 LESSON_COLUMNS = (
     "id, titel, situation, ereignis, lesson, massnahme, bereich, tags, schweregrad, status, "
@@ -46,7 +46,7 @@ def blob_to_vector(blob: bytes | None) -> np.ndarray | None:
 
 
 class Repository:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Any):
         self.conn = conn
 
     # Bereiche -----------------------------------------------------------
@@ -226,6 +226,99 @@ class Repository:
         sql = f"SELECT id, embedding_modell, embedding FROM lessons WHERE embedding IS NOT NULL {where}"
         return [(r["id"], r["embedding_modell"], blob_to_vector(r["embedding"])) for r in self.conn.execute(sql, tuple(params))]
 
+    def lessons_ohne_embedding(self, modell: str, limit: int = 16) -> list[Lesson]:
+        rows = self.conn.execute(
+            f"SELECT {LESSON_COLUMNS} FROM lessons WHERE embedding IS NULL OR embedding_modell != ? "
+            "ORDER BY erstellt_am LIMIT ?",
+            (modell, limit),
+        )
+        return [row_to_lesson(r) for r in rows]
+
+    # Entwürfe (Hintergrund-Warteschlange) ---------------------------------
+    @staticmethod
+    def _row_to_entwurf(row: Any) -> EntwurfEintrag:
+        data = dict(row)
+        raw = data.pop("entwurf_json")
+        data["entwurf"] = Entwurf.model_validate_json(raw) if raw else None
+        return EntwurfEintrag(**data)
+
+    def entwurf_anlegen(self, rohtext: str, quelle: str, bereich_vorgabe: str = "", erfassung_sekunden: float | None = None) -> EntwurfEintrag:
+        entwurf_id, now = str(uuid.uuid4()), jetzt()
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO entwuerfe(id, rohtext, quelle, bereich_vorgabe, erfassung_sekunden, erstellt_am, geaendert_am) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (entwurf_id, rohtext.strip(), quelle, bereich_vorgabe, erfassung_sekunden, now, now),
+            )
+        return self.entwurf_holen(entwurf_id)
+
+    def entwurf_holen(self, entwurf_id: str) -> EntwurfEintrag:
+        row = self.conn.execute("SELECT * FROM entwuerfe WHERE id = ?", (entwurf_id,)).fetchone()
+        if row is None:
+            raise NotFound(entwurf_id)
+        return self._row_to_entwurf(row)
+
+    def entwuerfe(self) -> list[EntwurfEintrag]:
+        rows = self.conn.execute("SELECT * FROM entwuerfe ORDER BY erstellt_am DESC")
+        return [self._row_to_entwurf(r) for r in rows]
+
+    def entwuerfe_zaehlen(self) -> dict[str, int]:
+        counts = {"wartet": 0, "in_arbeit": 0, "fertig": 0, "fehler": 0}
+        for row in self.conn.execute("SELECT status, COUNT(*) AS n FROM entwuerfe GROUP BY status"):
+            counts[row["status"]] = row["n"]
+        return counts
+
+    def entwuerfe_suchen(self, begriffe: list[str], limit: int = 10) -> list[EntwurfEintrag]:
+        if not begriffe:
+            return []
+        clauses = " OR ".join("lower(rohtext) LIKE ?" for _ in begriffe)
+        rows = self.conn.execute(
+            f"SELECT * FROM entwuerfe WHERE {clauses} ORDER BY erstellt_am DESC LIMIT ?",
+            (*[f"%{b.lower()}%" for b in begriffe], limit),
+        )
+        return [self._row_to_entwurf(r) for r in rows]
+
+    def naechsten_entwurf_reservieren(self) -> EntwurfEintrag | None:
+        with self.conn:
+            row = self.conn.execute(
+                "SELECT id FROM entwuerfe WHERE status = 'wartet' ORDER BY erstellt_am LIMIT 1"
+            ).fetchone()
+            if row is None:
+                return None
+            self.conn.execute(
+                "UPDATE entwuerfe SET status = 'in_arbeit', geaendert_am = ? WHERE id = ?", (jetzt(), row["id"])
+            )
+        return self.entwurf_holen(row["id"])
+
+    def entwurf_ergebnis(self, entwurf_id: str, entwurf: Entwurf | None, status: str, fehler: str, modell: str, dauer: float) -> None:
+        with self.conn:
+            self.conn.execute(
+                "UPDATE entwuerfe SET entwurf_json = ?, status = ?, fehler = ?, modell = ?, dauer_sekunden = ?, "
+                "geaendert_am = ? WHERE id = ?",
+                (entwurf.model_dump_json() if entwurf else "", status, fehler, modell, round(dauer, 1), jetzt(), entwurf_id),
+            )
+
+    def entwurf_neu_einreihen(self, entwurf_id: str, rueckfrage: str | None = None, antwort: str | None = None) -> EntwurfEintrag:
+        eintrag = self.entwurf_holen(entwurf_id)
+        if eintrag.status == "in_arbeit":
+            raise Invalid("Entwurf wird gerade verarbeitet")
+        with self.conn:
+            self.conn.execute(
+                "UPDATE entwuerfe SET status = 'wartet', fehler = '', rueckfrage = ?, antwort = ?, geaendert_am = ? WHERE id = ?",
+                (eintrag.rueckfrage if rueckfrage is None else rueckfrage, eintrag.antwort if antwort is None else antwort, jetzt(), entwurf_id),
+            )
+        return self.entwurf_holen(entwurf_id)
+
+    def entwurf_loeschen(self, entwurf_id: str) -> None:
+        with self.conn:
+            if self.conn.execute("DELETE FROM entwuerfe WHERE id = ?", (entwurf_id,)).rowcount == 0:
+                raise NotFound(entwurf_id)
+
+    def entwuerfe_zuruecksetzen(self) -> int:
+        """Nach einem Neustart: abgebrochene Verarbeitungen wieder einreihen."""
+        with self.conn:
+            return self.conn.execute("UPDATE entwuerfe SET status = 'wartet' WHERE status = 'in_arbeit'").rowcount
+
     def statistik(self) -> dict[str, Any]:
         q = self.conn.execute
         gesamt = q("SELECT COUNT(*) FROM lessons").fetchone()[0]
@@ -238,6 +331,7 @@ class Repository:
             "SELECT AVG(erfassung_sekunden), COUNT(erfassung_sekunden), "
             "SUM(CASE WHEN erfassung_sekunden <= 30 THEN 1 ELSE 0 END) FROM lessons WHERE erfassung_sekunden IS NOT NULL"
         ).fetchone()
+        offene_entwuerfe = q("SELECT COUNT(*) FROM entwuerfe").fetchone()[0]
         ohne_massnahme = q("SELECT COUNT(*) FROM lessons WHERE massnahme = '' AND status != 'überholt'").fetchone()[0]
         return {
             "gesamt": gesamt,
@@ -250,4 +344,5 @@ class Repository:
             "erfassungen_gemessen": dauer[1],
             "erfassungen_unter_30s": dauer[2] or 0,
             "ohne_massnahme": ohne_massnahme,
+            "offene_entwuerfe": offene_entwuerfe,
         }

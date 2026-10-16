@@ -25,7 +25,7 @@ def lesson_json(**kw):
 
 
 def make_client(tmp_path, token="", fake=None):
-    settings = Settings(db_path=tmp_path / "t.db", token=token, anthropic_api_key="", voyage_api_key="")
+    settings = Settings(db_path=tmp_path / "t.db", token=token, anthropic_api_key="", voyage_api_key="", ollama_model="")
     app = create_app(settings, Strukturierer(fake, "claude-opus-5-5"), HashingProvider())
     return TestClient(app)
 

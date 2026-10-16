@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from pathlib import Path
+from typing import Any, Iterator
 
 STANDARD_BEREICHE = [
     # name, aktiv, beispiele
@@ -82,21 +84,99 @@ MIGRATIONS: list[str] = [
         VALUES (new.rowid, new.titel, new.situation, new.ereignis, new.lesson, new.massnahme, new.tags, new.bereich);
     END;
     """,
+    # Version 2: Warteschlange für Hintergrund-Strukturierung
+    """
+    CREATE TABLE entwuerfe (
+        id                 TEXT PRIMARY KEY,
+        rohtext            TEXT NOT NULL,
+        quelle             TEXT NOT NULL CHECK (quelle IN ('text', 'sprache', 'import')),
+        bereich_vorgabe    TEXT NOT NULL DEFAULT '',
+        status             TEXT NOT NULL DEFAULT 'wartet' CHECK (status IN ('wartet', 'in_arbeit', 'fertig', 'fehler')),
+        rueckfrage         TEXT NOT NULL DEFAULT '',
+        antwort            TEXT NOT NULL DEFAULT '',
+        entwurf_json       TEXT NOT NULL DEFAULT '',
+        fehler             TEXT NOT NULL DEFAULT '',
+        modell             TEXT NOT NULL DEFAULT '',
+        dauer_sekunden     REAL,
+        erfassung_sekunden REAL,
+        erstellt_am        TEXT NOT NULL,
+        geaendert_am       TEXT NOT NULL
+    );
+    CREATE INDEX idx_entwuerfe_status ON entwuerfe(status, erstellt_am);
+    """,
 ]
 
 
-def connect(path: Path | str) -> sqlite3.Connection:
+class Result:
+    """Vollständig gelesenes Abfrageergebnis, damit kein Cursor die Sperre überlebt."""
+
+    def __init__(self, rows: list[Any], rowcount: int):
+        self._rows = rows
+        self.rowcount = rowcount
+
+    def fetchone(self) -> Any:
+        return self._rows[0] if self._rows else None
+
+    def fetchall(self) -> list[Any]:
+        return list(self._rows)
+
+    def __iter__(self) -> Iterator[Any]:
+        return iter(self._rows)
+
+
+class LockedConnection:
+    """Serialisiert den Zugriff auf eine SQLite-Verbindung (API-Threads und Hintergrund-Worker).
+
+    `with conn:` hält die Sperre für die ganze Transaktion.
+    """
+
+    def __init__(self, conn: sqlite3.Connection):
+        self._conn = conn
+        self._lock = threading.RLock()
+
+    def execute(self, sql: str, params: Any = ()) -> Result:
+        with self._lock:
+            cursor = self._conn.execute(sql, params)
+            return Result(cursor.fetchall(), cursor.rowcount)
+
+    def executemany(self, sql: str, seq: Any) -> Result:
+        with self._lock:
+            cursor = self._conn.executemany(sql, seq)
+            return Result([], cursor.rowcount)
+
+    def executescript(self, script: str) -> None:
+        with self._lock:
+            self._conn.executescript(script)
+
+    def __enter__(self) -> "LockedConnection":
+        self._lock.acquire()
+        self._conn.__enter__()
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        try:
+            self._conn.__exit__(*exc)
+        finally:
+            self._lock.release()
+
+    def close(self) -> None:
+        with self._lock:
+            self._conn.close()
+
+
+def connect(path: Path | str) -> LockedConnection:
     if str(path) != ":memory:":
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
+    raw = sqlite3.connect(str(path), check_same_thread=False)
+    raw.row_factory = sqlite3.Row
+    raw.execute("PRAGMA foreign_keys = ON")
+    raw.execute("PRAGMA journal_mode = WAL")
+    conn = LockedConnection(raw)
     migrate(conn)
     return conn
 
 
-def migrate(conn: sqlite3.Connection) -> None:
+def migrate(conn: LockedConnection) -> None:
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     for index, script in enumerate(MIGRATIONS[version:], start=version + 1):
         with conn:

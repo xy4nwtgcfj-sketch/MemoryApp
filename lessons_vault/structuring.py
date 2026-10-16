@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 import anthropic
+import httpx
 
 from .models import Bereich, DublettenKandidat, Entwurf, Quelle
 
@@ -105,41 +106,18 @@ def manueller_entwurf(text: str, quelle: Quelle, bereiche: list[Bereich], fehler
     return entwurf
 
 
-class Strukturierer:
-    def __init__(
-        self,
-        client: Any | None,
-        model: str,
-        effort: str = "low",
-        use_fallbacks: bool = True,
-    ):
-        self.client = client
-        self.model = model
-        self.effort = effort
-        self.use_fallbacks = use_fallbacks
+class BasisStrukturierer:
+    """Gemeinsamer Ablauf für Claude und lokale Modelle; Unterklassen liefern nur den Modellaufruf."""
+
+    name = ""
+    max_kandidaten = 5
 
     @property
     def verfuegbar(self) -> bool:
-        return self.client is not None
+        raise NotImplementedError
 
     def _call(self, schema: dict[str, Any], user_message: str) -> dict[str, Any]:
-        kwargs: dict[str, Any] = dict(
-            model=self.model,
-            max_tokens=8000,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
-            output_config={"effort": self.effort, "format": {"type": "json_schema", "schema": schema}},
-        )
-        if self.use_fallbacks:
-            # Server-seitiger Fallback, falls ein Sicherheitsklassifikator ablehnt.
-            kwargs.update(betas=["server-side-fallback-2026-07-01"], fallbacks="default")
-        response = self.client.beta.messages.create(**kwargs)
-        if response.stop_reason == "refusal":
-            raise RuntimeError("Claude hat die Strukturierung abgelehnt.")
-        if response.stop_reason == "max_tokens":
-            raise RuntimeError("Antwort von Claude wurde abgeschnitten.")
-        text = next((b.text for b in response.content if getattr(b, "type", "") == "text"), "")
-        return json.loads(text)
+        raise NotImplementedError
 
     def strukturieren(
         self,
@@ -154,12 +132,15 @@ class Strukturierer:
             return manueller_entwurf(text, quelle, bereiche)
         if not bereiche:
             return manueller_entwurf(text, quelle, bereiche, "Kein aktiver Bereich konfiguriert.")
+        kandidaten = kandidaten[: self.max_kandidaten]
         voller_text = text if not antwort else f"{text}\n\nErgänzung: {antwort}"
         try:
             data = self._call(
                 build_schema([b.name for b in bereiche]),
                 build_user_message(text, bereiche, kandidaten, rueckfrage, antwort),
             )
+            if not isinstance(data, dict):
+                raise RuntimeError("Antwort des Modells hatte kein gültiges Format.")
         except anthropic.APIConnectionError as exc:
             log.warning("Claude nicht erreichbar: %s", exc)
             return manueller_entwurf(voller_text, quelle, bereiche, "Claude nicht erreichbar, bitte manuell ausfüllen.")
@@ -169,10 +150,12 @@ class Strukturierer:
         except anthropic.APIStatusError as exc:
             log.warning("Claude-Fehler %s: %s", exc.status_code, exc)
             return manueller_entwurf(voller_text, quelle, bereiche, f"Claude-Fehler {exc.status_code}, bitte manuell ausfüllen.")
-        except (RuntimeError, json.JSONDecodeError, StopIteration) as exc:
+        except (RuntimeError, json.JSONDecodeError, StopIteration, KeyError, TypeError) as exc:
             log.warning("Strukturierung fehlgeschlagen: %s", exc)
             return manueller_entwurf(voller_text, quelle, bereiche, f"{exc} Bitte manuell ausfüllen.")
-        return self._nachbearbeiten(data, quelle, bereiche, kandidaten, zweite_runde=bool(antwort))
+        entwurf = self._nachbearbeiten(data, quelle, bereiche, kandidaten, zweite_runde=bool(antwort))
+        entwurf.ki_modell = self.name
+        return entwurf
 
     @staticmethod
     def _nachbearbeiten(
@@ -210,6 +193,100 @@ class Strukturierer:
         )
         entwurf.fehlende_felder = fehlende_felder(entwurf)
         return entwurf
+
+
+class Strukturierer(BasisStrukturierer):
+    """Strukturierung über die Claude API (sofort, mit Rückfrage im Dialog)."""
+
+    def __init__(
+        self,
+        client: Any | None,
+        model: str,
+        effort: str = "low",
+        use_fallbacks: bool = True,
+    ):
+        self.client = client
+        self.model = model
+        self.effort = effort
+        self.use_fallbacks = use_fallbacks
+        self.name = f"claude:{model}"
+
+    @property
+    def verfuegbar(self) -> bool:
+        return self.client is not None
+
+    def _call(self, schema: dict[str, Any], user_message: str) -> dict[str, Any]:
+        kwargs: dict[str, Any] = dict(
+            model=self.model,
+            max_tokens=8000,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_message}],
+            output_config={"effort": self.effort, "format": {"type": "json_schema", "schema": schema}},
+        )
+        if self.use_fallbacks:
+            # Server-seitiger Fallback, falls ein Sicherheitsklassifikator ablehnt.
+            kwargs.update(betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+        response = self.client.beta.messages.create(**kwargs)
+        if response.stop_reason == "refusal":
+            raise RuntimeError("Claude hat die Strukturierung abgelehnt.")
+        if response.stop_reason == "max_tokens":
+            raise RuntimeError("Antwort von Claude wurde abgeschnitten.")
+        text = next((b.text for b in response.content if getattr(b, "type", "") == "text"), "")
+        return json.loads(text)
+
+
+class OllamaStrukturierer(BasisStrukturierer):
+    """Strukturierung mit einem lokalen Modell über Ollama. Langsam auf CPU, daher im Hintergrund genutzt."""
+
+    # Weniger Kandidaten = kürzerer Prompt = deutlich schnellere Verarbeitung auf CPU.
+    max_kandidaten = 3
+
+    def __init__(self, url: str, model: str, client: httpx.Client | None = None, timeout: float = 900.0):
+        self.url = url.rstrip("/")
+        self.model = model
+        self.name = f"ollama:{model}"
+        self._client = client or httpx.Client(timeout=timeout)
+        self.letzte_metriken: dict[str, float] = {}
+
+    @property
+    def verfuegbar(self) -> bool:
+        return bool(self.url and self.model)
+
+    def _call(self, schema: dict[str, Any], user_message: str) -> dict[str, Any]:
+        try:
+            response = self._client.post(
+                f"{self.url}/api/chat",
+                json={
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_message},
+                    ],
+                    "format": schema,
+                    "stream": False,
+                    "keep_alive": "15m",
+                    "options": {"temperature": 0.2, "num_ctx": 4096, "num_predict": 1024},
+                },
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            detail = exc.response.text[:200]
+            raise RuntimeError(f"Ollama-Fehler {exc.response.status_code}: {detail}") from exc
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"Ollama nicht erreichbar ({exc.__class__.__name__}).") from exc
+        data = response.json()
+        ns = 1e9
+        self.letzte_metriken = {
+            "gesamt_s": data.get("total_duration", 0) / ns,
+            "laden_s": data.get("load_duration", 0) / ns,
+            "prompt_tokens": data.get("prompt_eval_count", 0),
+            "prompt_s": data.get("prompt_eval_duration", 0) / ns,
+            "antwort_tokens": data.get("eval_count", 0),
+            "antwort_s": data.get("eval_duration", 0) / ns,
+        }
+        if data.get("done_reason") == "length":
+            raise RuntimeError("Antwort des lokalen Modells wurde abgeschnitten.")
+        return json.loads(data["message"]["content"])
 
 
 def create_strukturierer(api_key: str, model: str, effort: str) -> Strukturierer:

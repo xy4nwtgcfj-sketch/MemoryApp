@@ -43,6 +43,7 @@ class LessonBase(BaseModel):
 class LessonIn(LessonBase):
     quelle: Quelle = "text"
     erfassung_sekunden: float | None = Field(default=None, ge=0)
+    entwurf_id: str | None = None
 
 
 class LessonImport(LessonBase):
@@ -97,15 +98,21 @@ class BereichUpdate(BaseModel):
 
 class Einstellungen(BaseModel):
     sperrliste: list[str] = Field(default_factory=list)
+    # auto: Claude, wenn ein Key da ist, sonst lokal, wenn Ollama läuft, sonst manuell
+    strukturierung_standard: Literal["auto", "claude", "lokal", "manuell"] = "auto"
+    # Überschreibung pro Bereich, z. B. {"Beruf": "lokal"}
+    strukturierung_bereiche: dict[str, Literal["claude", "lokal", "manuell"]] = Field(default_factory=dict)
 
 
 class BestaetigungIn(BaseModel):
     notiz: str = ""
+    entwurf_id: str | None = None
 
 
 class EntwurfAnfrage(BaseModel):
     text: str = Field(min_length=1, max_length=8000)
     quelle: Quelle = "text"
+    bereich: str = ""
     rueckfrage: str = ""
     antwort: str = ""
 
@@ -137,4 +144,39 @@ class Entwurf(BaseModel):
     dublette_begruendung: str = ""
     aehnliche: list[DublettenKandidat] = Field(default_factory=list)
     ki_verwendet: bool = False
+    ki_modell: str = ""
     ki_fehler: str = ""
+
+
+EntwurfStatus = Literal["wartet", "in_arbeit", "fertig", "fehler"]
+Modus = Literal["auto", "claude", "lokal", "manuell"]
+
+
+class EntwurfEintrag(BaseModel):
+    """Eintrag der Warteschlange für die Hintergrund-Strukturierung."""
+
+    id: str
+    rohtext: str
+    quelle: Quelle
+    bereich_vorgabe: str = ""
+    status: EntwurfStatus
+    rueckfrage: str = ""
+    antwort: str = ""
+    entwurf: Entwurf | None = None
+    fehler: str = ""
+    modell: str = ""
+    dauer_sekunden: float | None = None
+    erfassung_sekunden: float | None = None
+    erstellt_am: str
+    geaendert_am: str
+
+
+class ErfassenAnfrage(BaseModel):
+    text: str = Field(min_length=1, max_length=8000)
+    quelle: Quelle = "text"
+    bereich: str = ""
+    erfassung_sekunden: float | None = Field(default=None, ge=0)
+
+
+class AntwortIn(BaseModel):
+    antwort: str = Field(min_length=1, max_length=4000)

@@ -29,6 +29,10 @@ class Settings:
     voyage_api_key: str = field(default_factory=lambda: os.environ.get("VOYAGE_API_KEY", ""))
     voyage_model: str = field(default_factory=lambda: os.environ.get("LV_VOYAGE_MODEL", "voyage-3.5"))
     embedding_provider: str = field(default_factory=lambda: os.environ.get("LV_EMBEDDINGS", "auto"))
+    ollama_url: str = field(default_factory=lambda: os.environ.get("LV_OLLAMA_URL", "http://127.0.0.1:11434"))
+    ollama_model: str = field(default_factory=lambda: os.environ.get("LV_OLLAMA_MODEL", "qwen2.5:7b"))
+    ollama_embed_model: str = field(default_factory=lambda: os.environ.get("LV_OLLAMA_EMBED_MODEL", "bge-m3"))
+    worker_aktiv: bool = field(default_factory=lambda: os.environ.get("LV_WORKER", "1") != "0")
 
     @property
     def ki_aktiv(self) -> bool:

@@ -43,6 +43,16 @@
 - [x] **OPS-04**: Statistik für die Erfolgskriterien (Anzahl gesamt, pro Woche, Ø Erfassungsdauer)
 - [x] **OPS-05**: Embeddings können nach Anbieterwechsel neu berechnet werden
 
+### Lokale KI (LOCAL), Phase 1.1
+
+- [ ] **LOCAL-01**: Embeddings über Ollama (Standard bge-m3), Anbieter wählbar; Lessons ohne passendes Embedding werden automatisch nachindexiert
+- [ ] **LOCAL-02**: Strukturierung über ein lokales Ollama-Modell mit JSON-Schema, gleicher Prompt wie Claude
+- [ ] **LOCAL-03**: Lokale Strukturierung läuft im Hintergrund; Erfassung endet mit dem Speichern des Rohtexts
+- [ ] **LOCAL-04**: Strukturierungsmodus global (automatisch, Claude, lokal, manuell) und pro Bereich überschreibbar; Bereich bei der Erfassung optional vorwählbar
+- [ ] **LOCAL-05**: Bereiche im Modus lokal werden nie an Claude gesendet, auch nicht als Dubletten-Kandidaten
+- [ ] **LOCAL-06**: Liste "Prüfen" mit Zähler; Entwürfe übernehmen, als Bestätigung zählen, Rückfrage beantworten, neu strukturieren, verwerfen; Rohtexte sind durchsuchbar
+- [ ] **LOCAL-07**: Messskript für Windows (RAM-Bestückung, Embedding-, Strukturierungszeiten, Beispielergebnisse je Modell, optional Claude-Vergleich)
+
 ## v2 Requirements
 
 ### Briefing (BRIEF), Phase 2
@@ -78,12 +88,13 @@
 | COMP-01..03 | Phase 1 | Built (UAT ausstehend) |
 | SRCH-01..04 | Phase 1 | Built (UAT ausstehend) |
 | OPS-01..05 | Phase 1 | Built (UAT ausstehend) |
+| LOCAL-01..07 | Phase 1.1 | Pending |
 | BRIEF-01..05 | Phase 2 | Deferred |
 | PATT-01..04 | Phase 3 | Deferred |
 
 **Coverage:**
-- v1 requirements: 23 total
-- Mapped to phases: 23
+- v1 requirements: 30 total
+- Mapped to phases: 30
 - Unmapped: 0
 
 ---

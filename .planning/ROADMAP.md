@@ -9,6 +9,7 @@ Projekt) vor weiterer Investition geprüft.
 ## Phases
 
 - [x] **Phase 1: Erfassen und Finden** - Datenmodell, KI-Erfassung per Text/Sprache, Volltext- und semantische Suche, Startbestand
+- [ ] **Phase 1.1: Lokale KI (INSERTED)** - Ollama für Embeddings und Hintergrund-Strukturierung, Routing pro Bereich, Messskript für Windows
 - [ ] **Phase 2: Briefings** - Manuelles und kalenderbasiertes Briefing, Erinnerungen, alle Bereiche
 - [ ] **Phase 3: Muster** - Monatliche Auswertung und Dashboard
 
@@ -36,6 +37,23 @@ Plans:
 
 **Abnahme (manuell, nach Deployment):** Drei Wochen tatsächliche Nutzung, mindestens 10 neue Lessons zusätzlich zum Startbestand.
 
+### Phase 1.1: Lokale KI (INSERTED)
+**Goal**: Lessons lassen sich vollständig auf dem Home-PC (Bosgame E5, Ryzen 5 5300U, 32 GB, Windows 11) verarbeiten, ohne dass das 30-Sekunden-Ziel leidet.
+**Depends on**: Phase 1
+**Requirements**: LOCAL-01, LOCAL-02, LOCAL-03, LOCAL-04, LOCAL-05, LOCAL-06, LOCAL-07
+**Success Criteria** (what must be TRUE):
+  1. Mit Ollama und bge-m3 ist die semantische Suche echt semantisch, ohne Cloud-Dienst
+  2. Im Modus "lokal" ist die Erfassung nach dem Absenden fertig; der Entwurf erscheint später unter "Prüfen"
+  3. Für einen Bereich auf "lokal" geht kein Text dieses Bereichs an Claude, auch nicht als Dubletten-Kandidat
+  4. Fällt Ollama aus, geht nichts verloren: Rohtext bleibt gespeichert, Embeddings werden nachgeholt
+  5. Das Messskript liefert auf dem E5 Zeiten und Beispielergebnisse pro Modell und zeigt die RAM-Bestückung
+**Plans**: 3 plans
+
+Plans:
+- [ ] 01.1-01: Ollama-Anbindung (Embeddings, Strukturierung), thread-sichere DB, Entwurfs-Warteschlange mit Hintergrund-Worker
+- [ ] 01.1-02: API und UI für Routing (Standard und pro Bereich), Prüfen-Liste, Entwürfe in der Suche
+- [ ] 01.1-03: Messskript, Windows-Einrichtung (Ollama, Autostart), Doku
+
 ### Phase 2: Briefings
 **Goal**: Vor einem relevanten Termin bekommt Stefan die 5 wichtigsten Lessons, ohne danach zu suchen.
 **Depends on**: Phase 1 (inkl. Abnahme)
@@ -58,10 +76,11 @@ Plans:
 
 ## Progress
 
-**Execution Order:** 1 → 2 → 3
+**Execution Order:** 1 → 1.1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Erfassen und Finden | 5/5 | Built, Abnahme ausstehend | 2026-10-16 |
+| 1.1 Lokale KI | 0/3 | In progress | - |
 | 2. Briefings | 0/TBD | Not started | - |
 | 3. Muster | 0/TBD | Not started | - |
