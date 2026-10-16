@@ -1,0 +1,140 @@
+"""Pydantic-Modelle für API und Repository."""
+
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel, Field, field_validator
+
+Status = Literal["neu", "bestätigt", "überholt"]
+Quelle = Literal["text", "sprache", "import"]
+
+
+def _clean_tags(tags: list[str]) -> list[str]:
+    seen: list[str] = []
+    for tag in tags:
+        t = tag.strip().lstrip("#").strip()
+        if t and t.lower() not in (s.lower() for s in seen):
+            seen.append(t)
+    return seen
+
+
+class LessonBase(BaseModel):
+    titel: str = Field(min_length=1, max_length=80)
+    situation: str = Field(min_length=1)
+    ereignis: str = Field(min_length=1)
+    lesson: str = Field(min_length=1)
+    massnahme: str = ""
+    bereich: str = Field(min_length=1)
+    tags: list[str] = Field(default_factory=list)
+    schweregrad: int = Field(ge=1, le=5)
+
+    @field_validator("titel", "situation", "ereignis", "lesson", "massnahme", "bereich")
+    @classmethod
+    def _strip(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("tags")
+    @classmethod
+    def _tags(cls, value: list[str]) -> list[str]:
+        return _clean_tags(value)
+
+
+class LessonIn(LessonBase):
+    quelle: Quelle = "text"
+    erfassung_sekunden: float | None = Field(default=None, ge=0)
+
+
+class LessonImport(LessonBase):
+    """Format für Startbestand und Backup-Import; id/Daten optional."""
+
+    id: str | None = None
+    status: Status = "neu"
+    bestaetigungen: int = Field(default=1, ge=1)
+    erstellt_am: str | None = None
+    geaendert_am: str | None = None
+    quelle: Quelle = "import"
+
+
+class LessonUpdate(BaseModel):
+    titel: str | None = Field(default=None, min_length=1, max_length=80)
+    situation: str | None = Field(default=None, min_length=1)
+    ereignis: str | None = Field(default=None, min_length=1)
+    lesson: str | None = Field(default=None, min_length=1)
+    massnahme: str | None = None
+    bereich: str | None = None
+    tags: list[str] | None = None
+    schweregrad: int | None = Field(default=None, ge=1, le=5)
+    status: Status | None = None
+
+    @field_validator("tags")
+    @classmethod
+    def _tags(cls, value: list[str] | None) -> list[str] | None:
+        return None if value is None else _clean_tags(value)
+
+
+class Lesson(LessonBase):
+    id: str
+    status: Status
+    bestaetigungen: int
+    erstellt_am: str
+    geaendert_am: str
+    quelle: Quelle
+    embedding_modell: str = ""
+    erfassung_sekunden: float | None = None
+
+
+class Bereich(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    aktiv: bool = True
+    beispiele: str = ""
+
+
+class BereichUpdate(BaseModel):
+    aktiv: bool | None = None
+    beispiele: str | None = None
+
+
+class Einstellungen(BaseModel):
+    sperrliste: list[str] = Field(default_factory=list)
+
+
+class BestaetigungIn(BaseModel):
+    notiz: str = ""
+
+
+class EntwurfAnfrage(BaseModel):
+    text: str = Field(min_length=1, max_length=8000)
+    quelle: Quelle = "text"
+    rueckfrage: str = ""
+    antwort: str = ""
+
+
+class DublettenKandidat(BaseModel):
+    id: str
+    titel: str
+    lesson: str
+    bereich: str
+    status: Status
+    bestaetigungen: int
+    aehnlichkeit: float
+
+
+class Entwurf(BaseModel):
+    titel: str = ""
+    situation: str = ""
+    ereignis: str = ""
+    lesson: str = ""
+    massnahme: str = ""
+    bereich: str = ""
+    tags: list[str] = Field(default_factory=list)
+    schweregrad: int = 3
+    quelle: Quelle = "text"
+    rueckfrage: str = ""
+    fehlende_felder: list[str] = Field(default_factory=list)
+    compliance_hinweise: list[str] = Field(default_factory=list)
+    dublette: DublettenKandidat | None = None
+    dublette_begruendung: str = ""
+    aehnliche: list[DublettenKandidat] = Field(default_factory=list)
+    ki_verwendet: bool = False
+    ki_fehler: str = ""
