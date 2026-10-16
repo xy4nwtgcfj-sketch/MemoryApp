@@ -8,7 +8,7 @@ Projekt) vor weiterer Investition geprüft.
 
 ## Phases
 
-- [ ] **Phase 1: Erfassen und Finden** - Datenmodell, KI-Erfassung per Text/Sprache, Volltext- und semantische Suche, Startbestand
+- [x] **Phase 1: Erfassen und Finden** - Datenmodell, KI-Erfassung per Text/Sprache, Volltext- und semantische Suche, Startbestand
 - [ ] **Phase 2: Briefings** - Manuelles und kalenderbasiertes Briefing, Erinnerungen, alle Bereiche
 - [ ] **Phase 3: Muster** - Monatliche Auswertung und Dashboard
 
@@ -28,11 +28,11 @@ Projekt) vor weiterer Investition geprüft.
 **Plans**: 5 plans
 
 Plans:
-- [ ] 01-01: Datenmodell, SQLite-Schema mit FTS5, Repository und Statuslogik
-- [ ] 01-02: KI-Strukturierung, Embeddings, Compliance-Prüfung
-- [ ] 01-03: REST-API (Erfassen, CRUD, Bestätigen, Suche, Import/Export, Statistik)
-- [ ] 01-04: PWA-Frontend (Erfassen inkl. Sprache, Suche, Detail, Einstellungen)
-- [ ] 01-05: Startbestand-Vorlage, Betrieb auf Home-PC mit Tailscale, Doku
+- [x] 01-01: Datenmodell, SQLite-Schema mit FTS5, Repository und Statuslogik
+- [x] 01-02: KI-Strukturierung, Embeddings, Compliance-Prüfung
+- [x] 01-03: REST-API (Erfassen, CRUD, Bestätigen, Suche, Import/Export, Statistik)
+- [x] 01-04: PWA-Frontend (Erfassen inkl. Sprache, Suche, Detail, Einstellungen)
+- [x] 01-05: Startbestand-Vorlage, Betrieb auf Home-PC mit Tailscale, Doku
 
 **Abnahme (manuell, nach Deployment):** Drei Wochen tatsächliche Nutzung, mindestens 10 neue Lessons zusätzlich zum Startbestand.
 
@@ -62,6 +62,6 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Erfassen und Finden | 0/5 | Not started | - |
+| 1. Erfassen und Finden | 5/5 | Built, Abnahme ausstehend | 2026-10-16 |
 | 2. Briefings | 0/TBD | Not started | - |
 | 3. Muster | 0/TBD | Not started | - |
