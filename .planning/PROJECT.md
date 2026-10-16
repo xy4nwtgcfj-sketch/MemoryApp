@@ -64,9 +64,10 @@ Erfassen und zuverlässiges Wiederfinden funktionieren.
 | Manuelles Briefing aus Phase 2 vorgezogen (Phase 1.2), Kalender/Erinnerungen bleiben in Phase 2 | Ohne Abruf misst die Abnahme nur das Erfassen; Wert entsteht laut Konzept beim Wiederfinden. Entscheidung Stefan. | — Pending |
 | Strukturierung vorerst über Claude, lokal umschaltbar | Qualität und Rückfrage im Dialog; Umstieg später ohne Umbau. Entscheidung Stefan. | — Pending |
 | Rückfrage darf auch nach dem persönlichen Teil fragen (Abweichung von Konzept 4.1), weiter max. eine Frage, optional | Allgemeine Lessons liefert Claude ohnehin; der Mehrwert der App liegt im persönlichen Wissen. Entscheidung Stefan. | — Pending |
+| Fotos: Beruf und ohne Bereich nur lokal erkannter, geprüfter Text an Claude; private Bereiche Claude Vision; Fotos lokal gespeichert | Kundenfolien sind das größte Compliance-Risiko; Bild ungeprüft an Claude wäre nicht kontrollierbar. Speicherung lokal auf Wunsch Stefans (Richtlinien-Check offen). | — Pending |
 | Single-User ohne Rechtemodell | Offene Frage 1 unbeantwortet; Teilen später ist ein eigener Meilenstein. Datenmodell enthält keine Owner-Spalte. | ⚠️ Revisit |
 | Sprache über Browser-Spracherkennung (Web Speech API), Whisper später | Kein zusätzlicher Dienst. Einschränkung: Chrome schickt Audio an Google, Safari/iOS nutzt Apple-Dienste. Für berufliche Inhalte kritisch, siehe Compliance. | ⚠️ Revisit |
 | Alle fünf Bereiche angelegt, nur Beruf und Immobilien aktiv | Konzept fordert Fokus in Phase 1, Bereiche bleiben konfigurierbar. | — Pending |
 
 ---
-*Last updated: 2026-10-16 after Phase 1.2 (Manuelles Briefing)*
+*Last updated: 2026-10-16 after Phase 1.3 (Fotos)*

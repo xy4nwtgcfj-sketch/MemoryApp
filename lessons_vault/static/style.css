@@ -288,3 +288,21 @@ details summary { cursor: pointer; font-weight: 600; min-height: 44px; display: 
 .feedback button[aria-pressed="true"].up { background: var(--ok-bg); color: var(--ok-text); border-color: transparent; }
 .feedback button[aria-pressed="true"].down { background: var(--surface-2); color: var(--muted); text-decoration: line-through; }
 .result.abgewertet { opacity: .55; }
+
+.thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.thumb { position: relative; width: 88px; height: 88px; }
+.thumb-open { width: 100%; height: 100%; padding: 0; border-radius: 10px; overflow: hidden; min-height: 0; background: var(--surface-2); }
+.thumb-open img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb-remove {
+  position: absolute; top: -6px; right: -6px; width: 28px; height: 28px; min-height: 28px; padding: 0;
+  border-radius: 50%; font-size: .8rem; background: var(--text); color: var(--bg); border: 2px solid var(--bg);
+}
+.lightbox {
+  position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, .88);
+  display: flex; align-items: center; justify-content: center; padding: 16px; outline: none;
+}
+.lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; }
+.lightbox-close {
+  position: absolute; top: calc(12px + env(safe-area-inset-top)); right: 12px;
+  background: rgba(255, 255, 255, .15); color: #fff; border: 0; border-radius: 50%; width: 44px; padding: 0;
+}

@@ -3,7 +3,7 @@
 Ein zweites Gedächtnis für Erfahrungen. Lessons in unter 30 Sekunden erfassen (Text oder Sprache),
 eine KI strukturiert sie, und du findest sie wieder, wenn eine ähnliche Situation bevorsteht.
 
-Stand: Phase 1 "Erfassen und Finden", Phase 1.1 "Lokale KI" und Phase 1.2 "Manuelles Briefing"
+Stand: Phase 1 "Erfassen und Finden", 1.1 "Lokale KI", 1.2 "Manuelles Briefing" und 1.3 "Fotos"
 (siehe `.planning/ROADMAP.md`). Kalender-Briefings, Erinnerungen und Mustererkennung folgen nach der
 Abnahme von Phase 1 (drei Wochen echte Nutzung, mindestens 10 neue Lessons).
 
@@ -27,6 +27,12 @@ Abnahme von Phase 1 (drei Wochen echte Nutzung, mindestens 10 neue Lessons).
 
   Mit "Hilfreich" / "Nicht relevant" verbesserst du künftige Briefings zu ähnlichen Situationen.
   Frühere Briefings bleiben abrufbar.
+- **Fotos:**
+  - *Lessons aus Fotos:* Folie, Whiteboard oder Notiz fotografieren. Die App findet darin Erfahrungen,
+    du wählst aus, und jede läuft einzeln durch die normale Erfassung. Das Foto hängt an jeder Lesson.
+  - *Entwurf prüfen* (im Briefing): Foto eines Entwurfs, etwa eines Projektplans. Claude gleicht ihn mit
+    deinen passenden Lessons ab: was fehlt, was schon berücksichtigt ist.
+  - Fotos lassen sich auch nachträglich an eine Lesson hängen und in groß ansehen.
 - **Prüfen** (nur sichtbar, wenn ein Bereich lokal strukturiert wird): Lokal strukturierte Entwürfe übernehmen, korrigieren, Rückfrage beantworten, neu strukturieren
   oder verwerfen. Der Zähler in der Leiste zeigt offene Entwürfe.
 - **Dubletten:** Ähnliche Lessons werden erkannt; "Als Bestätigung zählen" erhöht den Zähler, ab 2× wird
@@ -87,7 +93,20 @@ Danach ist die App unter `https://<pc-name>.<tailnet>.ts.net` erreichbar, nur f�
 App-Installation brauchen dieses HTTPS. iPhone: Safari → Teilen → "Zum Home-Bildschirm".
 Android: Chrome → "App installieren".
 
-### 6. Autostart
+### 6. Texterkennung für Fotos (Tesseract)
+
+Für Fotos im Bereich Beruf erkennt die App den Text lokal, damit das Foto selbst nie den PC verlässt.
+
+1. Tesseract-Installer für Windows von der Seite der UB Mannheim herunterladen
+   (github.com/UB-Mannheim/tesseract/wiki).
+2. Bei der Installation unter "Additional language data" **German** auswählen.
+3. Standardpfad `C:\Program Files\Tesseract-OCR` beibehalten, dann findet die App Tesseract automatisch.
+   Sonst den Pfad zu `tesseract.exe` als `LV_TESSERACT_CMD` in `.env` eintragen.
+
+Unter Einstellungen → KI-Strukturierung steht, ob die Texterkennung bereit ist. Handschrift erkennt
+Tesseract schlecht; für handschriftliche Notizen die Kernpunkte besser abtippen.
+
+### 7. Autostart
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install-autostart.ps1
@@ -100,8 +119,8 @@ aktivieren oder den Rechner nicht herunterfahren.
 
 ### Backup
 
-Regelmäßig "Exportieren" unter Einstellungen (JSON). Zusätzlich die Datei `data\lessons.db`
-in ein Cloud- oder NAS-Backup aufnehmen, am besten, während die App nicht schreibt.
+Regelmäßig "Exportieren" unter Einstellungen (JSON, ohne Fotos). Für ein vollständiges Backup den Ordner
+`data\` sichern (Datenbank `lessons.db` und Fotos in `data\bilder\`), am besten, während die App nicht schreibt.
 
 ## KI-Einstellungen
 
@@ -128,6 +147,8 @@ nachgeholt, die Suche fällt auf Volltext zurück.
 | `VOYAGE_API_KEY` / `LV_VOYAGE_MODEL` | Alternative: Embeddings über Voyage AI | leer / `voyage-3.5` |
 | `LV_DB_PATH` | SQLite-Datei | `data/lessons.db` |
 | `LV_TOKEN` | Optionaler Bearer-Token zusätzlich zu Tailscale | leer |
+| `LV_TESSERACT_CMD` | Pfad zu `tesseract.exe`, falls nicht im Standardpfad | automatisch |
+| `LV_BILDER_PATH` | Ordner für Fotos | `data/bilder` |
 
 Nach einem Wechsel des Embedding-Modells werden alle Lessons im Hintergrund automatisch neu indexiert.
 
@@ -149,6 +170,16 @@ Einstellungen → Importieren. Pflicht: `titel` (max. 80 Zeichen), `situation`, 
   gefundenen Lessons, ausgenommen Lessons aus Bereichen auf "lokal". Ist ein lokaler Bereich als Filter
   gewählt, gibt es keine Zusammenfassung; Lessons und Checkliste kommen dann rein lokal.
 - **Voyage** (nur falls statt Ollama gewählt): Lesson-Texte und Suchanfragen.
+- **Fotos:**
+  - Werden lokal unter `data\bilder\` gespeichert, ohne Metadaten (Standort, Kamera, Zeit), schon im
+    Browser verkleinert.
+  - *Beruf und ohne Bereichswahl:* Das Foto bleibt auf dem PC. Der Text wird lokal erkannt, du prüfst
+    und kürzt ihn, und nur dieser Text geht an Claude.
+  - *Private Bereiche:* Claude sieht das Foto selbst (umstellbar unter Einstellungen).
+  - *Bereiche auf "lokal":* Weder Foto noch Text gehen an Claude.
+  - Fotos, die nie an einer Lesson oder einem Briefing hingen, werden nach 2 Tagen gelöscht.
+  - **Hinweis:** Fotos von Kundenfolien auf dem privaten PC zu speichern, gehört ausdrücklich in deinen
+    Abgleich mit den Deloitte-Richtlinien.
 - **Spracherkennung** läuft über den Browser: Chrome schickt Audio an Google, Safari nutzt Apple-Dienste.
   Für vertrauliche Inhalte tippen. Lokales Whisper ist als nächster Schritt vorgemerkt.
 - Vor der Nutzung mit beruflichen Einträgen mit den internen Deloitte-Richtlinien abgleichen.

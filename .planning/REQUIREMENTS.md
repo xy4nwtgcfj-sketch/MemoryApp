@@ -62,13 +62,13 @@
 
 ### Fotos (FOTO), Phase 1.3
 
-- [ ] **FOTO-01**: Fotos (Kamera oder Galerie, bis 5 auf einmal) werden auf dem Handy verkleinert, auf dem PC ohne Metadaten gespeichert und an Lesson, Entwurf oder Briefing gehängt; Fotos lassen sich auch nachträglich an eine Lesson hängen und entfernen
-- [ ] **FOTO-02**: Lokale Texterkennung (Tesseract, Deutsch und Englisch) mit editierbarer Vorschau und Namensprüfung vor dem Senden
-- [ ] **FOTO-03**: Auswertungsweg pro Bereich: Texterkennung (Standard Beruf und ohne Bereich) oder Claude-Bild (Standard private Bereiche); Bereiche auf "lokal" nie an Claude
-- [ ] **FOTO-04**: Lessons aus Fotos: bis zu 8 Kandidaten, Auswahl, jeder Kandidat durchläuft die normale Erfassung, Foto hängt an jeder entstandenen Lesson
-- [ ] **FOTO-05**: Entwurf prüfen: Foto eines Entwurfs im Briefing, Abgleich mit passenden Lessons (fehlt / schon berücksichtigt), mit Lesson-Bezug
-- [ ] **FOTO-06**: Verwaiste Fotos (nie verknüpft) werden nach 2 Tagen gelöscht; mit einer Lesson gelöschte Fotos werden mit entfernt
-- [ ] **FOTO-07**: Export enthält Fotos optional nicht (JSON bleibt schlank); Hinweis im Backup-Abschnitt
+- [x] **FOTO-01**: Fotos (Kamera oder Galerie, bis 5 auf einmal) werden auf dem Handy verkleinert, auf dem PC ohne Metadaten gespeichert und an Lesson, Entwurf oder Briefing gehängt; Fotos lassen sich auch nachträglich an eine Lesson hängen und entfernen
+- [x] **FOTO-02**: Lokale Texterkennung (Tesseract, Deutsch und Englisch) mit editierbarer Vorschau und Namensprüfung vor dem Senden
+- [x] **FOTO-03**: Auswertungsweg pro Bereich: Texterkennung (Standard Beruf und ohne Bereich) oder Claude-Bild (Standard private Bereiche); Bereiche auf "lokal" nie an Claude
+- [x] **FOTO-04**: Lessons aus Fotos: bis zu 8 Kandidaten, Auswahl, jeder Kandidat durchläuft die normale Erfassung, Foto hängt an jeder entstandenen Lesson
+- [x] **FOTO-05**: Entwurf prüfen: Foto eines Entwurfs im Briefing, Abgleich mit passenden Lessons (fehlt / schon berücksichtigt), mit Lesson-Bezug
+- [x] **FOTO-06**: Verwaiste Fotos (nie verknüpft) werden nach 2 Tagen gelöscht; mit einer Lesson gelöschte Fotos werden mit entfernt
+- [x] **FOTO-07**: Export enthält Fotos optional nicht (JSON bleibt schlank); Hinweis im Backup-Abschnitt
 
 ## v2 Requirements
 
@@ -105,7 +105,7 @@
 | OPS-01..05 | Phase 1 | Built (UAT ausstehend) |
 | LOCAL-01..07 | Phase 1.1 | Built (UAT ausstehend) |
 | BRIEF-01, 02, 06, 07 | Phase 1.2 | Built (UAT ausstehend) |
-| FOTO-01..07 | Phase 1.3 | Pending |
+| FOTO-01..07 | Phase 1.3 | Built (UAT ausstehend) |
 | BRIEF-03..05 | Phase 2 | Deferred |
 | PATT-01..04 | Phase 3 | Deferred |
 

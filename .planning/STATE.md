@@ -9,10 +9,10 @@ See: .planning/PROJECT.md (updated 2026-10-16)
 
 ## Current Position
 
-Phase: 1.2 of 3 (Manuelles Briefing, eingeschoben)
-Plan: 2 of 2 in current phase
+Phase: 1.3 of 3 (Fotos, eingeschoben)
+Plan: 4 of 4 in current phase
 Status: Phase complete, Einrichtung und 3-Wochen-Abnahme ausstehend
-Last activity: 2026-10-16 — Quick 001 Spezifitäts-Check (107 Tests)
+Last activity: 2026-10-16 — Phase 1.3 Fotos gebaut und verifiziert (129 Tests)
 
 Progress: [███░░░░░░░] 33%
 
@@ -27,6 +27,7 @@ Siehe PROJECT.md Key Decisions. Wichtigste: Voyage statt nicht existierendem "Cl
 - Startbestand (20 bis 30 Lessons) schreiben und importieren
 - Auf E5 (Windows 11) einrichten: Python, Ollama, Modelle, .env, tailscale serve, Autostart
 - benchmark_lokal.py ausführen und LV_OLLAMA_MODEL festlegen
+- Tesseract (UB Mannheim, Sprachpaket German) installieren
 - Vergleichstest in der Abnahme: 3 bis 5 Briefings gegen dieselbe Frage im normalen Claude-Chat; Mehrwert nur, wenn das Briefing Persönliches liefert
 - Später: Whisper lokal statt Browser-Spracherkennung
 
@@ -44,5 +45,5 @@ Siehe PROJECT.md Key Decisions. Wichtigste: Voyage statt nicht existierendem "Cl
 ## Session Continuity
 
 Last session: 2026-10-16
-Stopped at: Phase 1.2 complete
+Stopped at: Phase 1.3 complete
 Resume file: None

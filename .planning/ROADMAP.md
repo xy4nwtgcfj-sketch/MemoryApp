@@ -11,7 +11,7 @@ Projekt) vor weiterer Investition geprüft.
 - [x] **Phase 1: Erfassen und Finden** - Datenmodell, KI-Erfassung per Text/Sprache, Volltext- und semantische Suche, Startbestand
 - [x] **Phase 1.1: Lokale KI (INSERTED)** - Ollama für Embeddings und Hintergrund-Strukturierung, Routing pro Bereich, Messskript für Windows
 - [x] **Phase 1.2: Manuelles Briefing (INSERTED)** - Situation beschreiben, Top 5 Lessons, Checkliste, Claude-Zusammenfassung, Feedback
-- [ ] **Phase 1.3: Fotos (INSERTED)** - Fotos als Input: Lessons aus Folien (A), Entwurf gegen Erfahrung prüfen (B), lokal gespeichert
+- [x] **Phase 1.3: Fotos (INSERTED)** - Fotos als Input: Lessons aus Folien (A), Entwurf gegen Erfahrung prüfen (B), lokal gespeichert
 - [ ] **Phase 2: Briefings** - Manuelles und kalenderbasiertes Briefing, Erinnerungen, alle Bereiche
 - [ ] **Phase 3: Muster** - Monatliche Auswertung und Dashboard
 
@@ -87,10 +87,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 01.3-01: Bildspeicher, Metadaten-Entfernung, Vorschaubilder, Texterkennung (Tesseract)
-- [ ] 01.3-02: Lessons aus Fotos (Kandidaten, Routing Bild/Text, Verknüpfung mit Lesson und Entwurf)
-- [ ] 01.3-03: Entwurf gegen Erfahrung prüfen (Briefing mit Foto)
-- [ ] 01.3-04: Oberfläche, Einstellungen, Windows-Einrichtung Tesseract
+- [x] 01.3-01: Bildspeicher, Metadaten-Entfernung, Vorschaubilder, Texterkennung (Tesseract)
+- [x] 01.3-02: Lessons aus Fotos (Kandidaten, Routing Bild/Text, Verknüpfung mit Lesson und Entwurf)
+- [x] 01.3-03: Entwurf gegen Erfahrung prüfen (Briefing mit Foto)
+- [x] 01.3-04: Oberfläche, Einstellungen, Windows-Einrichtung Tesseract
 
 ### Phase 2: Briefings
 **Goal**: Vor einem relevanten Termin bekommt Stefan die 5 wichtigsten Lessons, ohne danach zu suchen.
@@ -121,6 +121,6 @@ Plans:
 | 1. Erfassen und Finden | 5/5 | Built, Abnahme ausstehend | 2026-10-16 |
 | 1.1 Lokale KI | 3/3 | Built, Messung auf E5 ausstehend | 2026-10-16 |
 | 1.2 Manuelles Briefing | 2/2 | Built, Nutzung ausstehend | 2026-10-16 |
-| 1.3 Fotos | 0/4 | In progress | - |
+| 1.3 Fotos | 4/4 | Built, Test mit echten Fotos ausstehend | 2026-10-16 |
 | 2. Briefings | 0/TBD | Not started | - |
 | 3. Muster | 0/TBD | Not started | - |

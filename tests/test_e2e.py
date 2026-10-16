@@ -4,6 +4,7 @@ Startet die App mit gemocktem Claude-Client, damit der KI-Pfad ohne API-Key test
 """
 
 import glob
+import re
 import json
 import os
 import socket
@@ -18,6 +19,8 @@ uvicorn = pytest.importorskip("uvicorn")
 
 from lessons_vault import main  # noqa: E402
 from lessons_vault.briefing import BRIEFING_PROMPT  # noqa: E402
+from lessons_vault.foto import ABGLEICH_PROMPT, KANDIDATEN_PROMPT  # noqa: E402
+from lessons_vault.images import Texterkennung  # noqa: E402
 from lessons_vault.config import Settings  # noqa: E402
 from lessons_vault.embeddings import HashingProvider  # noqa: E402
 from lessons_vault.main import create_app  # noqa: E402
@@ -49,7 +52,18 @@ def server(tmp_path_factory):
                     {"punkt": "WEG-Protokolle der letzten drei Jahre lesen", "lesson_nr": 2},
                 ],
             }
+        if kwargs["system"] == KANDIDATEN_PROMPT:
+            return {"kandidaten": [
+                {"titel": "Cutover früh mit dem Lager abstimmen", "kern": "Der Cutover-Plan wurde zu spät mit dem Lager abgestimmt."},
+                {"titel": "Schichtleiter einplanen", "kern": "Schichtleiter fehlten beim Cutover, die Inventur verzögerte sich."},
+            ], "hinweis": ""}
+        if kwargs["system"] == ABGLEICH_PROMPT:
+            return {"zusammenfassung": "Im Plan fehlt die schriftliche Personalfreigabe für das Cutover-Wochenende.",
+                    "fehlt": [{"punkt": "Schichtleiter schriftlich bestätigen lassen", "lesson_nr": 1}],
+                    "beruecksichtigt": [{"punkt": "Cutover-Termin ist gesetzt", "lesson_nr": 1}]}
         inhalt = kwargs["messages"][0]["content"]
+        if isinstance(inhalt, list):
+            inhalt = ""
         if "Puffer" in inhalt and "<antwort>" not in inhalt:
             return payload(titel="Puffer einplanen", lesson="Bei der Projektplanung Puffer einplanen.", bereich="Beruf",
                            spezifitaet="allgemein", spezifitaet_hinweis="Das würde jeder Ratgeber sagen.",
@@ -103,6 +117,10 @@ def page(server):
         pg.errors = errors
         yield pg
         browser.close()
+
+
+def kein_null(page):
+    assert not re.search(r"\bnull\b|\bundefined\b", page.locator("#view").inner_text()), "null/undefined im UI"
 
 
 def shot(page, name):
@@ -264,4 +282,75 @@ def test_spezifitaets_rueckfrage(server, page):
     expect(page.locator("#toast")).to_contain_text("Gespeichert")
     page.locator("#toast a").click()
     expect(page.locator(".badges")).to_contain_text("persönlich")
+    assert page.errors == []
+
+
+braucht_ocr = pytest.mark.skipif(not Texterkennung().verfuegbar, reason="Tesseract mit Deutsch nicht installiert")
+
+
+def folie_datei(tmp_path):
+    from .bilder import folie_jpeg
+    pfad = tmp_path / "folie.jpg"
+    pfad.write_bytes(folie_jpeg())
+    return pfad
+
+
+@braucht_ocr
+def test_lessons_aus_foto(server, page, tmp_path):
+    base, fake = server
+    expect = playwright.expect
+    page.goto(f"{base}/#/erfassen")
+    page.reload()
+    page.locator("#view input[type=file]").set_input_files(str(folie_datei(tmp_path)))
+    expect(page.get_by_text("Erkannter Text")).to_be_visible(timeout=15000)
+    expect(page.locator("#ocr-text")).to_have_value(re.compile("Schichtleiter"))
+    expect(page.locator(".thumbs img")).to_have_count(1)
+    shot(page, "11-foto-text")
+    anzahl = len(fake.calls)
+    page.get_by_role("button", name="Lessons finden").click()
+    expect(page.get_by_text("Gefundene Erfahrungen (2)")).to_be_visible()
+    # Text-Weg: kein Bild an Claude
+    assert all(isinstance(c["messages"][0]["content"], str) for c in fake.calls[anzahl:])
+    page.locator("#kand-0").uncheck()
+    shot(page, "12-kandidaten")
+    page.get_by_role("button", name="Ausgewählte erfassen (1)").click()
+    expect(page.get_by_text("Lesson 1 von 1 aus dem Foto")).to_be_visible()
+    expect(page.get_by_text("1 Foto wird an die Lesson gehängt.")).to_be_visible()
+    page.get_by_role("button", name="Speichern").click()
+    expect(page.locator("#toast")).to_contain_text("Gespeichert")
+    page.locator("#toast a").click()
+    expect(page.get_by_role("heading", name="Fotos (1)")).to_be_visible()
+    expect(page.locator(".thumbs img")).to_have_attribute("src", re.compile("^blob:"))
+    page.locator(".thumb-open").click()
+    expect(page.locator(".lightbox img")).to_have_attribute("src", re.compile("^blob:"))
+    shot(page, "13-lightbox")
+    kein_null(page)
+    page.keyboard.press("Escape")
+    expect(page.locator(".lightbox")).to_have_count(0)
+    assert page.errors == []
+
+
+@braucht_ocr
+def test_entwurf_pruefen(server, page, tmp_path):
+    base, fake = server
+    expect = playwright.expect
+    page.goto(f"{base}/#/briefing")
+    page.reload()
+    page.get_by_role("button", name="Beruf").click()
+    page.locator("#view input[type=file]").set_input_files(str(folie_datei(tmp_path)))
+    expect(page.get_by_text("Erkannter Text des Entwurfs")).to_be_visible(timeout=15000)
+    page.get_by_role("button", name="Prüfen", exact=True).click()
+    expect(page.get_by_text("Im Plan fehlt die schriftliche Personalfreigabe")).to_be_visible()
+    expect(page.get_by_text("Was im Entwurf fehlt, laut deinen Lessons (Claude)")).to_be_visible()
+    expect(page.get_by_text("Schon berücksichtigt (1)")).to_be_visible()
+    expect(page.get_by_role("heading", name="Abgleich mit deinen Erfahrungen")).to_have_count(0)  # ist ein <strong>
+    call = fake.calls[-1]
+    assert call["system"] == ABGLEICH_PROMPT and isinstance(call["messages"][0]["content"], str)
+    shot(page, "14-entwurf-pruefen")
+    kein_null(page)
+    # Suche ohne Entwürfe darf auch kein "null" zeigen
+    page.goto(f"{base}/#/suche")
+    page.fill("#q", "Cutover")
+    expect(page.get_by_text("Treffer")).to_be_visible()
+    kein_null(page)
     assert page.errors == []

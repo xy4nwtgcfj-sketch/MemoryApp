@@ -40,6 +40,11 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
+// Wie replaceChildren, aber null/false werden ausgelassen (sonst erscheint "null" als Text).
+function fill(node, ...children) {
+  node.replaceChildren(...children.flat(Infinity).filter((c) => c !== null && c !== undefined && c !== false));
+}
+
 function render(...nodes) {
   view.replaceChildren(el("div", {}, nodes));
 }
@@ -71,10 +76,11 @@ async function api(path, { method = "GET", body, raw = false } = {}) {
   const headers = {};
   const token = store.get("lv-token");
   if (token) headers.Authorization = `Bearer ${token}`;
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const isForm = body instanceof FormData;
+  if (body !== undefined && !isForm) headers["Content-Type"] = "application/json";
   let res;
   try {
-    res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    res = await fetch(path, { method, headers, body: body === undefined ? undefined : isForm ? body : JSON.stringify(body) });
   } catch {
     throw new ApiError(0, "Server nicht erreichbar. Läuft der Home-PC und ist Tailscale verbunden?");
   }
@@ -95,6 +101,86 @@ async function api(path, { method = "GET", body, raw = false } = {}) {
 
 function errorNotice(err) {
   return el("div", { class: "notice warn", role: "alert" }, err.message || String(err));
+}
+
+// ------------------------------------------------------------------- Fotos
+const MAX_FOTOS = 5;
+
+function verkleinern(file, kante = 2000) {
+  // Im Browser verkleinern: schneller Upload über Tailscale, Metadaten fallen weg, HEIC wird zu JPEG.
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const faktor = Math.min(1, kante / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.naturalWidth * faktor);
+      canvas.height = Math.round(img.naturalHeight * faktor);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((blob) => resolve(blob || file), "image/jpeg", 0.85);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
+async function fotosHochladen(files) {
+  const liste = [...files].slice(0, MAX_FOTOS);
+  if (files.length > MAX_FOTOS) toast(`Höchstens ${MAX_FOTOS} Fotos auf einmal, die ersten ${MAX_FOTOS} werden verwendet.`);
+  const form = new FormData();
+  for (const [i, file] of liste.entries()) form.append("dateien", await verkleinern(file), `foto-${i + 1}.jpg`);
+  return api("/api/bilder", { method: "POST", body: form });
+}
+
+function fotoInput(onFiles) {
+  const input = el("input", { type: "file", accept: "image/*", multiple: true, class: "sr-only", tabindex: "-1", "aria-hidden": "true" });
+  input.addEventListener("change", () => { if (input.files.length) onFiles(input.files); input.value = ""; });
+  return input;
+}
+
+const bildCache = new Map();
+async function bildSrc(id, variante = "vorschau") {
+  const key = `${id}/${variante}`;
+  if (!bildCache.has(key)) {
+    bildCache.set(key, api(`/api/bilder/${id}?variante=${variante}`, { raw: true }).then((r) => r.blob()).then((b) => URL.createObjectURL(b)));
+  }
+  return bildCache.get(key);
+}
+
+function lightbox(id) {
+  const img = el("img", { alt: "Foto" });
+  const box = el("div", { class: "lightbox", role: "dialog", "aria-label": "Foto", tabindex: "-1" }, img,
+    el("button", { type: "button", class: "lightbox-close", "aria-label": "Schließen" }, "✕"));
+  const close = () => { box.remove(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  box.addEventListener("click", close);
+  document.addEventListener("keydown", onKey);
+  document.body.append(box);
+  box.focus();
+  bildSrc(id, "voll").then((src) => { img.src = src; }).catch(() => close());
+}
+
+function thumbsRow(bilder, { onRemove } = {}) {
+  return el("div", { class: "thumbs" }, bilder.map((b) => {
+    const img = el("img", { alt: "Foto", loading: "lazy" });
+    bildSrc(b.id).then((src) => { img.src = src; }).catch(() => { img.alt = "Foto nicht ladbar"; });
+    return el("div", { class: "thumb" },
+      el("button", { type: "button", class: "thumb-open", "aria-label": "Foto vergrößern", onclick: () => lightbox(b.id) }, img),
+      onRemove ? el("button", { type: "button", class: "thumb-remove", "aria-label": "Foto entfernen", onclick: () => onRemove(b) }, "✕") : null);
+  }));
+}
+
+function ocrVorschau(text, bereich, hinweise) {
+  // Erkannter Text: der Nutzer sieht und bearbeitet genau das, was an Claude geht.
+  const area = el("textarea", { rows: 8, id: "ocr-text", "aria-label": "Erkannter Text" });
+  area.value = text;
+  const box = complianceBox(hinweise || []);
+  const recheck = debounce(async () => {
+    try { box.update(await api("/api/compliance", { method: "POST", body: { text: area.value, bereich: bereich || "Beruf" } })); } catch { /* bleibt */ }
+  }, 600);
+  area.addEventListener("input", recheck);
+  return { area, box: box.node };
 }
 
 let bereicheCache = null;
@@ -207,7 +293,7 @@ function complianceBox(hinweise) {
   const box = el("div", { class: "notice warn", role: "alert", hidden: !hinweise.length });
   const update = (list) => {
     box.hidden = !list.length;
-    box.replaceChildren(
+    fill(box, 
       el("strong", {}, "Datenschutz-Hinweis: bitte abstrahieren"),
       el("ul", {}, list.map((h) => el("li", {}, h))),
     );
@@ -217,7 +303,7 @@ function complianceBox(hinweise) {
 }
 
 // ----------------------------------------------------------------- Erfassen
-const capture = { text: "", quelle: "text", start: null, rueckfrage: "", bereich: "" };
+const capture = { text: "", quelle: "text", start: null, rueckfrage: "", bereich: "", bilder: [], queue: [], queuePos: 0, queueTotal: 0 };
 const MODUS_TEXT = {
   claude: "Claude, sofort",
   lokal: "lokal im Hintergrund",
@@ -229,6 +315,26 @@ function resetCapture() {
   capture.quelle = "text";
   capture.start = null;
   capture.rueckfrage = "";
+  capture.bilder = [];
+  capture.queue = [];
+  capture.queuePos = 0;
+  capture.queueTotal = 0;
+}
+
+// Nach Speichern/Bestätigen: nächster Kandidat aus dem Foto oder komplett zurücksetzen.
+function captureAbschliessen() {
+  if (capture.queue.length) {
+    capture.text = "";
+    capture.start = null;
+    capture.rueckfrage = "";
+  } else {
+    resetCapture();
+  }
+}
+
+function zurueckZumErfassen() {
+  if (location.hash === "#/erfassen" || location.hash === "") viewErfassen();
+  else location.hash = "#/erfassen";
 }
 
 function captureSeconds() {
@@ -303,6 +409,112 @@ async function viewErfassen() {
 
   const mic = speechButton(textarea);
   const result = el("div", { id: "draft" });
+  const thumbs = el("div");
+  const fotoPanel = el("div", { id: "foto-panel" });
+  const queueBanner = el("div");
+
+  const renderThumbs = () => fill(thumbs, capture.bilder.length ? thumbsRow(capture.bilder, {
+    onRemove: (b) => {
+      capture.bilder = capture.bilder.filter((x) => x.id !== b.id);
+      renderThumbs();
+      if (!capture.bilder.length) fill(fotoPanel);
+    },
+  }) : "");
+
+  const kandidatenAnzeigen = (res) => {
+    if (!res.kandidaten.length) {
+      fill(fotoPanel, el("div", { class: "notice info" }, el("strong", {}, "Keine Erfahrungen gefunden."),
+        res.hinweis || "Das Foto enthält eher Sachinformationen. Es bleibt angehängt, wenn du die Lesson selbst beschreibst."));
+      return;
+    }
+    const boxes = res.kandidaten.map((k, i) => el("input", { type: "checkbox", id: `kand-${i}`, checked: true }));
+    const startBtn = el("button", { type: "button", class: "primary" });
+    const zaehlen = () => {
+      const n = boxes.filter((b) => b.checked).length;
+      startBtn.textContent = `Ausgewählte erfassen (${n})`;
+      startBtn.disabled = n === 0;
+    };
+    boxes.forEach((b) => b.addEventListener("change", zaehlen));
+    zaehlen();
+    startBtn.addEventListener("click", () => {
+      capture.queue = res.kandidaten.filter((_, i) => boxes[i].checked);
+      capture.queueTotal = capture.queue.length;
+      capture.queuePos = 0;
+      fill(fotoPanel);
+      naechsterKandidat();
+    });
+    fill(fotoPanel, el("div", { class: "card" },
+      el("strong", {}, `Gefundene Erfahrungen (${res.kandidaten.length})`),
+      el("p", { class: "muted small", style: "margin:4px 0 0" }, "Wähle aus, was eine eigene Lesson werden soll. Jede läuft danach einzeln durch die normale Erfassung, das Foto hängt an jeder."),
+      el("ul", { class: "checklist" }, res.kandidaten.map((k, i) => el("li", {}, boxes[i],
+        el("label", { for: `kand-${i}`, style: "margin:0;font-weight:400" }, el("span", { style: "font-weight:600" }, k.titel), el("span", { class: "src" }, k.kern))))),
+      el("div", { class: "actions" }, startBtn)));
+  };
+
+  const kandidatenSuchen = async (body) => {
+    fill(fotoPanel, el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), " Claude sucht Erfahrungen auf dem Foto …"));
+    try {
+      kandidatenAnzeigen(await api("/api/foto/kandidaten", { method: "POST", body: { bild_ids: capture.bilder.map((b) => b.id), bereich: capture.bereich, notiz: textarea.value.trim(), ...body } }));
+    } catch (err) {
+      fill(fotoPanel, errorNotice(err));
+    }
+  };
+
+  const nurAnhaengen = el("button", { type: "button", class: "ghost", onclick: () => { fill(fotoPanel, el("p", { class: "muted small" }, "Das Foto wird an die Lesson gehängt, die du oben beschreibst.")); textarea.focus(); } }, "Nur anhängen");
+
+  const fotoVorbereiten = async () => {
+    if (!capture.bilder.length) return;
+    fill(fotoPanel, el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), " Foto wird ausgewertet …"));
+    let res;
+    try {
+      res = await api("/api/foto/vorbereiten", { method: "POST", body: { bild_ids: capture.bilder.map((b) => b.id), bereich: capture.bereich } });
+    } catch (err) {
+      return fill(fotoPanel, errorNotice(err));
+    }
+    if (res.weg === "bild") {
+      fill(fotoPanel, el("div", { class: "card" },
+        el("strong", {}, "Lessons aus dem Foto"),
+        el("p", { class: "muted small", style: "margin:4px 0 0" }, "Privater Bereich: Claude sieht das Foto selbst. Deine Stichworte oben gehen als Notiz mit."),
+        el("div", { class: "actions" }, el("button", { type: "button", class: "primary", onclick: () => kandidatenSuchen({}) }, "Lessons finden"), nurAnhaengen)));
+    } else if (res.weg === "text") {
+      const vorschau = ocrVorschau(res.text, capture.bereich, res.compliance_hinweise);
+      fill(fotoPanel, el("div", { class: "card" },
+        el("strong", {}, "Erkannter Text"),
+        el("p", { class: "muted small", style: "margin:4px 0 8px" }, "Nur dieser Text geht an Claude, das Foto bleibt auf deinem PC. Lösche, was nicht raus soll."),
+        res.text ? null : el("div", { class: "notice warn" }, res.texterkennung.verfuegbar ? "Kein Text erkannt. Tippe die Kernpunkte ab oder beschreibe die Lesson oben." : res.texterkennung.hinweis),
+        vorschau.box, vorschau.area,
+        el("div", { class: "actions" }, el("button", {
+          type: "button",
+          class: "primary",
+          onclick: () => vorschau.area.value.trim().length < 3 ? toast("Kein Text zum Auswerten.") : kandidatenSuchen({ text: vorschau.area.value }),
+        }, "Lessons finden"), nurAnhaengen)));
+    } else {
+      fill(fotoPanel, el("div", { class: "card" },
+        el("strong", {}, "Bleibt auf deinem PC"),
+        el("p", { class: "muted small", style: "margin:4px 0 8px" }, "Für diesen Bereich gehen Fotos und Text nicht an Claude. Übernimm den erkannten Text als Notiz und speichere."),
+        res.text ? el("p", { class: "raw small" }, res.text.slice(0, 600)) : el("p", { class: "muted small" }, res.texterkennung.hinweis || "Kein Text erkannt."),
+        el("div", { class: "actions" },
+          res.text ? el("button", { type: "button", onclick: () => { textarea.value = capture.text = (textarea.value ? textarea.value + "\n" : "") + res.text; startTimer(); fill(fotoPanel); } }, "Als Notiz übernehmen") : null,
+          nurAnhaengen)));
+    }
+  };
+
+  const fotoBtn = el("button", { type: "button", title: "Foto aufnehmen oder auswählen" }, "📷 Foto");
+  const fotoIn = fotoInput(async (files) => {
+    startTimer();
+    fotoBtn.disabled = true;
+    fill(fotoPanel, el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), " Fotos werden hochgeladen und gelesen …"));
+    try {
+      capture.bilder = [...capture.bilder, ...(await fotosHochladen(files))].slice(0, MAX_FOTOS);
+      renderThumbs();
+      await fotoVorbereiten();
+    } catch (err) {
+      fill(fotoPanel, errorNotice(err));
+    } finally {
+      fotoBtn.disabled = false;
+    }
+  });
+  fotoBtn.addEventListener("click", () => fotoIn.click());
   const modusInfo = el("p", { class: "muted small", "aria-live": "polite" });
   const structureBtn = el("button", { type: "button", class: "primary" });
 
@@ -315,11 +527,11 @@ async function viewErfassen() {
 
   const chips = el("div", { class: "chips", role: "group", "aria-label": "Bereich (optional)" });
   const renderChips = () => {
-    chips.replaceChildren(...aktive.map((b) => el("button", {
+    fill(chips, ...aktive.map((b) => el("button", {
       type: "button",
       class: "chip",
       "aria-pressed": String(capture.bereich === b.name),
-      onclick: () => { capture.bereich = capture.bereich === b.name ? "" : b.name; renderChips(); updateModus(); },
+      onclick: () => { capture.bereich = capture.bereich === b.name ? "" : b.name; renderChips(); updateModus(); if (capture.bilder.length && !capture.queue.length) fotoVorbereiten(); },
     }, b.name, modusFuer(b.name) === "lokal" ? el("small", {}, "lokal") : null)));
   };
   renderChips();
@@ -338,55 +550,72 @@ async function viewErfassen() {
     }
     structureBtn.disabled = true;
     const modus = modusFuer(capture.bereich);
-    if (modus === "claude") result.replaceChildren(el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), " Claude strukturiert …"));
+    if (modus === "claude") fill(result, el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), " Claude strukturiert …"));
     try {
       const res = await api("/api/erfassen", {
         method: "POST",
-        body: { text, quelle: capture.quelle, bereich: capture.bereich, erfassung_sekunden: captureSeconds() },
+        body: { text, quelle: capture.quelle, bereich: capture.bereich, erfassung_sekunden: captureSeconds(), bild_ids: capture.bilder.map((b) => b.id) },
       });
       if (res.modus === "hintergrund") {
         const seconds = captureSeconds();
-        resetCapture();
+        captureAbschliessen();
         refreshStats();
         toast(el("span", {}, `Gespeichert${seconds ? ` in ${Math.round(seconds)} s` : ""}. Wird lokal strukturiert und erscheint dann unter `, el("a", { href: "#/pruefen" }, "Prüfen"), "."), 7000);
         return viewErfassen();
       }
       showDraft(result, res.entwurf);
     } catch (err) {
-      result.replaceChildren(errorNotice(err));
+      fill(result, errorNotice(err));
     } finally {
       structureBtn.disabled = false;
     }
   };
   structureBtn.addEventListener("click", () => go(false));
 
+  function naechsterKandidat() {
+    const k = capture.queue.shift();
+    if (!k) return;
+    capture.queuePos += 1;
+    textarea.value = capture.text = `${k.titel}: ${k.kern}`;
+    fill(queueBanner, el("div", { class: "notice info row" },
+      el("span", { class: "grow" }, `Lesson ${capture.queuePos} von ${capture.queueTotal} aus dem Foto`),
+      capture.queue.length ? el("button", { type: "button", class: "ghost", onclick: () => { capture.queue = []; toast("Restliche Kandidaten übersprungen."); fill(queueBanner); } }, "Rest überspringen") : null));
+    go(false);
+  }
+
   render(
     el("h2", {}, "Neue Lesson"),
+    queueBanner,
     el("label", { for: "capture-text", class: "sr-only" }, "Stichworte"),
     textarea,
+    thumbs,
     aktive.length > 1 ? chips : null,
     modusInfo,
-    el("div", { class: "actions" }, structureBtn, mic, el("button", { type: "button", class: "ghost", onclick: () => go(true) }, "Manuell")),
+    el("div", { class: "actions" }, structureBtn, mic, fotoBtn, fotoIn, el("button", { type: "button", class: "ghost", onclick: () => go(true) }, "Manuell")),
+    fotoPanel,
     result,
   );
-  if (!capture.text) textarea.focus();
+  renderThumbs();
+  if (capture.queue.length) naechsterKandidat();
+  else if (!capture.text) textarea.focus();
 }
 
 async function requestDraft(container, body) {
-  container.replaceChildren(el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), " Claude strukturiert …"));
+  fill(container, el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), " Claude strukturiert …"));
   try {
     const entwurf = await api("/api/erfassen/entwurf", { method: "POST", body: { ...body, bereich: capture.bereich } });
     showDraft(container, entwurf);
   } catch (err) {
-    container.replaceChildren(errorNotice(err));
+    fill(container, errorNotice(err));
   }
 }
 
 async function showDraft(container, entwurf, { entwurfId = null } = {}) {
   const fertig = () => {
-    resetCapture();
+    captureAbschliessen();
     refreshStats();
   };
+  const bildIds = entwurfId ? [] : capture.bilder.map((b) => b.id);
   const bereichListe = await bereiche();
   const compliance = complianceBox(entwurf.compliance_hinweise || []);
   const missingNote = el("p", { class: "muted small" });
@@ -468,10 +697,12 @@ async function showDraft(container, entwurf, { entwurfId = null } = {}) {
             onclick: async (e) => {
               e.target.disabled = true;
               try {
-                const lesson = await api(`/api/lessons/${d.id}/bestaetigen`, { method: "POST", body: { notiz: capture.text || entwurf.ereignis || "", entwurf_id: entwurfId } });
+                const lesson = await api(`/api/lessons/${d.id}/bestaetigen`, { method: "POST", body: { notiz: capture.text || entwurf.ereignis || "", entwurf_id: entwurfId, bild_ids: bildIds } });
+                const weiter = capture.queue.length > 0;
                 fertig();
                 toast(`Als Bestätigung gezählt (${lesson.bestaetigungen}×, ${lesson.status}).`);
-                location.hash = `#/lesson/${d.id}`;
+                if (weiter) zurueckZumErfassen();
+                else location.hash = `#/lesson/${d.id}`;
               } catch (err) {
                 e.target.disabled = false;
                 toast(err.message);
@@ -484,6 +715,7 @@ async function showDraft(container, entwurf, { entwurfId = null } = {}) {
     );
   }
 
+  if (bildIds.length) parts.push(el("p", { class: "muted small" }, `${bildIds.length} Foto${bildIds.length > 1 ? "s" : ""} wird an die Lesson gehängt.`));
   parts.push(compliance.node, form.node, missingNote);
 
   if (entwurf.aehnliche?.length) {
@@ -505,7 +737,7 @@ async function showDraft(container, entwurf, { entwurfId = null } = {}) {
     try {
       const res = await api("/api/lessons", {
         method: "POST",
-        body: { ...data, quelle: entwurf.quelle || capture.quelle, erfassung_sekunden: seconds, entwurf_id: entwurfId },
+        body: { ...data, quelle: entwurf.quelle || capture.quelle, erfassung_sekunden: seconds, entwurf_id: entwurfId, bild_ids: bildIds },
       });
       fertig();
       const msg = el("span", {}, `Gespeichert${seconds ? ` in ${Math.round(seconds)} s` : ""}. `, el("a", { href: `#/lesson/${res.lesson.id}` }, "Ansehen"));
@@ -524,13 +756,13 @@ async function showDraft(container, entwurf, { entwurfId = null } = {}) {
     type: "button",
     class: "ghost",
     onclick: async () => {
-      if (!entwurfId) { resetCapture(); return viewErfassen(); }
+      if (!entwurfId) { captureAbschliessen(); return viewErfassen(); }
       if (!confirm("Entwurf endgültig verwerfen?")) return;
       try { await api(`/api/entwuerfe/${entwurfId}`, { method: "DELETE" }); refreshStats(); location.hash = "#/pruefen"; }
       catch (err) { toast(err.message); }
     },
   }, "Verwerfen")));
-  container.replaceChildren(el("div", {}, parts));
+  fill(container, el("div", {}, parts));
   updateMissing(form.read());
   container.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -577,7 +809,7 @@ async function viewBriefing(id) {
   const result = el("div", { id: "briefing-result" });
   const bereichListe = (await bereiche().catch(() => [])).filter((b) => b.aktiv);
   const chips = el("div", { class: "chips", role: "group", "aria-label": "Bereich (optional)" });
-  const renderChips = () => chips.replaceChildren(...bereichListe.map((b) => el("button", {
+  const renderChips = () => fill(chips, ...bereichListe.map((b) => el("button", {
     type: "button",
     class: "chip",
     "aria-pressed": String(briefingState.bereich === b.name),
@@ -590,18 +822,58 @@ async function viewBriefing(id) {
     const text = situation.value.trim();
     if (text.length < 3) { situation.focus(); return toast("Beschreib kurz, was ansteht."); }
     goBtn.disabled = true;
-    result.replaceChildren(el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), " Suche passende Erfahrungen …"));
+    fill(result, el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), " Suche passende Erfahrungen …"));
     try {
       const data = await api("/api/briefing", { method: "POST", body: { situation: text, bereich: briefingState.bereich } });
       history.replaceState(null, "", `#/briefing/${data.id}`);
       showBriefing(result, data);
     } catch (err) {
-      result.replaceChildren(errorNotice(err));
+      fill(result, errorNotice(err));
     } finally {
       goBtn.disabled = false;
     }
   };
   const goBtn = el("button", { type: "button", class: "primary", onclick: go }, "Briefing erstellen");
+
+  // Entwurf prüfen: Foto eines Entwurfs gegen die eigenen Lessons abgleichen
+  const entwurfPanel = el("div");
+  const briefingMitFotos = async (bilder, entwurfText = "") => {
+    fill(entwurfPanel);
+    fill(result, el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), " Suche passende Erfahrungen zum Entwurf …"));
+    try {
+      const data = await api("/api/briefing", {
+        method: "POST",
+        body: { situation: situation.value.trim(), bereich: briefingState.bereich, bild_ids: bilder.map((b) => b.id), entwurf_text: entwurfText },
+      });
+      history.replaceState(null, "", `#/briefing/${data.id}`);
+      showBriefing(result, data);
+    } catch (err) {
+      fill(result, errorNotice(err));
+    }
+  };
+  const pruefBtn = el("button", { type: "button", title: "Foto eines Entwurfs gegen deine Erfahrungen prüfen" }, "📷 Entwurf prüfen");
+  const pruefIn = fotoInput(async (files) => {
+    pruefBtn.disabled = true;
+    fill(entwurfPanel, el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), " Fotos werden hochgeladen und gelesen …"));
+    try {
+      const bilder = await fotosHochladen(files);
+      const vor = await api("/api/foto/vorbereiten", { method: "POST", body: { bild_ids: bilder.map((b) => b.id), bereich: briefingState.bereich } });
+      if (vor.weg !== "text") return briefingMitFotos(bilder);
+      const vorschau = ocrVorschau(vor.text, briefingState.bereich, vor.compliance_hinweise);
+      fill(entwurfPanel, el("div", { class: "card" },
+        thumbsRow(bilder),
+        el("strong", {}, "Erkannter Text des Entwurfs"),
+        el("p", { class: "muted small", style: "margin:4px 0 8px" }, "Nur dieser Text geht für den Abgleich an Claude, das Foto bleibt auf deinem PC. Lösche, was nicht raus soll."),
+        vor.text ? null : el("div", { class: "notice warn" }, vor.texterkennung.verfuegbar ? "Kein Text erkannt. Tippe die Kernpunkte ab." : vor.texterkennung.hinweis),
+        vorschau.box, vorschau.area,
+        el("div", { class: "actions" }, el("button", { type: "button", class: "primary", onclick: () => briefingMitFotos(bilder, vorschau.area.value) }, "Prüfen"))));
+    } catch (err) {
+      fill(entwurfPanel, errorNotice(err));
+    } finally {
+      pruefBtn.disabled = false;
+    }
+  });
+  pruefBtn.addEventListener("click", () => pruefIn.click());
 
   render(
     el("h2", {}, "Briefing"),
@@ -609,7 +881,8 @@ async function viewBriefing(id) {
     el("label", { for: "briefing-text", class: "sr-only" }, "Situation"),
     situation,
     bereichListe.length > 1 ? chips : null,
-    el("div", { class: "actions" }, goBtn, mic),
+    el("div", { class: "actions" }, goBtn, mic, pruefBtn, pruefIn),
+    entwurfPanel,
     result,
   );
 
@@ -619,7 +892,7 @@ async function viewBriefing(id) {
       situation.value = briefingState.situation = data.situation;
       showBriefing(result, data);
     } catch (err) {
-      result.replaceChildren(errorNotice(err));
+      fill(result, errorNotice(err));
     }
   } else {
     showVerlauf(result);
@@ -630,10 +903,10 @@ async function showVerlauf(container) {
   try {
     const verlauf = await api("/api/briefings?limit=10");
     if (!verlauf.length) return;
-    container.replaceChildren(
+    fill(container, 
       el("h2", {}, "Frühere Briefings"),
       ...verlauf.map((b) => el("a", { class: "card result", href: `#/briefing/${b.id}` },
-        el("p", { class: "rule" }, b.situation),
+        el("p", { class: "rule" }, b.entwurf_weg ? "📷 " : "", b.situation),
         el("div", { class: "badges" },
           el("span", { class: "badge" }, formatDate(b.erstellt_am)),
           el("span", { class: "badge" }, `${b.anzahl} Lessons`),
@@ -644,8 +917,12 @@ async function showVerlauf(container) {
 }
 
 function showBriefing(container, data) {
+  const istEntwurf = Boolean(data.entwurf_weg);
+  const kopf = data.bilder?.length ? el("div", { class: "card" }, el("strong", {}, "Geprüfter Entwurf"), thumbsRow(data.bilder)) : null;
+  const titelText = istEntwurf ? "Abgleich mit deinen Erfahrungen" : "Worauf du achten solltest";
   if (!data.treffer.length) {
-    container.replaceChildren(
+    fill(container, 
+      ...(kopf ? [kopf] : []),
       el("div", { class: "notice info" },
         el("strong", {}, "Dazu hast du noch keine Erfahrungen gespeichert."),
         "Probier andere Stichworte oder ohne Bereichsfilter. Und nach der Aufgabe: ",
@@ -654,12 +931,13 @@ function showBriefing(container, data) {
     return;
   }
   const feedback = { ...data.feedback };
-  const summaryCard = el("div", { class: "card" }, el("strong", {}, "Worauf du achten solltest"));
+  const summaryCard = el("div", { class: "card" }, el("strong", {}, titelText));
+  const beruecksichtigtCard = el("div");
   const checklistCard = el("div", { class: "card" });
 
   const renderChecklist = (items, quelle) => {
     const titel = Object.fromEntries(data.treffer.map((t) => [t.lesson.id, t.lesson.titel]));
-    checklistCard.replaceChildren(
+    fill(checklistCard, 
       el("div", { class: "row" },
         el("strong", { class: "grow" }, "Checkliste"),
         el("button", {
@@ -676,27 +954,36 @@ function showBriefing(container, data) {
   };
 
   const loadSummary = async (neu = false) => {
-    summaryCard.replaceChildren(el("strong", {}, "Worauf du achten solltest"),
-      el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), " Claude fasst zusammen …"));
+    fill(summaryCard, el("strong", {}, titelText),
+      el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), istEntwurf ? " Claude gleicht den Entwurf mit deinen Lessons ab …" : " Claude fasst zusammen …"));
     try {
       const res = await api(`/api/briefing/${data.id}/zusammenfassung${neu ? "?neu=true" : ""}`, { method: "POST" });
       showSummary(res);
     } catch (err) {
-      summaryCard.replaceChildren(el("strong", {}, "Worauf du achten solltest"),
+      fill(summaryCard, el("strong", {}, titelText),
         el("div", { class: "notice warn" }, err.message),
         el("button", { type: "button", onclick: () => loadSummary(neu) }, "Erneut versuchen"));
     }
   };
 
   const showSummary = (res) => {
-    summaryCard.replaceChildren(
-      el("strong", {}, "Worauf du achten solltest"),
+    fill(summaryCard, 
+      el("strong", {}, titelText),
       el("p", { class: "summary" }, res.zusammenfassung || "Claude sah keinen klaren Bezug zu dieser Situation. Die Lessons unten sind trotzdem die besten Treffer."),
       res.ki_hinweis ? el("p", { class: "muted small" }, res.ki_hinweis) : null,
       el("p", { class: "muted small" }, "Zusammengefasst von Claude, nur aus deinen Lessons. ",
         el("button", { type: "button", class: "ghost", style: "min-height:32px;padding:2px 6px", onclick: () => loadSummary(true) }, "Neu formulieren")),
     );
-    if (res.ki_checkliste?.length) renderChecklist(res.ki_checkliste, "Auf die Situation zugeschnitten (Claude)");
+    if (istEntwurf) {
+      renderChecklist(res.ki_checkliste || [], res.ki_checkliste?.length ? "Was im Entwurf fehlt, laut deinen Lessons (Claude)" : "Claude hat keine Lücken gefunden.");
+      const ok = res.abgleich?.beruecksichtigt || [];
+      const titel = Object.fromEntries(data.treffer.map((t) => [t.lesson.id, t.lesson.titel]));
+      fill(beruecksichtigtCard, ok.length ? el("details", { class: "card" },
+        el("summary", {}, `Schon berücksichtigt (${ok.length})`),
+        el("ul", { class: "checklist" }, ok.map((p) => el("li", {}, el("span", {}, "✓ "), el("span", {}, p.punkt, titel[p.lesson_id] ? el("span", { class: "src" }, `aus: ${titel[p.lesson_id]}`) : null))))) : "");
+    } else if (res.ki_checkliste?.length) {
+      renderChecklist(res.ki_checkliste, "Auf die Situation zugeschnitten (Claude)");
+    }
   };
 
   renderChecklist(data.checkliste, "Aus den Maßnahmen deiner Lessons");
@@ -735,13 +1022,15 @@ function showBriefing(container, data) {
     return card;
   });
 
-  container.replaceChildren(
+  fill(container, el("div", {},
+    kopf,
     data.ki_moeglich || data.zusammenfassung ? summaryCard : (data.ki_hinweis ? el("p", { class: "muted small" }, data.ki_hinweis) : null),
     checklistCard,
+    beruecksichtigtCard,
     el("h2", {}, `Deine Erfahrungen (${data.treffer.length})`),
     el("p", { class: "muted small", style: "margin-top:0" }, "Markiere, was dir geholfen hat. Das verbessert künftige Briefings zu ähnlichen Situationen."),
-    ...lessonCards,
-  );
+    lessonCards,
+  ));
   if (data.zusammenfassung) showSummary(data);
   else if (data.ki_moeglich) loadSummary();
 }
@@ -823,6 +1112,7 @@ async function viewEntwurf(id) {
     el("p", {}, el("a", { href: "#/pruefen" }, "← Prüfen")),
     el("div", { class: "card" },
       el("strong", {}, "Deine Notiz"),
+      e.bilder?.length ? thumbsRow(e.bilder) : null,
       el("p", { class: "raw" }, e.rohtext),
       e.antwort ? el("p", { class: "raw muted small" }, `Ergänzung: ${e.antwort}`) : null,
       el("p", { class: "muted small" }, `${relTime(e.erstellt_am)}${e.modell ? ` · ${e.modell}` : ""}${e.dauer_sekunden ? ` · ${Math.round(e.dauer_sekunden)} s` : ""}`),
@@ -875,13 +1165,13 @@ async function viewSuche() {
   const run = async () => {
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(searchState)) if (v !== "") params.set(k, v);
-    results.replaceChildren(el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), " Suche …"));
+    fill(results, el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), " Suche …"));
     try {
       const [items, drafts] = await Promise.all([
         api(`/api/suche?${params}`),
         searchState.q.trim() ? api(`/api/entwuerfe?q=${encodeURIComponent(searchState.q)}`).catch(() => ({ eintraege: [] })) : { eintraege: [] },
       ]);
-      results.replaceChildren(
+      fill(results, 
         drafts.eintraege.length
           ? el("details", { class: "card" },
             el("summary", {}, `Ungeprüfte Entwürfe (${drafts.eintraege.length})`),
@@ -895,7 +1185,7 @@ async function viewSuche() {
         ...items.map(resultCard),
       );
     } catch (err) {
-      results.replaceChildren(errorNotice(err));
+      fill(results, errorNotice(err));
     }
   };
   const runDebounced = debounce(run, 300);
@@ -1032,9 +1322,37 @@ async function viewLesson(id) {
     ),
     compliance.node,
     el("div", { class: "actions" }, confirmBtn, editBtn, statusBtn, deleteBtn),
+    fotoSection(l.id, data.bilder || []),
     el("h2", {}, "Erlebt"),
     el("ul", { class: "card" }, data.protokoll.map((p) => el("li", {}, formatDate(p.datum), p.notiz ? ` · ${p.notiz}` : ""))),
   );
+}
+
+function fotoSection(lessonId, bilder) {
+  const btn = el("button", { type: "button" }, "📷 Foto hinzufügen");
+  const input = fotoInput(async (files) => {
+    btn.disabled = true;
+    try {
+      const neu = await fotosHochladen(files);
+      await api(`/api/lessons/${lessonId}/bilder`, { method: "POST", body: { bild_ids: neu.map((b) => b.id) } });
+      toast("Foto angehängt.");
+      viewLesson(lessonId);
+    } catch (err) {
+      btn.disabled = false;
+      toast(err.message);
+    }
+  });
+  btn.addEventListener("click", () => input.click());
+  return el("div", {},
+    el("h2", {}, `Fotos${bilder.length ? ` (${bilder.length})` : ""}`),
+    bilder.length ? thumbsRow(bilder, {
+      onRemove: async (b) => {
+        if (!confirm("Foto von dieser Lesson entfernen?")) return;
+        try { await api(`/api/lessons/${lessonId}/bilder/${b.id}`, { method: "DELETE" }); viewLesson(lessonId); }
+        catch (err) { toast(err.message); }
+      },
+    }) : el("p", { class: "muted small", style: "margin-top:0" }, "Noch kein Foto. Zum Beispiel die Folie oder das Whiteboard, aus dem die Lesson stammt."),
+    el("div", { class: "actions", style: "margin-top:8px" }, btn, input));
 }
 
 async function editLesson(l) {
@@ -1084,6 +1402,16 @@ function kiSection(status, einst, bereichListe) {
     }, [["", "wie Standard"], ...optionen].map(([v, t]) => el("option", { value: v, selected: (einst.strukturierung_bereiche[b.name] || "") === v }, t)));
     return el("div", {}, el("label", { for: `ki-${b.name}` }, b.name, el("span", { class: "hint" }, ` (wirksam: ${MODUS_TEXT[status.modi[b.name]]})`)), sel);
   });
+  const fotoOptionen = [["text", "Texterkennung (Foto bleibt lokal)"], ["bild", "Claude sieht das Foto"]];
+  const fotoProBereich = bereichListe.filter((b) => b.aktiv).map((b) => {
+    const sel = el("select", {
+      id: `foto-${b.name}`,
+      onchange: (e) => speichern({ bild_bereiche: { ...einst.bild_bereiche, [b.name]: e.target.value } }),
+    }, fotoOptionen.map(([v, t]) => el("option", { value: v, selected: (einst.bild_bereiche[b.name] || (b.name === "Beruf" ? "text" : "bild")) === v }, t)));
+    const wirksam = { text: "Texterkennung", bild: "Claude sieht das Foto", lokal: "nichts an Claude" }[status.bild_wege?.[b.name]] || "";
+    return el("div", {}, el("label", { for: `foto-${b.name}` }, `Fotos ${b.name}`, el("span", { class: "hint" }, ` (wirksam: ${wirksam})`)), sel);
+  });
+  const ocrInfo = status.texterkennung?.verfuegbar ? "Texterkennung (Tesseract) ist eingerichtet." : `Texterkennung nicht verfügbar: ${status.texterkennung?.hinweis || "unbekannt"}`;
   const l = status.lokal;
   const lokalInfo = !l.konfiguriert
     ? "Kein lokales Modell konfiguriert (LV_OLLAMA_MODEL leer)."
@@ -1098,6 +1426,9 @@ function kiSection(status, einst, bereichListe) {
     el("label", { for: "ki-standard" }, "Standard", el("span", { class: "hint" }, ` (wirksam: ${MODUS_TEXT[status.modus_standard]})`)),
     standard,
     el("div", { class: "grid2" }, proBereich),
+    el("p", { class: "muted small", style: "margin:16px 0 0" }, "Fotos: Ohne Bereichswahl gilt immer Texterkennung. Bereiche auf \u201Elokal\u201C schicken nie etwas an Claude."),
+    el("div", { class: "grid2" }, fotoProBereich),
+    el("p", { class: "small" }, ocrInfo),
     el("p", { class: "small" }, lokalInfo),
   );
 }
