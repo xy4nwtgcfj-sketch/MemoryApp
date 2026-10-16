@@ -29,6 +29,8 @@ class Hintergrund:
         modell_name: str,
         leerlauf_sekunden: float = 30.0,
         backoff_sekunden: float = 60.0,
+        pflege: Callable[[], object] | None = None,
+        pflege_intervall: float = 3600.0,
     ):
         self.repo = repo
         self.provider = provider
@@ -40,6 +42,9 @@ class Hintergrund:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.aktueller_entwurf: str | None = None
+        self.pflege = pflege
+        self.pflege_intervall = pflege_intervall
+        self._letzte_pflege = float("-inf")
 
     # Einzelschritte (direkt testbar) ------------------------------------
     def verarbeite_naechsten(self) -> bool:
@@ -98,11 +103,14 @@ class Hintergrund:
                     continue
                 if self.nachindexieren():
                     continue
+                if self.pflege and time.monotonic() - self._letzte_pflege > self.pflege_intervall:
+                    self._letzte_pflege = time.monotonic()
+                    self.pflege()
                 wartezeit = self.leerlauf_sekunden
             except EmbeddingFehler as exc:
                 log.warning("Nachindexieren pausiert: %s", exc)
                 wartezeit = self.backoff_sekunden
-            except Exception:
+            except Exception:  # Worker darf nicht sterben
                 log.exception("Unerwarteter Fehler im Worker")
                 wartezeit = self.backoff_sekunden
             self._event.wait(wartezeit)

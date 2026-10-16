@@ -346,8 +346,8 @@ class Repository:
 
     def briefing_holen(self, briefing_id: str) -> dict[str, Any]:
         row = self.conn.execute(
-            "SELECT id, situation, bereich, treffer_json, checkliste_json, zusammenfassung, ki_checkliste_json, ki_modell, erstellt_am "
-            "FROM briefings WHERE id = ?",
+            "SELECT id, situation, bereich, treffer_json, checkliste_json, zusammenfassung, ki_checkliste_json, ki_modell, "
+            "erstellt_am, entwurf_weg, entwurf_text, abgleich_json FROM briefings WHERE id = ?",
             (briefing_id,),
         ).fetchone()
         if row is None:
@@ -357,19 +357,31 @@ class Repository:
         data["checkliste"] = json.loads(data.pop("checkliste_json"))
         raw = data.pop("ki_checkliste_json")
         data["ki_checkliste"] = json.loads(raw) if raw else None
+        abgleich = data.pop("abgleich_json")
+        data["abgleich"] = json.loads(abgleich) if abgleich else None
         data["feedback"] = self.feedback_fuer_briefing(briefing_id)
         return data
 
-    def briefing_ki_setzen(self, briefing_id: str, zusammenfassung: str, checkliste: list[dict[str, str]], modell: str) -> None:
+    def briefing_ki_setzen(
+        self, briefing_id: str, zusammenfassung: str, checkliste: list[dict[str, str]], modell: str,
+        abgleich: dict[str, Any] | None = None,
+    ) -> None:
         with self.conn:
             self.conn.execute(
-                "UPDATE briefings SET zusammenfassung = ?, ki_checkliste_json = ?, ki_modell = ? WHERE id = ?",
-                (zusammenfassung, json.dumps(checkliste, ensure_ascii=False), modell, briefing_id),
+                "UPDATE briefings SET zusammenfassung = ?, ki_checkliste_json = ?, ki_modell = ?, abgleich_json = ? WHERE id = ?",
+                (zusammenfassung, json.dumps(checkliste, ensure_ascii=False), modell,
+                 json.dumps(abgleich, ensure_ascii=False) if abgleich is not None else "", briefing_id),
+            )
+
+    def briefing_entwurf_setzen(self, briefing_id: str, weg: str, text: str) -> None:
+        with self.conn:
+            self.conn.execute(
+                "UPDATE briefings SET entwurf_weg = ?, entwurf_text = ? WHERE id = ?", (weg, text, briefing_id)
             )
 
     def briefings(self, limit: int = 20) -> list[dict[str, Any]]:
         rows = self.conn.execute(
-            "SELECT b.id, b.situation, b.bereich, b.erstellt_am, json_array_length(b.treffer_json) AS anzahl, "
+            "SELECT b.id, b.situation, b.bereich, b.erstellt_am, b.entwurf_weg, json_array_length(b.treffer_json) AS anzahl, "
             "(SELECT COUNT(*) FROM briefing_feedback f WHERE f.briefing_id = b.id AND f.bewertung = 'hilfreich') AS hilfreich "
             "FROM briefings b ORDER BY b.erstellt_am DESC LIMIT ?",
             (limit,),

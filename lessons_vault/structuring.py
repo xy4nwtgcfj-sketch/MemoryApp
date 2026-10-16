@@ -48,7 +48,7 @@ def claude_json(
     model: str,
     effort: str,
     system: str,
-    user_message: str,
+    user_message: str | list[dict[str, Any]],
     schema: dict[str, Any],
     use_fallbacks: bool = True,
     max_tokens: int = 8000,

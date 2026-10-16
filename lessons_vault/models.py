@@ -46,6 +46,7 @@ class LessonIn(LessonBase):
     quelle: Quelle = "text"
     erfassung_sekunden: float | None = Field(default=None, ge=0)
     entwurf_id: str | None = None
+    bild_ids: list[str] = Field(default_factory=list, max_length=10)
 
 
 class LessonImport(LessonBase):
@@ -105,11 +106,15 @@ class Einstellungen(BaseModel):
     strukturierung_standard: Literal["auto", "claude", "lokal", "manuell"] = "auto"
     # Überschreibung pro Bereich, z. B. {"Beruf": "lokal"}
     strukturierung_bereiche: dict[str, Literal["claude", "lokal", "manuell"]] = Field(default_factory=dict)
+    # Fotos: "text" = lokale Texterkennung, nur geprüfter Text an Claude; "bild" = Foto direkt an Claude.
+    # Ohne Eintrag: Beruf "text", andere Bereiche "bild".
+    bild_bereiche: dict[str, Literal["text", "bild"]] = Field(default_factory=dict)
 
 
 class BestaetigungIn(BaseModel):
     notiz: str = ""
     entwurf_id: str | None = None
+    bild_ids: list[str] = Field(default_factory=list, max_length=10)
 
 
 class EntwurfAnfrage(BaseModel):
@@ -183,6 +188,18 @@ class ErfassenAnfrage(BaseModel):
     quelle: Quelle = "text"
     bereich: str = ""
     erfassung_sekunden: float | None = Field(default=None, ge=0)
+    bild_ids: list[str] = Field(default_factory=list, max_length=10)
+
+
+class FotoAnfrage(BaseModel):
+    bild_ids: list[str] = Field(min_length=1, max_length=5)
+    bereich: str = ""
+    text: str = Field(default="", max_length=20000)
+    notiz: str = Field(default="", max_length=2000)
+
+
+class BildLinks(BaseModel):
+    bild_ids: list[str] = Field(min_length=1, max_length=10)
 
 
 class AntwortIn(BaseModel):

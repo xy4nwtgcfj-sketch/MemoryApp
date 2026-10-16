@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 import anthropic
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 
@@ -21,9 +21,12 @@ from . import __version__, db
 from .briefing import BriefingSchreiber, lokale_checkliste, rangliste
 from .compliance import lesson_text_fuer_pruefung, pruefen
 from .config import Settings, load_settings
+from .foto import abgleich_inhalt, abgleichen, kandidaten_finden, kandidaten_inhalt
+from .images import BildFehler, Bildspeicher, Texterkennung
 from .embeddings import EmbeddingFehler, EmbeddingProvider, create_provider, lesson_text, modell_installiert, ollama_status
 from .models import (
     AntwortIn,
+    BildLinks,
     Bereich,
     BereichUpdate,
     BestaetigungIn,
@@ -33,6 +36,7 @@ from .models import (
     EntwurfAnfrage,
     EntwurfEintrag,
     ErfassenAnfrage,
+    FotoAnfrage,
     Lesson,
     LessonImport,
     LessonIn,
@@ -60,8 +64,11 @@ class CompliancePruefung(BaseModel):
 
 
 class BriefingAnfrage(BaseModel):
-    situation: str = Field(min_length=3, max_length=2000)
+    situation: str = Field(default="", max_length=2000)
     bereich: str = ""
+    # Entwurf prüfen (Foto): Fotos und ggf. vom Nutzer geprüfter Text
+    bild_ids: list[str] = Field(default_factory=list, max_length=5)
+    entwurf_text: str = Field(default="", max_length=20000)
 
 
 class FeedbackIn(BaseModel):
@@ -81,6 +88,7 @@ def create_app(
     provider: EmbeddingProvider | None = None,
     lokal: OllamaStrukturierer | None = None,
     schreiber: BriefingSchreiber | None = None,
+    ocr: Texterkennung | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
     conn = db.connect(settings.db_path)
@@ -95,6 +103,9 @@ def create_app(
     if schreiber is None:
         claude_client = strukturierer.client if isinstance(strukturierer, Strukturierer) else None
         schreiber = BriefingSchreiber(claude_client, settings.claude_model, settings.claude_effort)
+    bilder_ordner = Path(settings.bilder_pfad) if settings.bilder_pfad else Path(settings.db_path).parent / "bilder"
+    speicher = Bildspeicher(bilder_ordner)
+    ocr = ocr or Texterkennung(settings.tesseract_cmd)
     suche = Suche(repo, provider)
     ollama_cache: dict[str, Any] = {"zeit": 0.0, "status": {"erreichbar": False, "modelle": []}}
 
@@ -137,6 +148,17 @@ def create_app(
                 privat.add(b.name)
         return privat
 
+    def bild_weg(bereich: str, einst: Einstellungen | None = None) -> str:
+        """Wie Fotos ausgewertet werden: "bild" (an Claude), "text" (lokal erkannt, geprüft an Claude), "lokal" (nie an Claude)."""
+        einst = einst or repo.einstellungen()
+        if bereich and bereich in lokale_bereiche(einst):
+            return "lokal"
+        if not (isinstance(strukturierer, Strukturierer) and strukturierer.verfuegbar):
+            return "lokal"
+        if not bereich:
+            return "text"  # sicherer Standard ohne Bereichswahl
+        return einst.bild_bereiche.get(bereich, "text" if bereich == "Beruf" else "bild")
+
     def verarbeite_lokal(eintrag: EntwurfEintrag) -> Entwurf:
         assert lokal is not None
         bereiche = bereiche_fuer(eintrag.bereich_vorgabe)
@@ -145,7 +167,22 @@ def create_app(
         ergebnis = lokal.strukturieren(eintrag.rohtext, eintrag.quelle, bereiche, kandidaten, eintrag.rueckfrage, eintrag.antwort)
         return fertigstellen(ergebnis, kandidaten, voller_text, eintrag.bereich_vorgabe)
 
-    worker = Hintergrund(repo, provider, verarbeite_lokal, lokal.name if lokal else "")
+    def bilder_aufraeumen() -> int:
+        """Nie verknüpfte Fotos nach 2 Tagen löschen, Dateien ohne Datenbankeintrag entfernen."""
+        geloescht = 0
+        for bild_id in repo.verwaiste_bilder(2):
+            speicher.loeschen(bild_id)
+            repo.bild_loeschen(bild_id)
+            geloescht += 1
+        bekannte = repo.alle_bild_ids()
+        grenze = time.time() - 3600
+        for bild_id in speicher.vorhandene_ids() - bekannte:
+            if speicher.pfad(bild_id).stat().st_mtime < grenze:
+                speicher.loeschen(bild_id)
+                geloescht += 1
+        return geloescht
+
+    worker = Hintergrund(repo, provider, verarbeite_lokal, lokal.name if lokal else "", pflege=bilder_aufraeumen)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -159,6 +196,8 @@ def create_app(
     app.state.provider = provider
     app.state.strukturierer = strukturierer
     app.state.worker = worker
+    app.state.bilder_aufraeumen = bilder_aufraeumen
+    app.state.speicher = speicher
 
     def auth(request: Request) -> None:
         if not settings.token:
@@ -210,6 +249,8 @@ def create_app(
                 "embed_modell_installiert": modell_installiert(settings.ollama_embed_model, ls["modelle"]),
             },
             "modi": {b.name: modus_fuer(b.name, einst) for b in repo.bereiche()},
+            "texterkennung": {"verfuegbar": ocr.verfuegbar, "hinweis": ocr.status()[1]},
+            "bild_wege": {b.name: bild_weg(b.name, einst) for b in repo.bereiche()},
             "modus_standard": modus_fuer("", einst),
         }
 
@@ -306,6 +347,8 @@ def create_app(
         modus = modus_fuer(vorgabe)
         if modus == "lokal":
             eintrag = repo.entwurf_anlegen(anfrage.text, anfrage.quelle, vorgabe, anfrage.erfassung_sekunden)
+            if anfrage.bild_ids:
+                repo.bilder_verknuepfen(anfrage.bild_ids, "entwurf", eintrag.id)
             worker.wecken()
             return {"modus": "hintergrund", "eintrag": eintrag, "warteschlange": repo.entwuerfe_zaehlen()["wartet"]}
         return {"modus": "sofort", "entwurf": sofort_entwurf(anfrage.text, anfrage.quelle, vorgabe, modus)}
@@ -326,8 +369,9 @@ def create_app(
         return {"eintraege": eintraege, "zaehler": repo.entwuerfe_zaehlen(), "aktuell": worker.aktueller_entwurf}
 
     @app.get("/api/entwuerfe/{entwurf_id}", dependencies=deps)
-    def entwurf_holen(entwurf_id: str) -> EntwurfEintrag:
-        return repo.entwurf_holen(entwurf_id)
+    def entwurf_holen(entwurf_id: str) -> dict[str, Any]:
+        eintrag = repo.entwurf_holen(entwurf_id)
+        return {**eintrag.model_dump(), "bilder": [bild_info(b) for b in repo.bilder_von("entwurf", entwurf_id)]}
 
     @app.post("/api/entwuerfe/{entwurf_id}/antwort", dependencies=deps)
     def entwurf_antwort(entwurf_id: str, data: AntwortIn) -> EntwurfEintrag:
@@ -363,9 +407,14 @@ def create_app(
             eintrag = repo.entwurf_holen(data.entwurf_id)
             # Erfassungsdauer zählt bis zum Absenden des Rohtexts, nicht bis zur späteren Prüfung.
             data = data.model_copy(update={"quelle": eintrag.quelle, "erfassung_sekunden": eintrag.erfassung_sekunden})
+        for bild_id in data.bild_ids:
+            repo.bild_holen(bild_id)  # 404 vor dem Anlegen, nicht danach
         vector, modell, fehler = embed_lesson(data)
         lesson = repo.anlegen(data, vector, modell)
+        if data.bild_ids:
+            repo.bilder_verknuepfen(data.bild_ids, "lesson", lesson.id)
         if eintrag:
+            repo.links_umhaengen("entwurf", eintrag.id, "lesson", lesson.id)
             repo.entwurf_loeschen(eintrag.id)
         return LessonAntwort(lesson=lesson, compliance_hinweise=compliance(data), embedding_fehler=fehler)
 
@@ -376,6 +425,7 @@ def create_app(
             "lesson": lesson,
             "protokoll": repo.bestaetigungs_protokoll(lesson_id),
             "compliance_hinweise": compliance(lesson),
+            "bilder": [bild_info(b) for b in repo.bilder_von("lesson", lesson_id)],
         }
 
     @app.put("/api/lessons/{lesson_id}", dependencies=deps)
@@ -398,7 +448,10 @@ def create_app(
         if data and data.entwurf_id:
             repo.entwurf_holen(data.entwurf_id)
         lesson = repo.bestaetigen(lesson_id, data.notiz if data else "")
+        if data and data.bild_ids:
+            repo.bilder_verknuepfen(data.bild_ids, "lesson", lesson_id)
         if data and data.entwurf_id:
+            repo.links_umhaengen("entwurf", data.entwurf_id, "lesson", lesson_id)
             repo.entwurf_loeschen(data.entwurf_id)
         return lesson
 
@@ -422,6 +475,104 @@ def create_app(
             treffer = suche.suchen(q, "volltext", filt, limit)
         return [{"lesson": t.lesson, "score": t.score, "gefunden_durch": t.gefunden_durch} for t in treffer]
 
+    # Fotos -------------------------------------------------------------------
+    def bild_info(b: dict[str, Any]) -> dict[str, Any]:
+        return {k: b[k] for k in ("id", "breite", "hoehe", "ocr_status", "erstellt_am")}
+
+    @app.post("/api/bilder", dependencies=deps, status_code=201)
+    def bilder_hochladen(dateien: list[UploadFile] = File(...)) -> list[dict[str, Any]]:
+        if len(dateien) > 5:
+            raise HTTPException(status_code=422, detail="Höchstens 5 Fotos auf einmal.")
+        ergebnis = []
+        for datei in dateien:
+            try:
+                bild = speicher.speichern(datei.file.read(15 * 1024 * 1024 + 1))
+            except BildFehler as exc:
+                raise HTTPException(status_code=422, detail=f"{datei.filename}: {exc}") from exc
+            repo.bild_anlegen(bild.id, bild.breite, bild.hoehe, bild.groesse)
+            # Texterkennung läuft immer lokal, auch wenn das Foto später an Claude geht: Sie speist die Suche.
+            if ocr.verfuegbar:
+                try:
+                    repo.bild_ocr_setzen(bild.id, ocr.erkennen(speicher.pfad(bild.id)), "fertig")
+                except Exception as exc:  # Tesseract-Fehler dürfen den Upload nicht verhindern
+                    log.warning("Texterkennung fehlgeschlagen: %s", exc)
+                    repo.bild_ocr_setzen(bild.id, "", "fehler")
+            else:
+                repo.bild_ocr_setzen(bild.id, "", "aus")
+            ergebnis.append(bild_info(repo.bild_holen(bild.id)))
+        return ergebnis
+
+    @app.get("/api/bilder/{bild_id}", dependencies=deps)
+    def bild_laden(bild_id: str, variante: str = Query("voll", pattern="^(voll|vorschau)$")) -> FileResponse:
+        repo.bild_holen(bild_id)
+        try:
+            pfad = speicher.pfad(bild_id, variante)
+        except BildFehler as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if not pfad.exists():
+            raise HTTPException(status_code=404, detail="Bilddatei fehlt")
+        return FileResponse(pfad, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+    @app.post("/api/lessons/{lesson_id}/bilder", dependencies=deps)
+    def lesson_bilder_anhaengen(lesson_id: str, data: BildLinks) -> list[dict[str, Any]]:
+        repo.holen(lesson_id)
+        repo.bilder_verknuepfen(data.bild_ids, "lesson", lesson_id)
+        return [bild_info(b) for b in repo.bilder_von("lesson", lesson_id)]
+
+    @app.delete("/api/lessons/{lesson_id}/bilder/{bild_id}", dependencies=deps, status_code=204)
+    def lesson_bild_entfernen(lesson_id: str, bild_id: str) -> None:
+        repo.bild_loesen(bild_id, "lesson", lesson_id)
+
+    def ocr_texte(bild_ids: list[str]) -> str:
+        texte = []
+        for i, bild_id in enumerate(bild_ids, start=1):
+            b = repo.bild_holen(bild_id)
+            if b["ocr_text"]:
+                texte.append(b["ocr_text"] if len(bild_ids) == 1 else f"[Foto {i}]\n{b['ocr_text']}")
+        return "\n\n".join(texte)
+
+    @app.post("/api/foto/vorbereiten", dependencies=deps)
+    def foto_vorbereiten(anfrage: FotoAnfrage) -> dict[str, Any]:
+        """Sagt der Oberfläche, welcher Weg gilt, und liefert den lokal erkannten Text zur Prüfung."""
+        vorgabe = anfrage.bereich if anfrage.bereich and repo.bereich_existiert(anfrage.bereich) else ""
+        weg = bild_weg(vorgabe)
+        text = ocr_texte(anfrage.bild_ids)
+        sperrliste = repo.einstellungen().sperrliste
+        return {
+            "weg": weg,
+            "text": text,
+            # Im Zweifel streng prüfen: ohne Bereich wie "Beruf" (Zahlen und Beträge melden)
+            "compliance_hinweise": pruefen(text, vorgabe or "Beruf", sperrliste) if text else [],
+            "texterkennung": {"verfuegbar": ocr.verfuegbar, "hinweis": ocr.status()[1]},
+        }
+
+    @app.post("/api/foto/kandidaten", dependencies=deps)
+    def foto_kandidaten(anfrage: FotoAnfrage) -> dict[str, Any]:
+        vorgabe = anfrage.bereich if anfrage.bereich and repo.bereich_existiert(anfrage.bereich) else ""
+        weg = bild_weg(vorgabe)  # nie dem Client glauben
+        for bild_id in anfrage.bild_ids:
+            repo.bild_holen(bild_id)
+        if weg == "lokal":
+            raise HTTPException(status_code=409, detail="Für diesen Bereich gehen Fotos nicht an Claude. Nutze den erkannten Text als Notiz.")
+        if weg == "text":
+            if len(anfrage.text.strip()) < 3:
+                raise HTTPException(status_code=422, detail="Kein Text zum Auswerten. Text prüfen oder abtippen.")
+            inhalt = kandidaten_inhalt([], anfrage.text, anfrage.notiz)
+        else:
+            inhalt = kandidaten_inhalt([speicher.fuer_claude(b) for b in anfrage.bild_ids], "", anfrage.notiz)
+        assert isinstance(strukturierer, Strukturierer)
+        try:
+            ergebnis = kandidaten_finden(strukturierer.client, settings.claude_model, settings.claude_effort, inhalt)
+        except anthropic.APIConnectionError as exc:
+            raise HTTPException(status_code=502, detail="Claude nicht erreichbar.") from exc
+        except anthropic.RateLimitError as exc:
+            raise HTTPException(status_code=502, detail="Claude-Limit erreicht, später erneut versuchen.") from exc
+        except anthropic.APIStatusError as exc:
+            raise HTTPException(status_code=502, detail=f"Claude-Fehler {exc.status_code}.") from exc
+        except (RuntimeError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return {**ergebnis, "weg": weg}
+
     # Briefing ----------------------------------------------------------------
     def briefing_antwort(briefing_id: str) -> dict[str, Any]:
         data = repo.briefing_holen(briefing_id)
@@ -434,8 +585,13 @@ def create_app(
             treffer.append({**t, "lesson": lesson})
         einst = repo.einstellungen()
         lokale = lokale_bereiche(einst)
+        data["bilder"] = [bild_info(b) for b in repo.bilder_von("briefing", briefing_id)]
         if data["bereich"] and data["bereich"] in lokale:
             ki_moeglich, ki_hinweis = False, "Der gewählte Bereich wird lokal verarbeitet, daher keine Claude-Zusammenfassung."
+        elif data["entwurf_weg"] == "lokal":
+            ki_moeglich, ki_hinweis = False, "Fotos dieses Bereichs gehen nicht an Claude. Unten siehst du die passenden Lessons."
+        elif data["entwurf_weg"] == "text" and not data["entwurf_text"].strip():
+            ki_moeglich, ki_hinweis = False, "Kein geprüfter Text aus dem Foto, daher kein Abgleich durch Claude."
         elif not schreiber.verfuegbar:
             ki_moeglich, ki_hinweis = False, "Claude ist nicht eingerichtet (ANTHROPIC_API_KEY fehlt)."
         else:
@@ -447,8 +603,19 @@ def create_app(
     @app.post("/api/briefing", dependencies=deps, status_code=201)
     def briefing_erstellen(anfrage: BriefingAnfrage) -> dict[str, Any]:
         vorgabe = anfrage.bereich if anfrage.bereich and repo.bereich_existiert(anfrage.bereich) else ""
+        if not anfrage.bild_ids and len(anfrage.situation.strip()) < 3:
+            raise HTTPException(status_code=422, detail="Beschreib kurz, was ansteht, oder füge ein Foto hinzu.")
+        weg, entwurf_text = "", ""
+        if anfrage.bild_ids:
+            for bild_id in anfrage.bild_ids:
+                repo.bild_holen(bild_id)
+            weg = bild_weg(vorgabe)
+            # Für Claude zählt nur geprüfter Text (Weg text); gesucht wird lokal mit allem Erkannten.
+            entwurf_text = anfrage.entwurf_text.strip() if weg == "text" else ocr_texte(anfrage.bild_ids)
+        suchtext = "\n".join(t for t in (anfrage.situation.strip(), entwurf_text or ocr_texte(anfrage.bild_ids)) if t)[:3000]
+        situation = anfrage.situation.strip() or f"Entwurf prüfen ({len(anfrage.bild_ids)} Foto{'s' if len(anfrage.bild_ids) > 1 else ''})"
         try:
-            vektor = provider.embed([anfrage.situation], "query")[0]
+            vektor = provider.embed([suchtext], "query")[0]
         except EmbeddingFehler:
             vektor = None
         feedback = [
@@ -456,16 +623,19 @@ def create_app(
             for lid, bewertung, vec, modell in repo.feedback_alle()
         ]
         try:
-            treffer = rangliste(suche, anfrage.situation, vorgabe, feedback, vektor)
+            treffer = rangliste(suche, suchtext, vorgabe, feedback, vektor)
         except EmbeddingFehler:
-            treffer = rangliste(suche, anfrage.situation, vorgabe, feedback, vektor, modus="volltext")
+            treffer = rangliste(suche, suchtext, vorgabe, feedback, vektor, modus="volltext")
         gespeichert = [
             {k: v for k, v in t.as_dict().items() if k != "lesson"} | {"lesson_id": t.lesson.id} for t in treffer
         ]
         briefing_id = repo.briefing_anlegen(
-            anfrage.situation, vorgabe, gespeichert, lokale_checkliste([t.lesson for t in treffer]),
+            situation, vorgabe, gespeichert, lokale_checkliste([t.lesson for t in treffer]),
             vektor, provider.name if vektor is not None else "",
         )
+        if anfrage.bild_ids:
+            repo.bilder_verknuepfen(anfrage.bild_ids, "briefing", briefing_id)
+            repo.briefing_entwurf_setzen(briefing_id, weg, entwurf_text)
         return briefing_antwort(briefing_id)
 
     @app.get("/api/briefings", dependencies=deps)
@@ -491,6 +661,18 @@ def create_app(
         # Datenschutz: Lessons aus lokal verarbeiteten Bereichen gehen nie an Claude.
         lessons = [t["lesson"] for t in data["treffer"] if t["lesson"].bereich not in lokale]
         try:
+            if data["entwurf_weg"] in ("text", "bild"):
+                bloecke = [speicher.fuer_claude(b["id"]) for b in data["bilder"]] if data["entwurf_weg"] == "bild" else []
+                situation = "" if data["situation"].startswith("Entwurf prüfen (") else data["situation"]
+                abgleich = abgleichen(
+                    schreiber.client, schreiber.model, schreiber.effort,
+                    abgleich_inhalt(situation, data["entwurf_text"], bloecke, lessons), lessons,
+                )
+                repo.briefing_ki_setzen(
+                    briefing_id, abgleich["zusammenfassung"], abgleich["fehlt"], f"claude:{schreiber.model}",
+                    {"beruecksichtigt": abgleich["beruecksichtigt"]},
+                )
+                return briefing_antwort(briefing_id)
             ergebnis = schreiber.schreiben(data["situation"], lessons)
         except anthropic.APIConnectionError as exc:
             raise HTTPException(status_code=502, detail="Claude nicht erreichbar. Die Checkliste unten gilt trotzdem.") from exc
