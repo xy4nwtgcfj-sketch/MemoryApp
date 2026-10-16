@@ -11,6 +11,7 @@ Projekt) vor weiterer Investition geprüft.
 - [x] **Phase 1: Erfassen und Finden** - Datenmodell, KI-Erfassung per Text/Sprache, Volltext- und semantische Suche, Startbestand
 - [x] **Phase 1.1: Lokale KI (INSERTED)** - Ollama für Embeddings und Hintergrund-Strukturierung, Routing pro Bereich, Messskript für Windows
 - [x] **Phase 1.2: Manuelles Briefing (INSERTED)** - Situation beschreiben, Top 5 Lessons, Checkliste, Claude-Zusammenfassung, Feedback
+- [ ] **Phase 1.3: Fotos (INSERTED)** - Fotos als Input: Lessons aus Folien (A), Entwurf gegen Erfahrung prüfen (B), lokal gespeichert
 - [ ] **Phase 2: Briefings** - Manuelles und kalenderbasiertes Briefing, Erinnerungen, alle Bereiche
 - [ ] **Phase 3: Muster** - Monatliche Auswertung und Dashboard
 
@@ -72,6 +73,25 @@ Plans:
 - [x] 01.2-01: Ranking, Speicherung, Feedback, Claude-Zusammenfassung, API
 - [x] 01.2-02: Briefing-Ansicht, Verlauf, Erfolgskriterium in der Statistik
 
+### Phase 1.3: Fotos (INSERTED)
+**Goal**: Stefan fotografiert eine Folie oder einen Entwurf und bekommt daraus Lesson-Entwürfe (A) oder einen Abgleich mit seinen Erfahrungen (B). Das Foto bleibt lokal an der Lesson bzw. am Briefing.
+**Depends on**: Phase 1.2
+**Requirements**: FOTO-01, FOTO-02, FOTO-03, FOTO-04, FOTO-05, FOTO-06, FOTO-07
+**Success Criteria** (what must be TRUE):
+  1. Fotos werden lokal ohne Metadaten (EXIF, Standort) gespeichert und an Lesson oder Briefing angezeigt
+  2. Bereich Beruf (und ohne Bereichswahl): Bild verlässt nie den PC; nur der lokal erkannte, vom Nutzer geprüfte Text geht an Claude
+  3. Private Bereiche: Claude wertet das Bild direkt aus
+  4. Bereiche auf "lokal": nichts geht an Claude, auch kein erkannter Text
+  5. Aus einer Lessons-Learned-Folie entstehen mehrere auswählbare Kandidaten, die einzeln den normalen Erfassungsablauf durchlaufen
+  6. Ein fotografierter Entwurf wird gegen passende Lessons abgeglichen: Lücken und bereits Berücksichtigtes, jeweils mit Lesson-Bezug
+**Plans**: 4 plans
+
+Plans:
+- [ ] 01.3-01: Bildspeicher, Metadaten-Entfernung, Vorschaubilder, Texterkennung (Tesseract)
+- [ ] 01.3-02: Lessons aus Fotos (Kandidaten, Routing Bild/Text, Verknüpfung mit Lesson und Entwurf)
+- [ ] 01.3-03: Entwurf gegen Erfahrung prüfen (Briefing mit Foto)
+- [ ] 01.3-04: Oberfläche, Einstellungen, Windows-Einrichtung Tesseract
+
 ### Phase 2: Briefings
 **Goal**: Vor einem relevanten Termin bekommt Stefan die 5 wichtigsten Lessons, ohne danach zu suchen.
 **Depends on**: Phase 1 (inkl. Abnahme)
@@ -94,12 +114,13 @@ Plans:
 
 ## Progress
 
-**Execution Order:** 1 → 1.1 → 1.2 → 2 → 3
+**Execution Order:** 1 → 1.1 → 1.2 → 1.3 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Erfassen und Finden | 5/5 | Built, Abnahme ausstehend | 2026-10-16 |
 | 1.1 Lokale KI | 3/3 | Built, Messung auf E5 ausstehend | 2026-10-16 |
 | 1.2 Manuelles Briefing | 2/2 | Built, Nutzung ausstehend | 2026-10-16 |
+| 1.3 Fotos | 0/4 | In progress | - |
 | 2. Briefings | 0/TBD | Not started | - |
 | 3. Muster | 0/TBD | Not started | - |

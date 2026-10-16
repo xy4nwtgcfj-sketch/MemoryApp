@@ -32,6 +32,8 @@ class Settings:
     ollama_url: str = field(default_factory=lambda: os.environ.get("LV_OLLAMA_URL", "http://127.0.0.1:11434"))
     ollama_model: str = field(default_factory=lambda: os.environ.get("LV_OLLAMA_MODEL", "qwen2.5:7b"))
     ollama_embed_model: str = field(default_factory=lambda: os.environ.get("LV_OLLAMA_EMBED_MODEL", "bge-m3"))
+    tesseract_cmd: str = field(default_factory=lambda: os.environ.get("LV_TESSERACT_CMD", ""))
+    bilder_pfad: str = field(default_factory=lambda: os.environ.get("LV_BILDER_PATH", ""))
     worker_aktiv: bool = field(default_factory=lambda: os.environ.get("LV_WORKER", "1") != "0")
 
     @property

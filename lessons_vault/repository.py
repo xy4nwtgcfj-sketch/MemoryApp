@@ -188,6 +188,7 @@ class Repository:
         with self.conn:
             if self.conn.execute("DELETE FROM lessons WHERE id = ?", (lesson_id,)).rowcount == 0:
                 raise NotFound(lesson_id)
+            self.conn.execute("DELETE FROM bild_links WHERE ziel_typ = 'lesson' AND ziel_id = ?", (lesson_id,))
 
     def bestaetigen(self, lesson_id: str, notiz: str = "") -> Lesson:
         """Erneut erlebt: Zähler +1, Protokolleintrag, neu → bestätigt ab 2."""
@@ -316,6 +317,7 @@ class Repository:
         with self.conn:
             if self.conn.execute("DELETE FROM entwuerfe WHERE id = ?", (entwurf_id,)).rowcount == 0:
                 raise NotFound(entwurf_id)
+            self.conn.execute("DELETE FROM bild_links WHERE ziel_typ = 'entwurf' AND ziel_id = ?", (entwurf_id,))
 
     def entwuerfe_zuruecksetzen(self) -> int:
         """Nach einem Neustart: abgebrochene Verarbeitungen wieder einreihen."""
@@ -378,6 +380,7 @@ class Repository:
         with self.conn:
             if self.conn.execute("DELETE FROM briefings WHERE id = ?", (briefing_id,)).rowcount == 0:
                 raise NotFound(briefing_id)
+            self.conn.execute("DELETE FROM bild_links WHERE ziel_typ = 'briefing' AND ziel_id = ?", (briefing_id,))
 
     def feedback_setzen(self, briefing_id: str, lesson_id: str, bewertung: str | None) -> None:
         self.briefing_holen(briefing_id)
@@ -405,6 +408,76 @@ class Repository:
             (ausser_briefing,),
         )
         return [(r["lesson_id"], r["bewertung"], blob_to_vector(r["embedding"]), r["embedding_modell"]) for r in rows]
+
+    # Bilder -----------------------------------------------------------------
+    def bild_anlegen(self, bild_id: str, breite: int, hoehe: int, groesse: int) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO bilder(id, breite, hoehe, groesse, erstellt_am) VALUES (?, ?, ?, ?, ?)",
+                (bild_id, breite, hoehe, groesse, jetzt()),
+            )
+
+    def bild_holen(self, bild_id: str) -> dict[str, Any]:
+        row = self.conn.execute("SELECT * FROM bilder WHERE id = ?", (bild_id,)).fetchone()
+        if row is None:
+            raise NotFound(bild_id)
+        return dict(row)
+
+    def bild_ocr_setzen(self, bild_id: str, text: str, status: str) -> None:
+        with self.conn:
+            self.conn.execute("UPDATE bilder SET ocr_text = ?, ocr_status = ? WHERE id = ?", (text, status, bild_id))
+
+    def bilder_verknuepfen(self, bild_ids: list[str], ziel_typ: str, ziel_id: str) -> None:
+        with self.conn:
+            for bild_id in bild_ids:
+                if self.conn.execute("SELECT 1 FROM bilder WHERE id = ?", (bild_id,)).fetchone() is None:
+                    raise Invalid(f"Unbekanntes Foto {bild_id}")
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO bild_links(bild_id, ziel_typ, ziel_id) VALUES (?, ?, ?)", (bild_id, ziel_typ, ziel_id)
+                )
+
+    def bild_loesen(self, bild_id: str, ziel_typ: str, ziel_id: str) -> None:
+        with self.conn:
+            if self.conn.execute(
+                "DELETE FROM bild_links WHERE bild_id = ? AND ziel_typ = ? AND ziel_id = ?", (bild_id, ziel_typ, ziel_id)
+            ).rowcount == 0:
+                raise NotFound(bild_id)
+
+    def bilder_von(self, ziel_typ: str, ziel_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT b.* FROM bilder b JOIN bild_links l ON l.bild_id = b.id WHERE l.ziel_typ = ? AND l.ziel_id = ? "
+            "ORDER BY b.erstellt_am",
+            (ziel_typ, ziel_id),
+        )
+        return [dict(r) for r in rows]
+
+    def links_entfernen(self, ziel_typ: str, ziel_id: str) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM bild_links WHERE ziel_typ = ? AND ziel_id = ?", (ziel_typ, ziel_id))
+
+    def links_umhaengen(self, von_typ: str, von_id: str, nach_typ: str, nach_id: str) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT OR IGNORE INTO bild_links(bild_id, ziel_typ, ziel_id) "
+                "SELECT bild_id, ?, ? FROM bild_links WHERE ziel_typ = ? AND ziel_id = ?",
+                (nach_typ, nach_id, von_typ, von_id),
+            )
+            self.conn.execute("DELETE FROM bild_links WHERE ziel_typ = ? AND ziel_id = ?", (von_typ, von_id))
+
+    def verwaiste_bilder(self, aelter_als_tage: float = 2) -> list[str]:
+        rows = self.conn.execute(
+            "SELECT id FROM bilder WHERE id NOT IN (SELECT bild_id FROM bild_links) "
+            "AND erstellt_am < strftime('%Y-%m-%dT%H:%M:%S', 'now', ?)",
+            (f"-{aelter_als_tage} days",),
+        )
+        return [r["id"] for r in rows]
+
+    def bild_loeschen(self, bild_id: str) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM bilder WHERE id = ?", (bild_id,))
+
+    def alle_bild_ids(self) -> set[str]:
+        return {r["id"] for r in self.conn.execute("SELECT id FROM bilder")}
 
     def statistik(self) -> dict[str, Any]:
         q = self.conn.execute

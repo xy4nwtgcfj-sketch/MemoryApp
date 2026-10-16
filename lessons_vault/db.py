@@ -134,6 +134,30 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE lessons ADD COLUMN spezifisch INTEGER;
     """,
+    # Version 5: Fotos und Entwurfsabgleich im Briefing
+    """
+    CREATE TABLE bilder (
+        id          TEXT PRIMARY KEY,
+        breite      INTEGER NOT NULL,
+        hoehe       INTEGER NOT NULL,
+        groesse     INTEGER NOT NULL,
+        ocr_text    TEXT NOT NULL DEFAULT '',
+        ocr_status  TEXT NOT NULL DEFAULT 'offen' CHECK (ocr_status IN ('offen', 'fertig', 'fehler', 'aus')),
+        erstellt_am TEXT NOT NULL
+    );
+    -- Ein Foto kann an mehreren Lessons hängen (eine Folie, mehrere Lessons).
+    CREATE TABLE bild_links (
+        bild_id  TEXT NOT NULL REFERENCES bilder(id) ON DELETE CASCADE,
+        ziel_typ TEXT NOT NULL CHECK (ziel_typ IN ('lesson', 'entwurf', 'briefing')),
+        ziel_id  TEXT NOT NULL,
+        PRIMARY KEY (bild_id, ziel_typ, ziel_id)
+    );
+    CREATE INDEX idx_bild_links_ziel ON bild_links(ziel_typ, ziel_id);
+
+    ALTER TABLE briefings ADD COLUMN entwurf_weg TEXT NOT NULL DEFAULT '';
+    ALTER TABLE briefings ADD COLUMN entwurf_text TEXT NOT NULL DEFAULT '';
+    ALTER TABLE briefings ADD COLUMN abgleich_json TEXT NOT NULL DEFAULT '';
+    """,
 ]
 
 
