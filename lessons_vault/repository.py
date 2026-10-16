@@ -173,6 +173,14 @@ class Repository:
             raise Invalid(str(exc)) from exc
         return self.holen(lesson_id)
 
+    def embedding_setzen(self, lesson_id: str, embedding: np.ndarray, embedding_modell: str) -> None:
+        """Nur Index-Pflege, ändert geaendert_am bewusst nicht."""
+        with self.conn:
+            self.conn.execute(
+                "UPDATE lessons SET embedding = ?, embedding_modell = ? WHERE id = ?",
+                (vector_to_blob(embedding), embedding_modell, lesson_id),
+            )
+
     def loeschen(self, lesson_id: str) -> None:
         with self.conn:
             if self.conn.execute("DELETE FROM lessons WHERE id = ?", (lesson_id,)).rowcount == 0:

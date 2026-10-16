@@ -1,0 +1,41 @@
+{
+  "format": "lessons-vault",
+  "version": 1,
+  "_hinweis": "Vorlage für den Startbestand. Die drei Einträge sind BEISPIELE für Form und Abstraktionsgrad, keine echten Erfahrungen. Ersetze sie durch deine eigenen 20 bis 30 Lessons und importiere die Datei unter Einstellungen > Import. Pflicht: titel (max. 80 Zeichen), situation, ereignis, lesson, bereich, schweregrad (1-5). Optional: massnahme, tags, bestaetigungen (wie oft erlebt), erstellt_am (YYYY-MM-DD, wann ungefähr erlebt).",
+  "lessons": [
+    {
+      "titel": "BEISPIEL: Cutover-Plan früh mit dem Lagerbetrieb abstimmen",
+      "situation": "Go-live einer Rollout-Welle in einem großen Lager. Der Cutover-Plan war intern fertig, der Lagerbetrieb kannte ihn nur grob.",
+      "ereignis": "Am Cutover-Wochenende fehlten Schichtleiter für die Bestandsübernahme, die Inventur verzögerte sich um mehrere Stunden.",
+      "lesson": "Vor jedem Cutover den Plan spätestens zwei Wochen vorher Schritt für Schritt mit dem Lagerbetrieb durchgehen und die Personalplanung bestätigen lassen.",
+      "massnahme": "Cutover-Checkliste um Punkt 'Personalplanung Lager schriftlich bestätigt' ergänzen",
+      "bereich": "Beruf",
+      "tags": ["Cutover", "Rollout", "Lagerbetrieb"],
+      "schweregrad": 4,
+      "bestaetigungen": 2,
+      "erstellt_am": "2025-11-15"
+    },
+    {
+      "titel": "BEISPIEL: Unterlagenliste vor dem Bankgespräch anfordern",
+      "situation": "Erstes Finanzierungsgespräch für eine vermietete Eigentumswohnung.",
+      "ereignis": "Es fehlten Mietvertrag, WEG-Protokolle und Gehaltsnachweise. Die Bank konnte kein verbindliches Angebot machen, ein zweiter Termin war nötig.",
+      "lesson": "Vor jedem Bankgespräch die vollständige Unterlagenliste der Bank vorab anfordern und abhaken.",
+      "massnahme": "Checkliste Bankunterlagen pflegen und vor jedem Termin durchgehen",
+      "bereich": "Immobilien",
+      "tags": ["Bank", "Finanzierung", "Unterlagen"],
+      "schweregrad": 2,
+      "erstellt_am": "2025-06-01"
+    },
+    {
+      "titel": "BEISPIEL: Bei Besichtigung WEG-Protokolle der letzten drei Jahre verlangen",
+      "situation": "Besichtigung einer Eigentumswohnung in einem älteren Mehrfamilienhaus.",
+      "ereignis": "Erst nach dem Kauf zeigte sich in den Protokollen eine beschlossene Dachsanierung mit Sonderumlage.",
+      "lesson": "Vor jedem Kaufangebot die WEG-Protokolle der letzten drei Jahre lesen und nach Sonderumlagen und Sanierungsbeschlüssen suchen.",
+      "massnahme": "",
+      "bereich": "Immobilien",
+      "tags": ["WEG", "Besichtigung", "Sonderumlage"],
+      "schweregrad": 5,
+      "erstellt_am": "2024-09-10"
+    }
+  ]
+}
