@@ -1,0 +1,25 @@
+{
+  "mode": "yolo",
+  "granularity": "standard",
+  "workflow": {
+    "research": false,
+    "plan_check": true,
+    "verifier": true,
+    "auto_advance": false,
+    "nyquist_validation": true,
+    "security_enforcement": true,
+    "security_asvs_level": 1,
+    "security_block_on": "high",
+    "discuss_mode": "assumptions"
+  },
+  "planning": {
+    "commit_docs": true,
+    "search_gitignored": false
+  },
+  "git": {
+    "create_tag": false
+  },
+  "parallelization": {
+    "enabled": false
+  }
+}
