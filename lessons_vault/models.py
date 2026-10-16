@@ -28,6 +28,8 @@ class LessonBase(BaseModel):
     bereich: str = Field(min_length=1)
     tags: list[str] = Field(default_factory=list)
     schweregrad: int = Field(ge=1, le=5)
+    # True = persönliche Erfahrung, False = eher Allgemeinwissen, None = nicht eingeschätzt
+    spezifisch: bool | None = None
 
     @field_validator("titel", "situation", "ereignis", "lesson", "massnahme", "bereich")
     @classmethod
@@ -67,6 +69,7 @@ class LessonUpdate(BaseModel):
     tags: list[str] | None = None
     schweregrad: int | None = Field(default=None, ge=1, le=5)
     status: Status | None = None
+    spezifisch: bool | None = None
 
     @field_validator("tags")
     @classmethod
@@ -138,6 +141,10 @@ class Entwurf(BaseModel):
     schweregrad: int = 3
     quelle: Quelle = "text"
     rueckfrage: str = ""
+    # "pflichtfeld": Pflichtangabe fehlt; "spezifitaet": Frage nach dem persönlichen Teil
+    rueckfrage_art: Literal["", "pflichtfeld", "spezifitaet"] = ""
+    spezifitaet: Literal["", "persoenlich", "allgemein"] = ""
+    spezifitaet_hinweis: str = ""
     fehlende_felder: list[str] = Field(default_factory=list)
     compliance_hinweise: list[str] = Field(default_factory=list)
     dublette: DublettenKandidat | None = None

@@ -49,6 +49,15 @@ def server(tmp_path_factory):
                     {"punkt": "WEG-Protokolle der letzten drei Jahre lesen", "lesson_nr": 2},
                 ],
             }
+        inhalt = kwargs["messages"][0]["content"]
+        if "Puffer" in inhalt and "<antwort>" not in inhalt:
+            return payload(titel="Puffer einplanen", lesson="Bei der Projektplanung Puffer einplanen.", bereich="Beruf",
+                           spezifitaet="allgemein", spezifitaet_hinweis="Das würde jeder Ratgeber sagen.",
+                           rueckfrage="Wo genau hat der Puffer bei dir gefehlt und wie viel?", rueckfrage_art="spezifitaet")
+        if "Puffer" in inhalt:
+            return payload(titel="Datenmigration doppelt einplanen", bereich="Beruf",
+                           lesson="Bei jeder Welle die Datenmigration mit dem doppelten meiner Schätzung einplanen.",
+                           spezifitaet="persoenlich", spezifitaet_hinweis="Eigenes wiederkehrendes Muster.")
         return entwurf
 
     fake = FakeClient(antwort)
@@ -230,4 +239,29 @@ def test_briefing(server, page):
 
     page.goto(f"{base}/#/einstellungen")
     expect(page.get_by_text("1 von 1 (1 bewertet)")).to_be_visible()
+    assert page.errors == []
+
+
+def test_spezifitaets_rueckfrage(server, page):
+    base, _ = server
+    expect = playwright.expect
+    page.request.put(f"{base}/api/einstellungen", data=json.dumps({"strukturierung_bereiche": {}}),
+                     headers={"Content-Type": "application/json"})
+    page.goto(f"{base}/#/erfassen")
+    page.reload()
+    page.fill("#capture-text", "Projektplanung, Puffer zu knapp")
+    page.get_by_role("button", name="Strukturieren").click()
+    expect(page.get_by_text("Was ist dein persönlicher Teil?")).to_be_visible()
+    expect(page.get_by_role("button", name="Speichern")).to_be_enabled()  # Rückfrage ist optional
+    expect(page.locator("#f-spezifisch")).not_to_be_checked()
+    shot(page, "10-spezifitaet-frage")
+
+    page.fill("#rueckfrage-antwort", "Datenmigration, ich schätze sie jedes Mal um die Hälfte zu niedrig")
+    page.get_by_role("button", name="Antworten").click()
+    expect(page.locator("#f-lesson")).to_have_value("Bei jeder Welle die Datenmigration mit dem doppelten meiner Schätzung einplanen.")
+    expect(page.locator("#f-spezifisch")).to_be_checked()
+    page.get_by_role("button", name="Speichern").click()
+    expect(page.locator("#toast")).to_contain_text("Gespeichert")
+    page.locator("#toast a").click()
+    expect(page.locator(".badges")).to_contain_text("persönlich")
     assert page.errors == []

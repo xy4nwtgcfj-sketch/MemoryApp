@@ -147,3 +147,17 @@ def test_token(tmp_path):
 def test_compliance_endpunkt(client):
     r = client.post("/api/compliance", json={"text": "Herr Meier war sauer", "bereich": ""})
     assert any("Personenname" in h for h in r.json())
+
+
+
+def test_spezifisch_speichern_und_statistik(client):
+    a = client.post("/api/lessons", json=lesson_json(spezifisch=True)).json()["lesson"]
+    client.post("/api/lessons", json=lesson_json(spezifisch=False))
+    client.post("/api/lessons", json=lesson_json())
+    assert a["spezifisch"] is True
+    stat = client.get("/api/statistik").json()
+    assert stat["lessons_eingeschaetzt"] == 2 and stat["lessons_persoenlich"] == 1
+    r = client.put(f"/api/lessons/{a['id']}", json={"spezifisch": False}).json()
+    assert r["lesson"]["spezifisch"] is False
+    export = client.get("/api/export").json()
+    assert sorted(str(l["spezifisch"]) for l in export["lessons"]) == ["False", "False", "None"]

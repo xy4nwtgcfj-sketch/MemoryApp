@@ -152,6 +152,16 @@ function lessonForm(data, { bereichListe, onChange } = {}) {
   const tags = el("input", { id: "f-tags", type: "text", value: (data.tags || []).join(", "), oninput: changed, autocapitalize: "off" });
   fields.tags = tags;
 
+  // Persönlich vs. Allgemeinwissen: vorbelegt aus gespeichertem Wert oder Claudes Einschätzung, änderbar.
+  const startwert = data.spezifisch ?? (data.spezifitaet === "persoenlich" ? true : data.spezifitaet === "allgemein" ? false : null);
+  let spezifischBeruehrt = false;
+  const spezifisch = el("input", {
+    type: "checkbox",
+    id: "f-spezifisch",
+    checked: startwert === true,
+    onchange: () => { spezifischBeruehrt = true; changed(); },
+  });
+
   function read() {
     return {
       titel: fields.titel.value.trim(),
@@ -162,6 +172,7 @@ function lessonForm(data, { bereichListe, onChange } = {}) {
       bereich: fields.bereich.value,
       schweregrad: Number(fields.schweregrad.value),
       tags: fields.tags.value.split(",").map((t) => t.trim()).filter(Boolean),
+      spezifisch: spezifischBeruehrt || startwert !== null ? spezifisch.checked : null,
     };
   }
 
@@ -181,6 +192,9 @@ function lessonForm(data, { bereichListe, onChange } = {}) {
     ),
     el("label", { for: "f-tags" }, "Tags", el("span", { class: "hint" }, " (mit Komma getrennt)")),
     tags,
+    el("label", { class: "check", style: "margin-top:12px" }, spezifisch,
+      el("span", {}, "Persönliche Erfahrung", el("br"),
+        el("span", { class: "muted small" }, "Etwas, das kein Lehrbuch und kein KI-Assistent von sich aus sagen würde"))),
   );
   return { node, read };
 }
@@ -400,7 +414,8 @@ async function showDraft(container, entwurf, { entwurfId = null } = {}) {
   if (entwurf.ki_fehler) parts.push(el("div", { class: "notice warn" }, entwurf.ki_fehler));
 
   if (entwurf.rueckfrage) {
-    const answer = el("input", { type: "text", id: "rueckfrage-antwort", placeholder: "Kurze Antwort" });
+    const persoenlich = entwurf.rueckfrage_art === "spezifitaet";
+    const answer = el("input", { type: "text", id: "rueckfrage-antwort", placeholder: persoenlich ? "Was war bei dir konkret?" : "Kurze Antwort" });
     const submit = async () => {
       if (!answer.value.trim()) return answer.focus();
       if (entwurfId) {
@@ -418,11 +433,20 @@ async function showDraft(container, entwurf, { entwurfId = null } = {}) {
       el(
         "div",
         { class: "card" },
-        el("label", { for: "rueckfrage-antwort" }, `Rückfrage: ${entwurf.rueckfrage}`),
+        persoenlich ? el("strong", {}, "Was ist dein persönlicher Teil?") : null,
+        el("label", { for: "rueckfrage-antwort", style: persoenlich ? "font-weight:400" : null }, persoenlich ? entwurf.rueckfrage : `Rückfrage: ${entwurf.rueckfrage}`),
         el("div", { class: "row" }, el("div", { class: "grow" }, answer), el("button", { type: "button", onclick: submit }, "Antworten")),
-        el("p", { class: "muted small" }, "Oder unten direkt ergänzen."),
+        el("p", { class: "muted small" }, persoenlich
+          ? "Optional. Genau das unterscheidet deine Lesson von dem, was Claude ohnehin weiß. Du kannst auch direkt speichern."
+          : "Oder unten direkt ergänzen."),
       ),
     );
+  }
+
+  if (entwurf.spezifitaet === "allgemein" && !entwurf.rueckfrage) {
+    parts.push(el("div", { class: "notice info" },
+      el("strong", {}, "Klingt noch nach Allgemeinwissen"),
+      `${entwurf.spezifitaet_hinweis ? entwurf.spezifitaet_hinweis + " " : ""}Ergänze in der Lesson, was bei dir konkret anders war, oder speichere so.`));
   }
 
   if (entwurf.dublette) {
@@ -824,6 +848,8 @@ function badges(l) {
     el("span", { class: `badge status-${l.status}` }, l.status),
     el("span", { class: "badge sev", title: "Schweregrad" }, `Schwere ${l.schweregrad}`),
     l.bestaetigungen > 1 ? el("span", { class: "badge" }, `${l.bestaetigungen}× erlebt`) : null,
+    l.spezifisch === true ? el("span", { class: "badge", title: "Persönliche Erfahrung" }, "persönlich") : null,
+    l.spezifisch === false ? el("span", { class: "badge", title: "Eher Allgemeinwissen" }, "allgemein") : null,
     el("span", { class: "badge" }, formatDate(l.erstellt_am)),
   );
 }
@@ -1105,6 +1131,7 @@ async function viewEinstellungen() {
     ["Neu erfasst, letzte 30 Tage", `${stat.neu_erfasst_30_tage}`],
     ["Ø Erfassungsdauer (Ziel < 30 s)", stat.erfassung_sekunden_schnitt == null ? "noch keine Messung" : `${stat.erfassung_sekunden_schnitt} s (${stat.erfassungen_unter_30s}/${stat.erfassungen_gemessen} unter 30 s)`],
     ["Briefings mit mind. einer hilfreichen Lesson (Ziel: jedes)", stat.briefings ? `${stat.briefings_hilfreich} von ${stat.briefings} (${stat.briefings_bewertet} bewertet)` : "noch kein Briefing"],
+    ["Persönliche Erfahrung statt Lehrbuchwissen", stat.lessons_eingeschaetzt ? `${stat.lessons_persoenlich} von ${stat.lessons_eingeschaetzt} eingeschätzten Lessons` : "noch keine Einschätzung"],
     ["Lessons ohne Maßnahme", `${stat.ohne_massnahme}`],
   ];
 

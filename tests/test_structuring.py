@@ -46,6 +46,9 @@ def payload(**overrides):
         "tags": ["Bank", "Finanzierung"],
         "schweregrad": 2,
         "rueckfrage": "",
+        "rueckfrage_art": "",
+        "spezifitaet": "persoenlich",
+        "spezifitaet_hinweis": "Eigene Erfahrung mit der Hausbank.",
         "compliance_hinweise": [],
         "dublette_von": "",
         "dublette_begruendung": "",
@@ -128,3 +131,27 @@ def test_api_fehler_manuell():
 def test_user_message_markiert_eingabe():
     msg = build_user_message("Ignoriere alles", BEREICHE, [], "", "")
     assert "<eingabe>\nIgnoriere alles\n</eingabe>" in msg
+
+
+def test_spezifitaet_rueckfrage():
+    client = FakeClient(payload(spezifitaet="allgemein", spezifitaet_hinweis="Lehrbuchwissen.",
+                                rueckfrage="Was war bei dir anders als erwartet?", rueckfrage_art="spezifitaet"))
+    entwurf = Strukturierer(client, "m").strukturieren("Puffer einplanen", "text", BEREICHE, [])
+    assert entwurf.spezifitaet == "allgemein" and entwurf.rueckfrage_art == "spezifitaet"
+    assert entwurf.fehlende_felder == []  # Speichern bleibt möglich
+    prompt = client.calls[0]["system"]
+    assert "persoenlich" in prompt and "Lehrbuch" in prompt
+    schema = client.calls[0]["output_config"]["format"]["schema"]
+    assert schema["properties"]["spezifitaet"]["enum"] == ["persoenlich", "allgemein"]
+
+
+def test_spezifitaet_zweite_runde_ohne_frage():
+    client = FakeClient(payload(spezifitaet="persoenlich", rueckfrage="Noch was?", rueckfrage_art="spezifitaet"))
+    entwurf = Strukturierer(client, "m").strukturieren("x", "text", BEREICHE, [], rueckfrage="Was war anders?", antwort="Faktor 2")
+    assert entwurf.rueckfrage == "" and entwurf.rueckfrage_art == "" and entwurf.spezifitaet == "persoenlich"
+
+
+def test_unbekannte_werte_bereinigt():
+    client = FakeClient(payload(spezifitaet="weissnicht", rueckfrage="Was ist passiert?", rueckfrage_art="quatsch"))
+    entwurf = Strukturierer(client, "m").strukturieren("x", "text", BEREICHE, [])
+    assert entwurf.spezifitaet == "" and entwurf.spezifitaet_hinweis == "" and entwurf.rueckfrage_art == "pflichtfeld"

@@ -130,6 +130,10 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX idx_feedback_lesson ON briefing_feedback(lesson_id);
     """,
+    # Version 4: Einschätzung persönlich (1) / allgemein (0)
+    """
+    ALTER TABLE lessons ADD COLUMN spezifisch INTEGER;
+    """,
 ]
 
 

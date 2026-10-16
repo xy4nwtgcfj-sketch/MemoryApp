@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-10-16)
 Phase: 1.2 of 3 (Manuelles Briefing, eingeschoben)
 Plan: 2 of 2 in current phase
 Status: Phase complete, Einrichtung und 3-Wochen-Abnahme ausstehend
-Last activity: 2026-10-16 — Phase 1.2 gebaut und automatisiert verifiziert (102 Tests)
+Last activity: 2026-10-16 — Quick 001 Spezifitäts-Check (107 Tests)
 
 Progress: [███░░░░░░░] 33%
 
@@ -27,12 +27,19 @@ Siehe PROJECT.md Key Decisions. Wichtigste: Voyage statt nicht existierendem "Cl
 - Startbestand (20 bis 30 Lessons) schreiben und importieren
 - Auf E5 (Windows 11) einrichten: Python, Ollama, Modelle, .env, tailscale serve, Autostart
 - benchmark_lokal.py ausführen und LV_OLLAMA_MODEL festlegen
+- Vergleichstest in der Abnahme: 3 bis 5 Briefings gegen dieselbe Frage im normalen Claude-Chat; Mehrwert nur, wenn das Briefing Persönliches liefert
 - Später: Whisper lokal statt Browser-Spracherkennung
 
 ### Blockers/Concerns
 
 - Deloitte-Richtlinien-Check vor beruflichen Einträgen (organisatorisch, nicht technisch)
 - Offene Fragen 1 (Teilen) und 3 (Integration in Dashboard) unbeantwortet, betreffen erst spätere Meilensteine
+
+### Quick Tasks Completed
+
+| # | Description | Date | Directory |
+|---|---|---|---|
+| 001 | Spezifitäts-Check: Rückfrage nach dem persönlichen Teil, Markierung persönlich/allgemein, Statistik | 2026-10-16 | .planning/quick/001-spezifitaets-check |
 
 ## Session Continuity
 

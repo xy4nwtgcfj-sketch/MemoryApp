@@ -10,7 +10,10 @@ Abnahme von Phase 1 (drei Wochen echte Nutzung, mindestens 10 neue Lessons).
 ## Funktionen
 
 - **Erfassen:** Stichworte tippen oder diktieren, optional einen Bereich antippen. Je nach Einstellung:
-  - **Claude (sofort):** Entwurf in wenigen Sekunden, höchstens eine Rückfrage.
+  - **Claude (sofort):** Entwurf in wenigen Sekunden, höchstens eine Rückfrage. Klingt eine Lesson nach
+    Lehrbuchwissen, das Claude ohnehin kennt ("Puffer einplanen"), fragt Claude nach deinem persönlichen Teil:
+    Was war bei dir anders, welches eigene Muster, welche Größenordnung? Die Frage ist optional.
+    Im Formular markiert "Persönliche Erfahrung", ob die Lesson Wissen enthält, das nur du hast.
   - **Lokal (Hintergrund):** Der Rohtext ist sofort gespeichert. Ein lokales Modell auf dem PC strukturiert
     ihn in 1 bis 3 Minuten, der Entwurf landet unter **Prüfen**.
   - **Manuell:** Formular selbst ausfüllen.

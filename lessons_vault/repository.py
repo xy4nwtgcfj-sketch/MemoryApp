@@ -14,7 +14,7 @@ from .models import Bereich, Einstellungen, Entwurf, EntwurfEintrag, Lesson, Les
 
 LESSON_COLUMNS = (
     "id, titel, situation, ereignis, lesson, massnahme, bereich, tags, schweregrad, status, "
-    "bestaetigungen, erstellt_am, geaendert_am, quelle, embedding_modell, erfassung_sekunden"
+    "bestaetigungen, erstellt_am, geaendert_am, quelle, embedding_modell, erfassung_sekunden, spezifisch"
 )
 
 
@@ -121,11 +121,12 @@ class Repository:
         try:
             with self.conn:
                 self.conn.execute(
-                    f"INSERT INTO lessons({LESSON_COLUMNS}, embedding) VALUES ({', '.join('?' * 17)})",
+                    f"INSERT INTO lessons({LESSON_COLUMNS}, embedding) VALUES ({', '.join('?' * 18)})",
                     (
                         lesson_id, data.titel, data.situation, data.ereignis, data.lesson, data.massnahme,
                         data.bereich, json.dumps(data.tags, ensure_ascii=False), data.schweregrad, status,
                         bestaetigungen, erstellt, geaendert, data.quelle, embedding_modell, sekunden,
+                        None if data.spezifisch is None else int(data.spezifisch),
                         vector_to_blob(embedding),
                     ),
                 )
@@ -155,6 +156,8 @@ class Repository:
     ) -> Lesson:
         self.holen(lesson_id)
         changes: dict[str, Any] = update.model_dump(exclude_unset=True, exclude_none=True)
+        if "spezifisch" in changes:
+            changes["spezifisch"] = int(changes["spezifisch"])
         if "bereich" in changes:
             self._pruefe_bereich(changes["bereich"])
         if "tags" in changes:
@@ -417,6 +420,7 @@ class Repository:
         ).fetchone()
         offene_entwuerfe = q("SELECT COUNT(*) FROM entwuerfe").fetchone()[0]
         briefings = q("SELECT COUNT(*) FROM briefings").fetchone()[0]
+        spez = q("SELECT COUNT(spezifisch), COALESCE(SUM(spezifisch), 0) FROM lessons WHERE status != 'überholt'").fetchone()
         briefings_bewertet = q("SELECT COUNT(DISTINCT briefing_id) FROM briefing_feedback").fetchone()[0]
         briefings_hilfreich = q(
             "SELECT COUNT(DISTINCT briefing_id) FROM briefing_feedback WHERE bewertung = 'hilfreich'"
@@ -435,6 +439,8 @@ class Repository:
             "ohne_massnahme": ohne_massnahme,
             "offene_entwuerfe": offene_entwuerfe,
             "briefings": briefings,
+            "lessons_eingeschaetzt": spez[0],
+            "lessons_persoenlich": spez[1],
             "briefings_bewertet": briefings_bewertet,
             "briefings_hilfreich": briefings_hilfreich,
         }
