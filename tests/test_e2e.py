@@ -16,11 +16,13 @@ import pytest
 playwright = pytest.importorskip("playwright.sync_api")
 uvicorn = pytest.importorskip("uvicorn")
 
+from lessons_vault import main  # noqa: E402
 from lessons_vault.config import Settings  # noqa: E402
 from lessons_vault.embeddings import HashingProvider  # noqa: E402
 from lessons_vault.main import create_app  # noqa: E402
-from lessons_vault.structuring import Strukturierer  # noqa: E402
+from lessons_vault.structuring import OllamaStrukturierer, Strukturierer  # noqa: E402
 
+from .ollama_mock import OllamaMock  # noqa: E402
 from .test_structuring import FakeClient, payload  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,8 +38,14 @@ def free_port() -> int:
 @pytest.fixture(scope="module")
 def server(tmp_path_factory):
     fake = FakeClient(payload(situation="Termin bei der Bank für eine vermietete Wohnung, Herr Meier als Berater."))
-    settings = Settings(db_path=tmp_path_factory.mktemp("e2e") / "e2e.db")
-    app = create_app(settings, Strukturierer(fake, "claude-opus-5-5"), HashingProvider())
+    mp = pytest.MonkeyPatch()
+    mp.setattr(main, "ollama_status", lambda url, timeout=2.0: {"erreichbar": True, "modelle": ["qwen2.5:7b"]})
+    ollama = OllamaMock(payload(bereich="Beruf", titel="Cutover-Personal früh bestätigen", lesson="Vor jedem Cutover die Personalplanung schriftlich bestätigen lassen."))
+    settings = Settings(db_path=tmp_path_factory.mktemp("e2e") / "e2e.db", anthropic_api_key="", ollama_model="qwen2.5:7b")
+    app = create_app(
+        settings, Strukturierer(fake, "claude-opus-5-5"), HashingProvider(),
+        OllamaStrukturierer("http://ollama", "qwen2.5:7b", client=ollama.client()),
+    )
     port = free_port()
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
     srv = uvicorn.Server(config)
@@ -50,6 +58,7 @@ def server(tmp_path_factory):
     yield f"http://127.0.0.1:{port}", fake
     srv.should_exit = True
     thread.join(timeout=5)
+    mp.undo()
 
 
 @pytest.fixture(scope="module")
@@ -136,4 +145,43 @@ def test_ablauf(server, page):
 
     # Keine horizontale Scrollbar auf Handybreite
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    assert page.errors == []
+
+
+def test_lokaler_ablauf(server, page):
+    base, _ = server
+    expect = playwright.expect
+    page.request.put(f"{base}/api/einstellungen", data=json.dumps({"strukturierung_bereiche": {"Beruf": "lokal"}}),
+                     headers={"Content-Type": "application/json"})
+    page.goto(f"{base}/#/erfassen")
+    page.reload()
+    page.get_by_role("button", name="Beruf").click()
+    expect(page.get_by_text("Verarbeitung: lokal im Hintergrund.")).to_be_visible()
+    page.fill("#capture-text", "Cutover, Schichtleiter fehlten, Inventur verzögert")
+    page.get_by_role("button", name="Speichern").click()
+    expect(page.locator("#toast")).to_contain_text("Wird lokal strukturiert")
+
+    # Worker-Thread verarbeitet im Hintergrund; Prüfen-Ansicht aktualisiert sich
+    page.goto(f"{base}/#/pruefen")
+    for _ in range(20):
+        if page.get_by_text("bereit zur Prüfung").count():
+            break
+        page.wait_for_timeout(250)
+        page.reload()
+    expect(page.get_by_text("bereit zur Prüfung")).to_be_visible()
+    expect(page.locator("#pruefen-count")).to_have_text("1")
+    shot(page, "06-pruefen")
+
+    page.get_by_text("Cutover-Personal früh bestätigen").click()
+    expect(page.get_by_text("Deine Notiz")).to_be_visible()
+    expect(page.locator("#f-lesson")).to_have_value("Vor jedem Cutover die Personalplanung schriftlich bestätigen lassen.")
+    shot(page, "07-entwurf-pruefen")
+    page.get_by_role("button", name="Speichern").click()
+    expect(page.locator("#toast")).to_contain_text("Gespeichert")
+    expect(page.get_by_text("Nichts zu prüfen.")).to_be_visible()
+
+    page.goto(f"{base}/#/einstellungen")
+    expect(page.get_by_role("heading", name="KI-Strukturierung")).to_be_visible()
+    expect(page.locator("#ki-Beruf")).to_have_value("lokal")
+    shot(page, "08-einstellungen-ki")
     assert page.errors == []

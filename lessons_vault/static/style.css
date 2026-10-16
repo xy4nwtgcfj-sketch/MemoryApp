@@ -240,3 +240,35 @@ details summary { cursor: pointer; font-weight: 600; min-height: 44px; display: 
 
 .empty { text-align: center; color: var(--muted); padding: 32px 8px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.tabbar a { position: relative; }
+.tabbar .count {
+  position: absolute;
+  top: 4px;
+  left: calc(50% + 6px);
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: .7rem;
+  line-height: 18px;
+  text-align: center;
+}
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; }
+.chip {
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-weight: 500;
+  background: var(--surface);
+}
+.chip[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--primary-text); }
+.chip small { opacity: .75; font-weight: 400; margin-left: 4px; }
+
+.raw { white-space: pre-wrap; margin: 4px 0 0; }
+.badge.st-wartet, .badge.st-in_arbeit { color: var(--accent); }
+.badge.st-fertig { color: var(--ok-text); background: var(--ok-bg); border-color: transparent; }
+.badge.st-fehler { color: var(--danger); }

@@ -203,7 +203,9 @@ def create_app(
         return repo.einstellungen()
 
     @app.put("/api/einstellungen", dependencies=deps)
-    def einstellungen_speichern(data: Einstellungen) -> Einstellungen:
+    def einstellungen_speichern(neu: Einstellungen) -> Einstellungen:
+        # Nur mitgeschickte Felder ändern, damit z. B. das Speichern der Sperrliste die KI-Modi nicht zurücksetzt.
+        data = repo.einstellungen().model_copy(update=neu.model_dump(exclude_unset=True))
         data.sperrliste = sorted({s.strip() for s in data.sperrliste if s.strip()}, key=str.lower)
         bekannte = {b.name for b in repo.bereiche()}
         data.strukturierung_bereiche = {k: v for k, v in data.strukturierung_bereiche.items() if k in bekannte}

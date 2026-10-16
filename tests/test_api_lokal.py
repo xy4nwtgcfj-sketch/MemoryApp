@@ -132,3 +132,11 @@ def test_lifespan_startet_worker(tmp_path, monkeypatch):
         assert client.get("/api/status").status_code == 200
         assert app.state.worker._thread.is_alive()
     assert not app.state.worker._thread.is_alive()
+
+
+def test_einstellungen_teilweise_speichern(setup):
+    client, *_ = setup
+    client.put("/api/einstellungen", json={"strukturierung_bereiche": {"Beruf": "lokal"}})
+    client.put("/api/einstellungen", json={"sperrliste": ["Acme"]})
+    data = client.get("/api/einstellungen").json()
+    assert data["sperrliste"] == ["Acme"] and data["strukturierung_bereiche"] == {"Beruf": "lokal"}
