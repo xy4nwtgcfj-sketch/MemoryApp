@@ -2,6 +2,8 @@ import os
 
 # Tests laufen ohne erzwungenes Zugangstoken und mit dem Host-Namen des Testclients.
 os.environ.setdefault("LV_TOKEN_ERZWINGEN", "0")
+# Ein lokal gesetztes LV_TOKEN aus der .env darf die Tests nicht beeinflussen
+os.environ["LV_TOKEN"] = ""
 os.environ.setdefault("LV_HOSTS", "testserver,127.0.0.1,localhost")
 
 import pytest

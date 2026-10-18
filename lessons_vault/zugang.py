@@ -19,6 +19,15 @@ CSP = (
 )
 
 
+# Ohne leicht verwechselbare Zeichen (I, L, 1, O, 0), damit es sich auf dem iPhone abtippen lässt.
+ZEICHEN = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+
+def lesbares_token(gruppen: int = 4) -> str:
+    """Token wie K7QM-W4TX-9HPR-N3VD: 16 Zeichen aus 31, rund 79 Bit."""
+    return "-".join("".join(secrets.choice(ZEICHEN) for _ in range(4)) for _ in range(gruppen))
+
+
 def zugangstoken(ordner: Path) -> str:
     """Liest oder erzeugt das Zugangstoken in <ordner>/zugangstoken.txt."""
     datei = ordner / "zugangstoken.txt"
@@ -27,7 +36,7 @@ def zugangstoken(ordner: Path) -> str:
         if token:
             return token
     ordner.mkdir(parents=True, exist_ok=True)
-    token = secrets.token_urlsafe(24)
+    token = lesbares_token()
     datei.write_text(token + "\n", encoding="utf-8")
     log.warning("Neues Zugangstoken erzeugt: %s (einmalig in der App eintragen)", datei)
     return token

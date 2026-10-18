@@ -1,3 +1,4 @@
+import re
 from fastapi.testclient import TestClient
 
 from lessons_vault import main
@@ -17,7 +18,7 @@ def test_token_wird_erzeugt_und_verlangt(tmp_path, monkeypatch):
     client = TestClient(app_fuer(tmp_path, monkeypatch, token="", token_erzwingen=True))
     datei = tmp_path / "zugangstoken.txt"
     token = datei.read_text().strip()
-    assert len(token) >= 24
+    assert re.fullmatch(r"[A-HJ-KM-NP-Z2-9]{4}(-[A-HJ-KM-NP-Z2-9]{4}){3}", token)  # lesbar, ohne I/L/O/0/1
     assert client.get("/api/status").status_code == 401
     assert client.get("/api/status", headers={"Authorization": f"Bearer {token}"}).status_code == 200
     # Beim nächsten Start dasselbe Token

@@ -275,19 +275,27 @@ function zugangKarte() {
     el("label", { for: "token" }, "Zugangstoken"),
     el("div", { class: "row" }, el("div", { class: "grow" }, input), el("button", {
       type: "button",
-      onclick: () => { store.set("lv-token", input.value.trim()); toast("Token gesichert."); bereicheVergessen(); refreshStats(); },
+      onclick: () => { input.value = tokenNormalisieren(input.value); store.set("lv-token", input.value); toast("Token gesichert."); bereicheVergessen(); refreshStats(); },
     }, "Sichern")),
     el("p", { class: "hint" }, "Steht auf dem PC in data\\zugangstoken.txt."));
 }
 
 // ---------------------------------------------------------------- Zugang
-export function viewZugang() {
+// Lesbare Tokens (XXXX-XXXX-…) unabhängig von Groß/Klein und Leerzeichen akzeptieren; alte Tokens unverändert.
+function tokenNormalisieren(wert) {
+  const roh = String(wert || "").trim();
+  return /^[A-Za-z0-9]{4}([ -]?[A-Za-z0-9]{4}){3}$/.test(roh) ? roh.toUpperCase().replace(/[ -]/g, "").match(/.{4}/g).join("-") : roh;
+}
+
+export function viewZugang(params = {}) {
   const render = ansicht();
   kopf("Zugang");
-  const input = el("input", { type: "password", id: "zugang-token", autocomplete: "current-password", value: store.get("lv-token"), "aria-describedby": "zugang-meldung" });
+  const input = el("input", { type: "text", id: "zugang-token", autocomplete: "off", autocapitalize: "characters", autocorrect: "off", spellcheck: "false",
+    placeholder: "XXXX-XXXX-XXXX-XXXX", value: store.get("lv-token"), "aria-describedby": "zugang-meldung" });
   const meldung = el("div", { id: "zugang-meldung", role: "status" });
   const pruefen = async () => {
-    store.set("lv-token", input.value.trim());
+    input.value = tokenNormalisieren(input.value);
+    store.set("lv-token", input.value);
     try {
       state.zugangNoetig = false;
       await api("/api/status");
@@ -312,11 +320,19 @@ export function viewZugang() {
   render(
     grosserTitel("Zugang"),
     el("div", { class: "card" },
-      el("p", { style: "margin-top:0" }, "Diese App ist mit einem Zugangstoken geschützt. Es steht auf dem PC in der Datei ", el("code", {}, "data\\zugangstoken.txt"), " im Ordner der App."),
+      el("p", { style: "margin-top:0" }, "Diese App ist mit einem Zugangstoken geschützt. Es steht auf dem PC in der ", el("code", {}, ".env"), " (LV_TOKEN) oder, falls dort leer, in ", el("code", {}, "data\\zugangstoken.txt"), ". Groß- und Kleinschreibung und Bindestriche sind egal."),
       el("p", { class: "small muted" }, "Mit der gemeinsamen Zwischenablage kopierst du es am Mac oder PC und fügst es hier ein. Die installierte App braucht es einmal extra, auch wenn Safari es schon kennt."),
       el("label", { for: "zugang-token" }, "Zugangstoken"),
       el("div", { class: "row" }, el("div", { class: "grow" }, input), einfuegen),
       meldung,
       el("div", { class: "actions", style: "margin-bottom:0" }, el("button", { type: "button", class: "primary block", onclick: pruefen }, "Anmelden"))));
+  // Einrichtungslink (#/zugang?t=…): Token übernehmen, aus der Adresszeile entfernen, direkt prüfen.
+  // Der Teil nach # geht nie an den Server und landet so in keinem Log.
+  if (params.t) {
+    input.value = params.t;
+    history.replaceState(null, "", "#/zugang");
+    pruefen();
+    return;
+  }
   input.focus();
 }

@@ -22,7 +22,7 @@ const routes = [
   [/^#\/lesson\/([\w-]+)$/, (p, id) => viewLesson(id), "suche"],
   [/^#\/lesson\/([\w-]+)\/bearbeiten$/, (p, id) => editLesson(id), "suche"],
   [/^#\/einstellungen$/, () => viewEinstellungen(), "einstellungen"],
-  [/^#\/zugang$/, () => viewZugang(), ""],
+  [/^#\/zugang$/, (p) => viewZugang(p), ""],
 ];
 
 // Scrollposition je Route merken, damit "Zurück" in langen Listen an derselben Stelle landet.
