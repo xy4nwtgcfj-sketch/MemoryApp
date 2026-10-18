@@ -169,6 +169,18 @@ MIGRATIONS: list[str] = [
     ALTER TABLE bereiche ADD COLUMN beruflich INTEGER NOT NULL DEFAULT 0;
     UPDATE bereiche SET beruflich = 1 WHERE name = 'Beruf';
     """,
+    # Version 8: Schnellnotiz. Jede Erfassung landet zuerst als Entwurf; der Modus legt fest, wer strukturiert.
+    # Bestehende Entwürfe stammen aus dem lokalen Weg und bleiben lokal.
+    """
+    ALTER TABLE entwuerfe ADD COLUMN modus TEXT NOT NULL DEFAULT 'lokal';
+    ALTER TABLE entwuerfe ADD COLUMN freigabe INTEGER NOT NULL DEFAULT 0;
+    CREATE TABLE rueckmeldungen (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        art         TEXT NOT NULL,
+        wert        TEXT NOT NULL,
+        erstellt_am TEXT NOT NULL
+    );
+    """,
 ]
 
 

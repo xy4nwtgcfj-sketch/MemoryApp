@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 import anthropic
-from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from starlette.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -50,6 +51,9 @@ from .models import (
     LessonImport,
     LessonIn,
     LessonUpdate,
+    NotizAnfrage,
+    RueckmeldungIn,
+    StrukturierenAnfrage,
 )
 from .repository import Invalid, NotFound, Repository
 from .search import Filter, Suche, suchbegriffe
@@ -209,15 +213,36 @@ def create_app(
                 "hinweise": hinweise,
             })
 
-    def verarbeite_lokal(eintrag: EntwurfEintrag) -> Entwurf:
-        assert lokal is not None
-        bereiche = bereiche_fuer(eintrag.bereich_vorgabe)
+    def verarbeite_entwurf(eintrag: EntwurfEintrag) -> Entwurf:
+        """Strukturiert einen gesicherten Entwurf je nach Modus: lokal, Claude oder manuell."""
+        einst = repo.einstellungen()
+        vorgabe = eintrag.bereich_vorgabe
+        modus = eintrag.modus
+        # Wurde der Bereich inzwischen auf lokal gestellt, gilt das auch für schon gesicherte Notizen.
+        if modus != "lokal" and ((vorgabe and vorgabe in lokale_bereiche(einst)) or (not vorgabe and privat_aktiv(einst))):
+            modus = "lokal"
+        bereiche = bereiche_fuer(vorgabe)
         voller_text = eintrag.rohtext if not eintrag.antwort else f"{eintrag.rohtext}\n{eintrag.antwort}"
-        kandidaten = kandidaten_fuer(voller_text)
-        ergebnis = lokal.strukturieren(eintrag.rohtext, eintrag.quelle, bereiche, kandidaten, eintrag.rueckfrage, eintrag.antwort)
-        if lokal.verbindungsfehler:
-            raise ModellNichtBereit()
-        return fertigstellen(ergebnis, kandidaten, voller_text, eintrag.bereich_vorgabe)
+        if modus == "lokal" and lokal is not None:
+            kandidaten = kandidaten_fuer(voller_text)
+            ergebnis = lokal.strukturieren(eintrag.rohtext, eintrag.quelle, bereiche, kandidaten, eintrag.rueckfrage, eintrag.antwort)
+            if lokal.verbindungsfehler:
+                raise ModellNichtBereit()
+        elif modus == "claude" and strukturierer.verfuegbar:
+            try:
+                vorabpruefung(voller_text, vorgabe, eintrag.freigabe)
+            except HTTPException as exc:
+                # Im Hintergrund kann niemand freigeben: nichts senden, der Nutzer entscheidet in der App.
+                kandidaten = kandidaten_fuer(voller_text)
+                ergebnis = manueller_entwurf(voller_text, eintrag.quelle, bereiche)
+                ergebnis.pruefung = exc.detail if isinstance(exc.detail, dict) else {"code": "pruefung", "meldung": str(exc.detail), "hinweise": []}
+                return fertigstellen(ergebnis, kandidaten, voller_text, vorgabe)
+            kandidaten = kandidaten_fuer(voller_text, ausschliessen=lokale_bereiche(einst))
+            ergebnis = strukturierer.strukturieren(eintrag.rohtext, eintrag.quelle, bereiche, kandidaten, eintrag.rueckfrage, eintrag.antwort)  # type: ignore[arg-type]
+        else:
+            kandidaten = kandidaten_fuer(voller_text)
+            ergebnis = manueller_entwurf(voller_text, eintrag.quelle, bereiche)  # type: ignore[arg-type]
+        return fertigstellen(ergebnis, kandidaten, voller_text, vorgabe)
 
     def bilder_aufraeumen() -> int:
         """Nie verknüpfte Fotos nach 2 Tagen löschen, Dateien ohne Datenbankeintrag entfernen."""
@@ -235,7 +260,7 @@ def create_app(
         return geloescht
 
     worker = Hintergrund(
-        repo, provider, verarbeite_lokal, lokal.name if lokal else "",
+        repo, provider, verarbeite_entwurf, lokal.name if lokal else "",
         pflege=bilder_aufraeumen, bereit=(lambda: lokal_bereit(frisch=True)) if lokal else None,
     )
 
@@ -256,6 +281,8 @@ def create_app(
     # Keine öffentliche API-Doku im Betrieb
     app = FastAPI(title="Lessons Vault", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(SicherheitsMiddleware)
+    # app.js ist rund 90 KB: komprimiert lädt die App über Mobilfunk und Tailscale deutlich schneller.
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.erlaubte_hosts)
     app.state.repo = repo
     app.state.provider = provider
@@ -416,7 +443,7 @@ def create_app(
         vorgabe = anfrage.bereich if anfrage.bereich and repo.bereich_existiert(anfrage.bereich) else ""
         modus = modus_fuer(vorgabe)
         if modus == "lokal":
-            eintrag = repo.entwurf_anlegen(anfrage.text, anfrage.quelle, vorgabe, anfrage.erfassung_sekunden)
+            eintrag = repo.entwurf_anlegen(anfrage.text, anfrage.quelle, vorgabe, anfrage.erfassung_sekunden, modus="lokal")
             if anfrage.bild_ids:
                 repo.bilder_verknuepfen(anfrage.bild_ids, "entwurf", eintrag.id)
             worker.wecken()
@@ -431,6 +458,53 @@ def create_app(
             # Rückfrage-Runde eines lokalen Bereichs nie über Claude schicken.
             modus = "manuell"
         return sofort_entwurf(anfrage.text, anfrage.quelle, vorgabe, modus, anfrage.rueckfrage, anfrage.antwort, anfrage.freigabe)
+
+    def jetzt_verarbeiten(entwurf_id: str) -> None:
+        """Claude- und manuelle Entwürfe sofort strukturieren, ohne hinter einem lokalen Modell zu warten."""
+        if repo.entwurf_reservieren(entwurf_id):
+            worker.verarbeite(repo.entwurf_holen(entwurf_id))
+
+    def einplanen(eintrag: EntwurfEintrag, hintergrund: BackgroundTasks | None, warten: bool) -> EntwurfEintrag:
+        if eintrag.modus == "lokal" and lokal is not None:
+            worker.wecken()
+            return eintrag
+        if warten:
+            jetzt_verarbeiten(eintrag.id)
+            return repo.entwurf_holen(eintrag.id)
+        if hintergrund is not None:
+            hintergrund.add_task(jetzt_verarbeiten, eintrag.id)
+        else:
+            worker.wecken()
+        return eintrag
+
+    @app.post("/api/notiz", dependencies=deps, status_code=201)
+    def notiz(anfrage: NotizAnfrage, hintergrund: BackgroundTasks, warten: bool = False) -> EntwurfEintrag:
+        """Schnellnotiz: Text ist sofort gesichert. Mit warten=true kommt der fertige Entwurf zurück (App),
+        sonst wird im Hintergrund strukturiert (iOS-Kurzbefehl)."""
+        vorgabe = anfrage.bereich if anfrage.bereich and repo.bereich_existiert(anfrage.bereich) else ""
+        einst = repo.einstellungen()
+        # Gespeichert wird die Absicht: Ein auf "lokal" gestellter Bereich bleibt lokal, auch wenn gerade kein
+        # Modell läuft (dann manuell) und auch wenn die Einstellung später geändert wird.
+        privat = (vorgabe and vorgabe in lokale_bereiche(einst)) or (not vorgabe and privat_aktiv(einst))
+        modus = "lokal" if privat else modus_fuer(vorgabe, einst)
+        if anfrage.entwurf is not None:
+            entwurf = anfrage.entwurf
+            if vorgabe and not entwurf.bereich:
+                entwurf.bereich = vorgabe
+            eintrag = repo.entwurf_anlegen(anfrage.text, anfrage.quelle, vorgabe, anfrage.erfassung_sekunden, modus=modus, entwurf=entwurf)
+        else:
+            eintrag = repo.entwurf_anlegen(anfrage.text, anfrage.quelle, vorgabe, anfrage.erfassung_sekunden, modus=modus)
+        if anfrage.bild_ids:
+            repo.bilder_verknuepfen(anfrage.bild_ids, "entwurf", eintrag.id)
+        if anfrage.entwurf is not None:
+            return eintrag
+        return einplanen(eintrag, hintergrund, warten)
+
+    @app.post("/api/entwuerfe/{entwurf_id}/strukturieren", dependencies=deps)
+    def entwurf_strukturieren(entwurf_id: str, data: StrukturierenAnfrage) -> EntwurfEintrag:
+        """Erneut strukturieren, optional mit geändertem Text oder bewusster Freigabe. Wartet auf das Ergebnis."""
+        eintrag = repo.entwurf_neu_einreihen(entwurf_id, freigabe=data.freigabe, rohtext=data.text)
+        return einplanen(eintrag, None, warten=True)
 
     # Entwürfe (Hintergrund) ----------------------------------------------
     @app.get("/api/entwuerfe", dependencies=deps)
@@ -448,14 +522,12 @@ def create_app(
         eintrag = repo.entwurf_holen(entwurf_id)
         frage = eintrag.entwurf.rueckfrage if eintrag.entwurf else ""
         eintrag = repo.entwurf_neu_einreihen(entwurf_id, rueckfrage=frage or "Ergänzung", antwort=data.antwort)
-        worker.wecken()
-        return eintrag
+        return einplanen(eintrag, None, warten=False)
 
     @app.post("/api/entwuerfe/{entwurf_id}/neu", dependencies=deps)
-    def entwurf_neu(entwurf_id: str) -> EntwurfEintrag:
+    def entwurf_neu(entwurf_id: str, hintergrund: BackgroundTasks) -> EntwurfEintrag:
         eintrag = repo.entwurf_neu_einreihen(entwurf_id)
-        worker.wecken()
-        return eintrag
+        return einplanen(eintrag, hintergrund, warten=False)
 
     @app.delete("/api/entwuerfe/{entwurf_id}", dependencies=deps, status_code=204)
     def entwurf_loeschen(entwurf_id: str) -> None:
@@ -497,6 +569,7 @@ def create_app(
             "protokoll": repo.bestaetigungs_protokoll(lesson_id),
             "compliance_hinweise": compliance(lesson),
             "bilder": [bild_info(b) for b in repo.bilder_von("lesson", lesson_id)],
+            "hilfreich": repo.hilfreich_zaehlen(lesson_id),
         }
 
     @app.put("/api/lessons/{lesson_id}", dependencies=deps)
@@ -859,7 +932,17 @@ def create_app(
 
     @app.get("/api/statistik", dependencies=deps)
     def statistik() -> dict[str, Any]:
-        return repo.statistik()
+        return {**repo.statistik(), "bremsen": repo.rueckmeldungen("bremse")}
+
+    @app.get("/api/wiedersehen", dependencies=deps)
+    def wiedersehen(tag: str = Query("", max_length=10), ausser: str = Query("", max_length=2000)) -> Lesson | None:
+        """Eine ältere Lesson zum Wiedersehen ("Erinnerst du dich?")."""
+        tag = tag or datetime.now(timezone.utc).date().isoformat()
+        return repo.wiedersehen(tag, [a for a in ausser.split(",") if a][:50])
+
+    @app.post("/api/rueckmeldung", dependencies=deps, status_code=204)
+    def rueckmeldung(data: RueckmeldungIn) -> None:
+        repo.rueckmeldung_speichern(data.art, data.wert)
 
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
     return app

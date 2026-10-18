@@ -162,6 +162,9 @@ class Entwurf(BaseModel):
     ki_verwendet: bool = False
     ki_modell: str = ""
     ki_fehler: str = ""
+    # Im Hintergrund nicht an Claude gesendet, weil die Namensprüfung angeschlagen hat:
+    # {"code": "pruefung"|"sperrliste", "meldung": ..., "hinweise": [...]}. Der Nutzer entscheidet in der App.
+    pruefung: dict | None = None
 
 
 EntwurfStatus = Literal["wartet", "in_arbeit", "fertig", "fehler"]
@@ -185,6 +188,31 @@ class EntwurfEintrag(BaseModel):
     erfassung_sekunden: float | None = None
     erstellt_am: str
     geaendert_am: str
+    # claude, lokal oder manuell: festgelegt beim Erfassen. "lokal" geht nie an Claude.
+    modus: str = "lokal"
+    freigabe: bool = False
+
+
+class NotizAnfrage(BaseModel):
+    """Schnellnotiz: wird immer sofort als Entwurf gesichert, strukturiert wird danach."""
+
+    text: str = Field(min_length=1, max_length=8000)
+    quelle: Quelle = "text"
+    bereich: str = ""
+    erfassung_sekunden: float | None = Field(default=None, ge=0)
+    bild_ids: list[str] = Field(default_factory=list, max_length=10)
+    # Bereits fertiger Entwurf (z. B. "Später ansehen" nach der Strukturierung): nur ablegen.
+    entwurf: Entwurf | None = None
+
+
+class StrukturierenAnfrage(BaseModel):
+    freigabe: bool = False
+    text: str | None = Field(default=None, min_length=1, max_length=8000)
+
+
+class RueckmeldungIn(BaseModel):
+    art: Literal["bremse"]
+    wert: str = Field(min_length=1, max_length=200)
 
 
 class ErfassenAnfrage(BaseModel):

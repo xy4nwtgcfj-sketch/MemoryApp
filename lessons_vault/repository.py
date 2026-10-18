@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+import random
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Iterable
 
 import numpy as np
@@ -271,13 +272,19 @@ class Repository:
         data["entwurf"] = Entwurf.model_validate_json(raw) if raw else None
         return EntwurfEintrag(**data)
 
-    def entwurf_anlegen(self, rohtext: str, quelle: str, bereich_vorgabe: str = "", erfassung_sekunden: float | None = None) -> EntwurfEintrag:
+    def entwurf_anlegen(
+        self, rohtext: str, quelle: str, bereich_vorgabe: str = "", erfassung_sekunden: float | None = None,
+        modus: str = "lokal", entwurf: Entwurf | None = None,
+    ) -> EntwurfEintrag:
+        """Neuer Entwurf. Mit fertigem Entwurf direkt "fertig", sonst wartet er auf die Strukturierung."""
         entwurf_id, now = str(uuid.uuid4()), jetzt()
+        status = "fertig" if entwurf is not None else "wartet"
         with self.conn:
             self.conn.execute(
-                "INSERT INTO entwuerfe(id, rohtext, quelle, bereich_vorgabe, erfassung_sekunden, erstellt_am, geaendert_am) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (entwurf_id, rohtext.strip(), quelle, bereich_vorgabe, erfassung_sekunden, now, now),
+                "INSERT INTO entwuerfe(id, rohtext, quelle, bereich_vorgabe, erfassung_sekunden, erstellt_am, geaendert_am, "
+                "modus, status, entwurf_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (entwurf_id, rohtext.strip(), quelle, bereich_vorgabe, erfassung_sekunden, now, now, modus, status,
+                 entwurf.model_dump_json() if entwurf is not None else ""),
             )
         return self.entwurf_holen(entwurf_id)
 
@@ -307,10 +314,12 @@ class Repository:
         )
         return [self._row_to_entwurf(r) for r in rows]
 
-    def naechsten_entwurf_reservieren(self) -> EntwurfEintrag | None:
+    def naechsten_entwurf_reservieren(self, ohne_lokal: bool = False) -> EntwurfEintrag | None:
+        """Ältesten wartenden Entwurf reservieren. ohne_lokal: lokale überspringen (Modell gerade nicht bereit)."""
         with self.conn:
             row = self.conn.execute(
-                "SELECT id FROM entwuerfe WHERE status = 'wartet' ORDER BY erstellt_am LIMIT 1"
+                "SELECT id FROM entwuerfe WHERE status = 'wartet' AND (? = 0 OR modus != 'lokal') ORDER BY erstellt_am LIMIT 1",
+                (int(ohne_lokal),),
             ).fetchone()
             if row is None:
                 return None
@@ -318,6 +327,14 @@ class Repository:
                 "UPDATE entwuerfe SET status = 'in_arbeit', geaendert_am = ? WHERE id = ?", (jetzt(), row["id"])
             )
         return self.entwurf_holen(row["id"])
+
+    def entwurf_reservieren(self, entwurf_id: str) -> bool:
+        """Genau diesen Entwurf reservieren, falls er wartet. False, wenn ihn schon jemand bearbeitet."""
+        with self.conn:
+            return self.conn.execute(
+                "UPDATE entwuerfe SET status = 'in_arbeit', geaendert_am = ? WHERE id = ? AND status = 'wartet'",
+                (jetzt(), entwurf_id),
+            ).rowcount == 1
 
     def entwurf_ergebnis(self, entwurf_id: str, entwurf: Entwurf | None, status: str, fehler: str, modell: str, dauer: float) -> None:
         with self.conn:
@@ -327,14 +344,27 @@ class Repository:
                 (entwurf.model_dump_json() if entwurf else "", status, fehler, modell, round(dauer, 1), jetzt(), entwurf_id),
             )
 
-    def entwurf_neu_einreihen(self, entwurf_id: str, rueckfrage: str | None = None, antwort: str | None = None) -> EntwurfEintrag:
+    def entwurf_neu_einreihen(
+        self, entwurf_id: str, rueckfrage: str | None = None, antwort: str | None = None,
+        freigabe: bool | None = None, modus: str | None = None, rohtext: str | None = None,
+    ) -> EntwurfEintrag:
         eintrag = self.entwurf_holen(entwurf_id)
         if eintrag.status == "in_arbeit":
             raise Invalid("Entwurf wird gerade verarbeitet")
+        # Einmal lokal heißt immer lokal: ein lokaler Entwurf wird nie nachträglich an Claude gegeben.
+        neuer_modus = eintrag.modus if modus is None or eintrag.modus == "lokal" else modus
         with self.conn:
             self.conn.execute(
-                "UPDATE entwuerfe SET status = 'wartet', fehler = '', rueckfrage = ?, antwort = ?, geaendert_am = ? WHERE id = ?",
-                (eintrag.rueckfrage if rueckfrage is None else rueckfrage, eintrag.antwort if antwort is None else antwort, jetzt(), entwurf_id),
+                "UPDATE entwuerfe SET status = 'wartet', fehler = '', rueckfrage = ?, antwort = ?, freigabe = ?, modus = ?, "
+                "rohtext = ?, geaendert_am = ? WHERE id = ?",
+                (
+                    eintrag.rueckfrage if rueckfrage is None else rueckfrage,
+                    eintrag.antwort if antwort is None else antwort,
+                    int(eintrag.freigabe if freigabe is None else freigabe),
+                    neuer_modus,
+                    eintrag.rohtext if rohtext is None else rohtext.strip(),
+                    jetzt(), entwurf_id,
+                ),
             )
         return self.entwurf_holen(entwurf_id)
 
@@ -569,6 +599,22 @@ class Repository:
             "SELECT COUNT(DISTINCT briefing_id) FROM briefing_feedback WHERE bewertung = 'hilfreich'"
         ).fetchone()[0]
         ohne_massnahme = q("SELECT COUNT(*) FROM lessons WHERE massnahme = '' AND status != 'überholt'").fetchone()[0]
+        bestaetigt_7 = q(
+            "SELECT COUNT(*) FROM bestaetigungen WHERE notiz != 'erstmals erlebt' "
+            "AND datum >= strftime('%Y-%m-%dT%H:%M:%S', 'now', '-7 days')"
+        ).fetchone()[0]
+        # Wöchentliche Kadenz statt Streak: In wie vielen der letzten 6 Kalenderwochen gab es eine neue Lesson
+        # oder eine Bestätigung? Woche beginnt montags (UTC; für den Wochenrhythmus genau genug).
+        aktive = {
+            r[0] for r in q(
+                "SELECT DISTINCT date(datum, '-' || ((CAST(strftime('%w', datum) AS INTEGER) + 6) % 7) || ' days') "
+                "FROM bestaetigungen b JOIN lessons l ON l.id = b.lesson_id "
+                "WHERE l.quelle != 'import' AND datum >= date('now', '-49 days')"
+            )
+        }
+        heute = date.today()
+        montag = heute - timedelta(days=heute.weekday())
+        wochen = [(montag - timedelta(weeks=i)).isoformat() for i in range(6)]
         return {
             "gesamt": gesamt,
             "importiert": importiert,
@@ -588,4 +634,42 @@ class Repository:
             "lessons_persoenlich": spez[1],
             "briefings_bewertet": briefings_bewertet,
             "briefings_hilfreich": briefings_hilfreich,
+            "bestaetigt_7_tage": bestaetigt_7,
+            "woche_aktiv": wochen[0] in aktive,
+            "aktive_wochen": sum(1 for w in wochen if w in aktive),
+            "wochen_betrachtet": 6,
+        }
+
+    def hilfreich_zaehlen(self, lesson_id: str) -> int:
+        """In wie vielen Briefings war diese Lesson als hilfreich markiert?"""
+        return self.conn.execute(
+            "SELECT COUNT(*) FROM briefing_feedback WHERE lesson_id = ? AND bewertung = 'hilfreich'", (lesson_id,)
+        ).fetchone()[0]
+
+    def wiedersehen(self, tag: str, ausser: list[str] | None = None) -> Lesson | None:
+        """Eine ältere, gültige Lesson zum Wiedersehen, für denselben Tag immer dieselbe."""
+        ausser = ausser or []
+        platzhalter = ",".join("?" * len(ausser)) or "''"
+        ids = [
+            r[0] for r in self.conn.execute(
+                f"SELECT id FROM lessons WHERE status != 'überholt' AND id NOT IN ({platzhalter}) "
+                "AND erstellt_am <= strftime('%Y-%m-%dT%H:%M:%S', 'now', '-7 days') ORDER BY id",
+                ausser,
+            )
+        ]
+        if not ids:
+            return None
+        return self.holen(random.Random(tag).choice(ids))
+
+    def rueckmeldung_speichern(self, art: str, wert: str) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO rueckmeldungen(art, wert, erstellt_am) VALUES (?, ?, ?)", (art, wert.strip(), jetzt())
+            )
+
+    def rueckmeldungen(self, art: str) -> dict[str, int]:
+        return {
+            r[0]: r[1] for r in self.conn.execute(
+                "SELECT wert, COUNT(*) FROM rueckmeldungen WHERE art = ? GROUP BY wert ORDER BY 2 DESC", (art,)
+            )
         }

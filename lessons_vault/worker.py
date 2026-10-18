@@ -1,4 +1,4 @@
-"""Hintergrund-Worker: strukturiert wartende Entwürfe mit dem lokalen Modell und holt Embeddings nach.
+"""Hintergrund-Worker: strukturiert wartende Entwürfe (lokal, Claude oder manuell) und holt Embeddings nach.
 
 Ein einziger Thread, weil ein lokales Modell auf 4 CPU-Kernen ohnehin nur eine Anfrage sinnvoll
 abarbeiten kann.
@@ -55,13 +55,18 @@ class Hintergrund:
 
     # Einzelschritte (direkt testbar) ------------------------------------
     def verarbeite_naechsten(self) -> bool:
+        lokal_bereit = True
         if self.bereit is not None and self.repo.entwuerfe_zaehlen()["wartet"]:
-            self.wartet_auf_modell = not self.bereit()
-            if self.wartet_auf_modell:
-                return False
-        eintrag = self.repo.naechsten_entwurf_reservieren()
+            lokal_bereit = self.bereit()
+        # Ohne lokales Modell laufen Claude- und manuelle Notizen trotzdem weiter.
+        eintrag = self.repo.naechsten_entwurf_reservieren(ohne_lokal=not lokal_bereit)
+        self.wartet_auf_modell = not lokal_bereit and eintrag is None and self.repo.entwuerfe_zaehlen()["wartet"] > 0
         if eintrag is None:
             return False
+        return self.verarbeite(eintrag)
+
+    def verarbeite(self, eintrag: EntwurfEintrag) -> bool:
+        """Einen bereits reservierten Entwurf strukturieren und das Ergebnis speichern."""
         self.aktueller_entwurf = eintrag.id
         start = time.monotonic()
         try:
@@ -81,7 +86,8 @@ class Hintergrund:
             log.exception("Entwurf %s fehlgeschlagen", eintrag.id)
             self.repo.entwurf_ergebnis(eintrag.id, None, "fehler", str(exc) or exc.__class__.__name__, self.modell_name, time.monotonic() - start)
         finally:
-            self.aktueller_entwurf = None
+            if self.aktueller_entwurf == eintrag.id:
+                self.aktueller_entwurf = None
         return True
 
     def nachindexieren(self, batch: int = 16) -> int:
