@@ -15,6 +15,7 @@ from .test_structuring import FakeClient, payload
 
 KOMBI_ANTWORT = {
     "zusammenfassung": "Hypercare steht und fällt mit klaren Eskalationswegen.",
+    "ausarbeitung": "## Vorbereitung\n- Eskalationsstufen vorab festlegen\n- Schichtleiter schriftlich einplanen [E1]\n- Erfundene Erfahrung [E7]",
     "abschnitte": [
         {"titel": "Vorbereitung", "punkte": [
             {"punkt": "Hypercare-Team und Eskalationsstufen festlegen", "quelle": "allgemein", "lesson_nr": 0},
@@ -264,3 +265,33 @@ def test_kombiniert_lokal_bereich_nicht_an_claude(env):
     assert "Geheim" not in claude.calls[-1]["messages"][0]["content"]
     nur_beruf = client.post("/api/briefing", json={"situation": "Hypercare planen", "bereich": "Beruf"}).json()
     assert nur_beruf["ki_moeglich"] is False
+
+
+def test_ausarbeitung_marken_und_powerpoint(env):
+    import io
+
+    from pptx import Presentation
+
+    client, claude, add = env
+    l1 = add(titel="Schichtleiter in der Hypercare einplanen", bereich="Beruf",
+             lesson="In der Hypercare die Schichtleiter für zwei Wochen schriftlich einplanen.")
+    data = client.post("/api/briefing", json={"situation": "Plan für die Hypercare-Phase eines SAP-EWM-Projekts"}).json()
+    # Vor dem Plan gibt es keine PowerPoint
+    assert client.get(f"/api/briefing/{data['id']}/pptx").status_code == 409
+    r = client.post(f"/api/briefing/{data['id']}/zusammenfassung").json()
+    text = r["plan"]["ausarbeitung"]
+    assert f"[[E:{l1['id']}]]" in text  # gültige Marke aufgelöst
+    assert "[E7]" not in text and "E:" not in text.split("Erfundene Erfahrung")[1]  # ungültige Marke entfernt
+    assert "ausarbeitung" in claude.calls[-1]["output_config"]["format"]["schema"]["required"]
+
+    res = client.get(f"/api/briefing/{data['id']}/pptx")
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument.presentationml")
+    assert "filename*=UTF-8''Briefing%20Plan" in res.headers["content-disposition"]
+    praes = Presentation(io.BytesIO(res.content))
+    texte = [" ".join(sh.text_frame.text for sh in folie.shapes if sh.has_text_frame) for folie in praes.slides]
+    assert "Plan für die Hypercare-Phase" in texte[0]
+    assert any("Vorbereitung" in t for t in texte) and any("Schichtleiter in der Hypercare einplanen" in t for t in texte)
+    # Der ausführliche Text steht in den Notizen der Zusammenfassungsfolie, ohne interne Marken
+    notizen = praes.slides[1].notes_slide.notes_text_frame.text
+    assert "(eigene Erfahrung)" in notizen and "[[E:" not in notizen

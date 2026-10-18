@@ -7,3 +7,4 @@ pydantic>=2.7
 pillow>=10.3
 pytesseract>=0.3.10
 python-multipart>=0.0.9
+python-pptx>=1.0

@@ -10,6 +10,8 @@ Ranking = Relevanz × Schweregrad × Bestätigungen × Feedback.
 
 from __future__ import annotations
 
+import re
+
 import json
 from dataclasses import dataclass, field
 from typing import Any
@@ -213,6 +215,12 @@ Maßnahme, Schweregrad 1-5, wie oft erlebt). Es können auch keine Lessons sein.
 
 Kombiniere dein Fachwissen mit seinen Erfahrungen zu einem brauchbaren Plan:
 - zusammenfassung: 2 bis 4 Sätze in der Du-Form: Was ist bei dieser Aufgabe entscheidend? Wichtigstes zuerst.
+- ausarbeitung: die eigentliche, kuratierte Antwort (etwa 300 bis 800 Wörter), so wie ein erfahrener Kollege sie
+  aufschreiben würde. Fachwissen und seine Erfahrungen sind darin verwoben, nicht in getrennten Blöcken.
+  Format: Markdown mit 3 bis 6 Zwischenüberschriften (## Titel), darunter vor allem prägnante Stichpunkte
+  (- Punkt), die für sich verständlich sind; ein kurzer Absatz nur, wo Zusammenhang oder Begründung nötig ist.
+  Steht eine Aussage auf einer seiner Lessons, setze direkt dahinter die Marke [E<nr>], z. B. [E3].
+  Ohne Marke gilt eine Aussage als dein Fachwissen.
 - abschnitte: der Plan, gegliedert in 3 bis 6 sinnvolle Abschnitte (z. B. Phasen, Themen, Zeitabschnitte),
   jeder mit 2 bis 6 konkreten, abhakbaren Punkten. Für jeden Punkt:
   - quelle "erfahrung", wenn der Punkt aus einer der Lessons stammt; dann lesson_nr = deren Nummer.
@@ -268,10 +276,24 @@ def kombi_schema(anzahl: int) -> dict[str, Any]:
                 },
             },
             "besonderheiten": {"type": "array", "items": besonderheit},
+            "ausarbeitung": {"type": "string"},
         },
-        "required": ["zusammenfassung", "abschnitte", "besonderheiten"],
+        "required": ["zusammenfassung", "ausarbeitung", "abschnitte", "besonderheiten"],
         "additionalProperties": False,
     }
+
+
+MARKE = re.compile(r"\s?\[E\s*(\d+)\]")
+
+
+def marken_aufloesen(text: str, lesson_id: Any) -> str:
+    """[E3] -> [[E:<lesson-id>]]; Marken ohne gültige Lesson fallen weg, damit nichts als eigene Erfahrung
+    ausgewiesen wird, was keine ist."""
+    def ersetzen(m: re.Match[str]) -> str:
+        lid = lesson_id(m.group(1))
+        return f" [[E:{lid}]]" if lid else ""
+
+    return MARKE.sub(ersetzen, text).strip()
 
 
 def kombi_auswerten(data: dict[str, Any], lessons: list[Lesson]) -> dict[str, Any]:
@@ -303,6 +325,7 @@ def kombi_auswerten(data: dict[str, Any], lessons: list[Lesson]) -> dict[str, An
     alle = [p for a in abschnitte for p in a["punkte"]]
     return {
         "zusammenfassung": str(data.get("zusammenfassung", "")).strip(),
+        "ausarbeitung": marken_aufloesen(str(data.get("ausarbeitung", "") or ""), lesson_id),
         "abschnitte": abschnitte,
         "besonderheiten": besonderheiten,
         "punkte_erfahrung": sum(1 for p in alle if p["quelle"] == "erfahrung"),

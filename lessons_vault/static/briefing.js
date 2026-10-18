@@ -5,9 +5,70 @@ import {
   metaZeile, refreshStats, say, skeleton, store, thumbsRow, toast, debounce, ersetzenIn,
 } from "./core.js";
 
-const briefingState = { situation: "", bereich: "", modus: store.get("lv-briefing-modus", "kombiniert") };
+const briefingState = {
+  situation: "", bereich: "", modus: store.get("lv-briefing-modus", "kombiniert"),
+  pptx: store.get("lv-briefing-pptx") === "1",
+};
+const pptxGeladen = new Set();  // je Briefing nur einmal automatisch herunterladen
+
+// PowerPoint des Plans laden (lokal erzeugt). Der Token-Header verlangt fetch statt eines einfachen Links.
+async function pptxLaden(id, situation) {
+  const headers = {};
+  const token = store.get("lv-token");
+  if (token) headers.Authorization = "Bearer " + token;
+  const res = await fetch("/api/briefing/" + encodeURIComponent(id) + "/pptx", { headers });
+  if (!res.ok) {
+    let text = "Fehler " + res.status;
+    try { text = (await res.json()).detail || text; } catch { /* kein JSON */ }
+    throw new Error(text);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const name = "Briefing " + kuerzen(situation, 50).replace(/[\\/:*?"<>|]/g, "") + ".pptx";
+  const a = el("a", { href: url, download: name, hidden: true });
+  document.body.append(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 4000);
+}
+
+// Ausarbeitung (Markdown-light) sicher als DOM rendern: ## Überschrift, - Stichpunkt, **fett**, [[E:id]] als Quellenmarke
+function ausarbeitungKnoten(text, titelVon) {
+  const inline = (zeile) => {
+    const teile = [];
+    for (const stueck of zeile.split(/(\[\[E:[\w-]+\]\]|\*\*[^*]+\*\*)/)) {
+      if (!stueck) continue;
+      const marke = stueck.match(/^\[\[E:([\w-]+)\]\]$/);
+      if (marke) {
+        const titel = titelVon[marke[1]]?.titel || "eigene Lesson";
+        teile.push(el("a", { class: "marke-eigen", href: "#/lesson/" + marke[1], title: anf(titel), "aria-label": "Aus deiner Erfahrung: " + anf(titel) }, icon("user", "icon sm"), "Erfahrung"));
+      } else if (/^\*\*[^*]+\*\*$/.test(stueck)) {
+        teile.push(el("strong", {}, stueck.slice(2, -2)));
+      } else {
+        teile.push(stueck);
+      }
+    }
+    return teile;
+  };
+  const knoten = [];
+  let absatz = [];
+  let liste = null;
+  const absatzFertig = () => { if (absatz.length) { knoten.push(el("p", {}, inline(absatz.join(" ")))); absatz = []; } };
+  for (const roh of String(text || "").split("\n")) {
+    const zeile = roh.trim();
+    if (!zeile) { absatzFertig(); liste = null; continue; }
+    const kopf = zeile.match(/^#{1,4}\s+(.*)$/);
+    const punkt = zeile.match(/^[-*•]\s+(.*)$/);
+    if (kopf) { absatzFertig(); liste = null; knoten.push(el("h3", {}, kopf[1])); }
+    else if (punkt) { absatzFertig(); if (!liste) { liste = el("ul", {}); knoten.push(liste); } liste.append(el("li", {}, inline(punkt[1]))); }
+    else { liste = null; absatz.push(zeile); }
+  }
+  absatzFertig();
+  return knoten;
+}
 
 function planText(situation, plan) {
+  if (plan.ausarbeitung) {
+    return ["Briefing: " + situation, "", plan.zusammenfassung || "", "", plan.ausarbeitung.replace(/\s?\[\[E:[\w-]+\]\]/g, " (eigene Erfahrung)")].join("\n").trim();
+  }
   const zeilen = [`Plan: ${situation}`, ""];
   if (plan.zusammenfassung) zeilen.push(plan.zusammenfassung, "");
   if (plan.besonderheiten.length) {
@@ -63,6 +124,13 @@ export async function viewBriefing(id, params = {}) {
     fehler,
     el("p", { class: "hint" }, "Ein Satz genügt. Mit der Kamera prüfst du einen fertigen Plan gegen deine Erfahrung."),
     bereichListe.length > 1 || bereicheSofort().length > 1 ? el("div", { style: "margin-top:12px" }, chips) : null,
+    el("div", { class: "row", style: "margin-top:16px;gap:12px" },
+      el("label", { for: "pptx-schalter", class: "grow", style: "margin:0;font-weight:500" }, "Auch als PowerPoint",
+        el("span", { class: "li-sub" }, "Lädt den Plan nach dem Erstellen als .pptx herunter")),
+      el("input", {
+        type: "checkbox", role: "switch", class: "switch", id: "pptx-schalter", checked: briefingState.pptx,
+        onchange: (e) => { briefingState.pptx = e.target.checked; store.set("lv-briefing-pptx", e.target.checked ? "1" : "0"); },
+      })),
     el("div", { class: "actions", style: "margin-bottom:0" }, goBtn));
   const kurz = el("div", { class: "card flat row", hidden: true });
   const einklappen = (text) => {
@@ -297,9 +365,25 @@ function showBriefing(container, data) {
     kopierText = planText(data.situation, plan);
     const alle = plan.abschnitte.flatMap((a) => a.punkte);
     let n = 0;
-    fill(planSlot,
-      el("h2", { class: "row", style: "gap:8px" }, icon("clipboard-list"), "Plan"),
-      el("div", { class: "card" },
+    const pptxBtn = el("button", {
+      type: "button",
+      onclick: async (e) => {
+        const knopf = e.currentTarget;
+        knopf.setAttribute("aria-disabled", "true");
+        try { await pptxLaden(data.id, data.situation); toast("PowerPoint erstellt."); }
+        catch (err) { toast(err.message, { fehler: true }); }
+        finally { knopf.removeAttribute("aria-disabled"); }
+      },
+    }, icon("download", "icon sm"), "Als PowerPoint");
+    const ausarbeitung = plan.ausarbeitung
+      ? el("div", { class: "card ausarbeitung" },
+        el("div", { class: "legend footnote", style: "margin:0 0 8px" },
+          el("span", { class: "src eigen", style: "margin:0" }, icon("user"), "Markiert: aus deiner Erfahrung"),
+          el("span", { class: "src", style: "margin:0" }, icon("sparkles"), "Übriges: Claudes Fachwissen, nicht geprüft")),
+        ausarbeitungKnoten(plan.ausarbeitung, titelVon))
+      : null;
+    const checkliste = el(ausarbeitung ? "details" : "div", { class: "card" },
+        ausarbeitung ? el("summary", {}, "Als Checkliste abhaken (" + alle.length + " Punkte)") : null,
         el("div", { class: "legend footnote" },
           el("span", { class: "src eigen", style: "margin:0" }, icon("user"), `${plan.punkte_erfahrung} aus deiner Erfahrung`),
           el("span", { class: "src", style: "margin:0" }, icon("sparkles"), `${alle.length - plan.punkte_erfahrung} aus Claudes Fachwissen, nicht geprüft`)),
@@ -313,7 +397,18 @@ function showBriefing(container, data) {
                 el("label", { for: cid }, el("span", { class: "punkt" }, anf(p.punkt))),
                 p.quelle === "erfahrung" ? quellenKnopf(p.lesson_id) : el("span", { class: "src" }, icon("sparkles"), "Claude")));
           })),
-        ])));
+        ]));
+    fill(planSlot,
+      el("div", { class: "row", style: "margin:32px 0 12px;gap:8px" },
+        el("h2", { class: "row grow", style: "gap:8px;margin:0" }, icon("clipboard-list"), ausarbeitung ? "Ausarbeitung" : "Plan"),
+        pptxBtn),
+      ausarbeitung,
+      checkliste);
+    // Auf Wunsch einmal automatisch als PowerPoint laden
+    if (briefingState.pptx && !pptxGeladen.has(data.id)) {
+      pptxGeladen.add(data.id);
+      pptxLaden(data.id, data.situation).then(() => toast("PowerPoint erstellt.")).catch((err) => toast(err.message, { fehler: true }));
+    }
   };
 
   const renderChecklist = (items, quelle) => {
@@ -387,8 +482,9 @@ function showBriefing(container, data) {
     kopfZeile,
     !data.treffer.length ? el("div", { class: "notice info" }, icon("info"), el("div", {}, el("strong", {}, "Dazu hast du noch keine eigenen Erfahrungen."), "Der Plan ist reines Fachwissen von Claude.")) : null,
     data.ki_moeglich || data.zusammenfassung ? summaryCard : (data.ki_hinweis ? el("p", { class: "footnote" }, data.ki_hinweis) : null),
-    eigeneSlot,
-    planSlot,
+    // Mit Claude-Fachwissen steht die kuratierte Antwort vorn, die eigenen Lessons dienen als Beleg darunter.
+    istPlan ? planSlot : eigeneSlot,
+    istPlan ? eigeneSlot : planSlot,
     beruecksichtigtSlot,
     (!data.treffer.length || (data.plan && !data.plan.punkte_erfahrung)) && !istEntwurf ? lueckenKarte(data) : null,
     weitere.length ? el("details", { class: "card", style: "margin-top:24px" },

@@ -654,3 +654,13 @@ details.hinweis-kompakt p { margin: 0 0 12px; font-size: .875rem; }
 details.bereich-details > summary { font-weight: 500; color: var(--primary); font-size: .9375rem; min-height: 40px; }
 details.bereich-details[open] > summary { margin-bottom: 8px; }
 .bereich-details .stack { display: flex; flex-direction: column; gap: 10px; }
+
+/* ---------------------------------------------------------------- Briefing-Ausarbeitung */
+.ausarbeitung h3 { font-size: 1.0625rem; margin: 20px 0 6px; }
+.ausarbeitung h3:first-of-type { margin-top: 4px; }
+.ausarbeitung p { margin: 0 0 12px; line-height: 1.55; }
+.ausarbeitung ul { margin: 0 0 12px; padding-left: 20px; }
+.ausarbeitung li { margin: 6px 0; line-height: 1.5; }
+.marke-eigen { display: inline-flex; align-items: center; gap: 3px; margin-left: 4px; padding: 0 6px; min-height: 22px; border-radius: 6px;
+  background: var(--own-tint); color: var(--own); font-size: .75rem; font-weight: 600; text-decoration: none; vertical-align: 1px; white-space: nowrap; }
+.marke-eigen .icon { width: .75rem; height: .75rem; }

@@ -55,6 +55,14 @@ def server(tmp_path_factory):
         if kwargs["system"] == KOMBI_PROMPT:
             return {
                 "zusammenfassung": "Hypercare braucht klare Eskalationswege und eingeplantes Personal vor Ort.",
+                "ausarbeitung": (
+                    "## Vor dem Go-live\n"
+                    "- Hypercare-Team, Dauer und Exit-Kriterien festlegen, etwa 80 % Kapazität nach vier Wochen\n"
+                    "- Schichtleiter für die ersten zwei Wochen schriftlich bestätigen lassen [E1]\n\n"
+                    "## Während der Hypercare\n"
+                    "- Tägliches Hypercare-Meeting mit Ticket-Review und klarer **Eskalationsstufe**\n"
+                    "Fehlt Personal vor Ort, hilft keine Technik: Das war bei dir der Engpass [E1]."
+                ),
                 "abschnitte": [
                     {"titel": "Vor dem Go-live", "punkte": [
                         {"punkt": "Hypercare-Team, Dauer und Exit-Kriterien festlegen", "quelle": "allgemein", "lesson_nr": 0},
@@ -279,6 +287,7 @@ def test_briefing_kombiniert(server, page):
     expect(page.get_by_text("Hier weichst du vom Üblichen ab")).to_be_visible()
     expect(page.get_by_role("heading", name="Vor dem Go-live")).to_be_visible()
     expect(page.locator("button.src.eigen")).to_have_count(1)
+    page.get_by_text("Als Checkliste abhaken").click()  # Checkliste liegt eingeklappt unter der Ausarbeitung
     expect(page.get_by_text("1 aus deiner Erfahrung")).to_be_visible()
     expect(page.get_by_text(re.compile("^An Claude gesendet: deine Situation"))).to_be_visible()
     # Eingabe ist eingeklappt, Kopieren steht oben
@@ -287,6 +296,13 @@ def test_briefing_kombiniert(server, page):
     # Quelle antippen zeigt die eigene Regel
     page.locator("button.src.eigen").click()
     expect(page.locator(".src-detail")).to_be_visible()
+    # Ausarbeitung mit Erfahrungsmarke und PowerPoint-Knopf
+    expect(page.locator(".ausarbeitung h3", has_text="Vor dem Go-live")).to_be_visible()
+    expect(page.locator(".ausarbeitung .marke-eigen").first).to_be_visible()
+    expect(page.get_by_role("button", name="Als PowerPoint")).to_be_visible()
+    with page.expect_download() as dl:
+        page.get_by_role("button", name="Als PowerPoint").click()
+    assert dl.value.suggested_filename.endswith(".pptx")
     shot(page, "15-briefing-kombiniert")
     kein_null(page)
 

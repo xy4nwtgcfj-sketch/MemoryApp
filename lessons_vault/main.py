@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 import hmac
 import json
 import logging
@@ -14,7 +16,7 @@ from typing import Any, Literal
 import anthropic
 from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from starlette.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
@@ -60,6 +62,7 @@ from .search import Filter, Suche, suchbegriffe
 from .structuring import BasisStrukturierer, OllamaStrukturierer, Strukturierer, create_strukturierer, manueller_entwurf
 from .einzelinstanz import Instanzsperre
 from .zugang import SicherheitsMiddleware, zugangstoken
+from .praesentation import briefing_pptx, dateiname as pptx_dateiname
 from .worker import Hintergrund, ModellNichtBereit
 
 log = logging.getLogger("lessons_vault")
@@ -798,6 +801,21 @@ def create_app(
     @app.get("/api/briefing/{briefing_id}", dependencies=deps)
     def briefing_holen(briefing_id: str) -> dict[str, Any]:
         return briefing_antwort(briefing_id)
+
+    @app.get("/api/briefing/{briefing_id}/pptx", dependencies=deps)
+    def briefing_pptx_laden(briefing_id: str) -> Response:
+        """Plan als PowerPoint, lokal erzeugt (kein weiterer Claude-Aufruf)."""
+        data = briefing_antwort(briefing_id)
+        if not data.get("plan"):
+            raise HTTPException(status_code=409, detail="Erst den Plan mit Claude-Fachwissen erstellen, dann als PowerPoint laden.")
+        lessons = {t["lesson"].id: t["lesson"] for t in data["treffer"]}
+        inhalt = briefing_pptx(data["situation"], data["plan"], lessons, data.get("erstellt_am", ""))
+        name = pptx_dateiname(data["situation"])
+        return Response(
+            inhalt,
+            media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            headers={"Content-Disposition": f"attachment; filename=\"briefing.pptx\"; filename*=UTF-8''{quote(name)}"},
+        )
 
     @app.delete("/api/briefing/{briefing_id}", dependencies=deps, status_code=204)
     def briefing_loeschen(briefing_id: str) -> None:
