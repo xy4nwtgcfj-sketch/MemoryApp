@@ -280,12 +280,14 @@ class OllamaStrukturierer(BasisStrukturierer):
         self.name = f"ollama:{model}"
         self._client = client or httpx.Client(timeout=timeout)
         self.letzte_metriken: dict[str, float] = {}
+        self.verbindungsfehler = False
 
     @property
     def verfuegbar(self) -> bool:
         return bool(self.url and self.model)
 
     def _call(self, schema: dict[str, Any], user_message: str) -> dict[str, Any]:
+        self.verbindungsfehler = False
         try:
             response = self._client.post(
                 f"{self.url}/api/chat",
@@ -306,6 +308,7 @@ class OllamaStrukturierer(BasisStrukturierer):
             detail = exc.response.text[:200]
             raise RuntimeError(f"Ollama-Fehler {exc.response.status_code}: {detail}") from exc
         except httpx.HTTPError as exc:
+            self.verbindungsfehler = True
             raise RuntimeError(f"Ollama nicht erreichbar ({exc.__class__.__name__}).") from exc
         data = response.json()
         ns = 1e9

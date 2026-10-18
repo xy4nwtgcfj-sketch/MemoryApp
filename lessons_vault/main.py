@@ -23,7 +23,15 @@ from .compliance import lesson_text_fuer_pruefung, pruefen
 from .config import Settings, load_settings
 from .foto import abgleich_inhalt, abgleichen, kandidaten_finden, kandidaten_inhalt
 from .images import BildFehler, Bildspeicher, Texterkennung
-from .embeddings import EmbeddingFehler, EmbeddingProvider, create_provider, lesson_text, modell_installiert, ollama_status
+from .embeddings import (
+    EmbeddingFehler,
+    EmbeddingProvider,
+    create_provider,
+    lesson_text,
+    modell_installiert,
+    ollama_status,
+    provider_fuer_bestand,
+)
 from .models import (
     AntwortIn,
     BildLinks,
@@ -45,7 +53,8 @@ from .models import (
 from .repository import Invalid, NotFound, Repository
 from .search import Filter, Suche, suchbegriffe
 from .structuring import BasisStrukturierer, OllamaStrukturierer, Strukturierer, create_strukturierer, manueller_entwurf
-from .worker import Hintergrund
+from .einzelinstanz import Instanzsperre
+from .worker import Hintergrund, ModellNichtBereit
 
 log = logging.getLogger("lessons_vault")
 STATIC_DIR = Path(__file__).parent / "static"
@@ -95,6 +104,11 @@ def create_app(
     settings = settings or load_settings()
     conn = db.connect(settings.db_path)
     repo = Repository(conn)
+    if provider is None and settings.embedding_provider == "auto":
+        provider = provider_fuer_bestand(
+            repo.haeufigstes_embedding_modell(), settings.voyage_api_key, settings.voyage_model,
+            settings.ollama_url, settings.ollama_embed_model,
+        )
     provider = provider or create_provider(
         settings.embedding_provider, settings.voyage_api_key, settings.voyage_model,
         settings.ollama_url, settings.ollama_embed_model,
@@ -111,17 +125,17 @@ def create_app(
     suche = Suche(repo, provider)
     ollama_cache: dict[str, Any] = {"zeit": 0.0, "status": {"erreichbar": False, "modelle": []}}
 
-    def lokal_status() -> dict[str, Any]:
+    def lokal_status(frisch: bool = False) -> dict[str, Any]:
         """Ollama-Status, 30 Sekunden zwischengespeichert."""
         if lokal is None:
             return {"erreichbar": False, "modelle": []}
-        if time.monotonic() - ollama_cache["zeit"] > 30:
+        if frisch or time.monotonic() - ollama_cache["zeit"] > 30:
             ollama_cache["status"] = ollama_status(lokal.url)
             ollama_cache["zeit"] = time.monotonic()
         return ollama_cache["status"]
 
-    def lokal_bereit() -> bool:
-        status = lokal_status()
+    def lokal_bereit(frisch: bool = False) -> bool:
+        status = lokal_status(frisch)
         return bool(lokal and status["erreichbar"] and modell_installiert(lokal.model, status["modelle"]))
 
     def modus_fuer(bereich: str, einst: Einstellungen | None = None) -> str:
@@ -167,6 +181,8 @@ def create_app(
         voller_text = eintrag.rohtext if not eintrag.antwort else f"{eintrag.rohtext}\n{eintrag.antwort}"
         kandidaten = kandidaten_fuer(voller_text)
         ergebnis = lokal.strukturieren(eintrag.rohtext, eintrag.quelle, bereiche, kandidaten, eintrag.rueckfrage, eintrag.antwort)
+        if lokal.verbindungsfehler:
+            raise ModellNichtBereit()
         return fertigstellen(ergebnis, kandidaten, voller_text, eintrag.bereich_vorgabe)
 
     def bilder_aufraeumen() -> int:
@@ -184,14 +200,23 @@ def create_app(
                 geloescht += 1
         return geloescht
 
-    worker = Hintergrund(repo, provider, verarbeite_lokal, lokal.name if lokal else "", pflege=bilder_aufraeumen)
+    worker = Hintergrund(
+        repo, provider, verarbeite_lokal, lokal.name if lokal else "",
+        pflege=bilder_aufraeumen, bereit=(lambda: lokal_bereit(frisch=True)) if lokal else None,
+    )
+
+    sperre = Instanzsperre(Path(settings.db_path).parent)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        if settings.worker_aktiv:
-            worker.start()
-        yield
-        worker.stop()
+        sperre.erwerben()  # wirft LaeuftBereits, uvicorn beendet sich dann mit Code 3
+        try:
+            if settings.worker_aktiv:
+                worker.start()
+            yield
+            worker.stop()
+        finally:
+            sperre.freigeben()
 
     app = FastAPI(title="Lessons Vault", version=__version__, lifespan=lifespan)
     app.state.repo = repo
@@ -254,6 +279,7 @@ def create_app(
             "texterkennung": {"verfuegbar": ocr.verfuegbar, "hinweis": ocr.status()[1]},
             "bild_wege": {b.name: bild_weg(b.name, einst) for b in repo.bereiche()},
             "modus_standard": modus_fuer("", einst),
+            "worker_wartet_auf_modell": worker.wartet_auf_modell,
         }
 
     @app.get("/api/bereiche", dependencies=deps)

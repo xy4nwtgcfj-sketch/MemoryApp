@@ -61,13 +61,45 @@ def test_antwort_reiht_neu_ein(repo):
     assert eintrag.status == "wartet" and eintrag.antwort == "Unterlagen fehlten"
 
 
-def test_nachindexieren(repo):
+def test_nachindexieren_semantisch_ersetzt_fremde(repo):
+    class Semantisch(HashingProvider):
+        name = "sem-test"
+        semantisch = True
+
     repo.anlegen(beispiel())
     repo.anlegen(beispiel(), HashingProvider().embed(["x"])[0], "altes-modell")
-    w = make_worker(repo, ok_entwurf)
+    w = make_worker(repo, ok_entwurf, Semantisch())
     assert w.nachindexieren() == 2
     assert w.nachindexieren() == 0
-    assert {m for _, m, _ in repo.embeddings()} == {"lokal-hashing-v1"}
+    assert {m for _, m, _ in repo.embeddings()} == {"sem-test"}
+
+
+def test_nachindexieren_ersatz_ueberschreibt_nichts(repo):
+    repo.anlegen(beispiel())  # ohne Embedding
+    repo.anlegen(beispiel(), HashingProvider().embed(["x"])[0], "ollama:bge-m3")
+    w = make_worker(repo, ok_entwurf)  # HashingProvider, nicht semantisch
+    assert w.nachindexieren() == 1  # nur die fehlende
+    assert sorted(m for _, m, _ in repo.embeddings()) == ["lokal-hashing-v1", "ollama:bge-m3"]
+
+
+def test_wartet_wenn_modell_nicht_bereit(repo):
+    from lessons_vault.worker import ModellNichtBereit
+    e = repo.entwurf_anlegen("x", "text")
+    bereit = {"wert": False}
+    w = Hintergrund(repo, HashingProvider(), ok_entwurf, "m", bereit=lambda: bereit["wert"])
+    assert not w.verarbeite_naechsten() and w.wartet_auf_modell
+    assert repo.entwurf_holen(e.id).status == "wartet"
+
+    def bricht_ab(_):
+        raise ModellNichtBereit()
+
+    bereit["wert"] = True
+    w.verarbeiter = bricht_ab  # Ollama fällt mitten in der Verarbeitung aus
+    assert not w.verarbeite_naechsten()
+    assert repo.entwurf_holen(e.id).status == "wartet"
+    w.verarbeiter = ok_entwurf
+    assert w.verarbeite_naechsten()
+    assert repo.entwurf_holen(e.id).status == "fertig"
 
 
 def test_thread_laeuft_und_ueberlebt_embedding_fehler(repo):

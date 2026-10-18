@@ -11,7 +11,16 @@ def _load_dotenv(path: Path) -> None:
     """Minimaler .env-Loader, damit keine weitere Abhängigkeit nötig ist."""
     if not path.is_file():
         return
-    for raw in path.read_text(encoding="utf-8").splitlines():
+    daten = path.read_bytes()
+    # PowerShell 5.1 schreibt mit ">" UTF-16; Editor oft UTF-8 mit BOM. Beides tolerieren.
+    if daten.startswith((b"\xff\xfe", b"\xfe\xff")):
+        text = daten.decode("utf-16")
+    else:
+        try:
+            text = daten.decode("utf-8-sig")
+        except UnicodeDecodeError as exc:
+            raise SystemExit(f".env ist nicht als UTF-8 lesbar ({exc}). Bitte im Editor als UTF-8 speichern.") from exc
+    for raw in text.splitlines():
         line = raw.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue

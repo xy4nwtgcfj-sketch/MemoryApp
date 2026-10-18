@@ -230,13 +230,29 @@ class Repository:
         sql = f"SELECT id, embedding_modell, embedding FROM lessons WHERE embedding IS NOT NULL {where}"
         return [(r["id"], r["embedding_modell"], blob_to_vector(r["embedding"])) for r in self.conn.execute(sql, tuple(params))]
 
-    def lessons_ohne_embedding(self, modell: str, limit: int = 16) -> list[Lesson]:
+    def lessons_ohne_embedding(self, modell: str, limit: int = 16, nur_fehlende: bool = False) -> list[Lesson]:
+        """Lessons, die (neu) eingebettet werden müssen. nur_fehlende: vorhandene Embeddings nie überschreiben."""
+        bedingung = "embedding IS NULL" if nur_fehlende else "embedding IS NULL OR embedding_modell != ?"
+        params = (limit,) if nur_fehlende else (modell, limit)
         rows = self.conn.execute(
-            f"SELECT {LESSON_COLUMNS} FROM lessons WHERE embedding IS NULL OR embedding_modell != ? "
-            "ORDER BY erstellt_am LIMIT ?",
-            (modell, limit),
+            f"SELECT {LESSON_COLUMNS} FROM lessons WHERE {bedingung} ORDER BY erstellt_am LIMIT ?", params
         )
         return [row_to_lesson(r) for r in rows]
+
+    def haeufigstes_embedding_modell(self) -> str:
+        row = self.conn.execute(
+            "SELECT embedding_modell, COUNT(*) AS n FROM lessons WHERE embedding IS NOT NULL AND embedding_modell != '' "
+            "GROUP BY embedding_modell ORDER BY n DESC LIMIT 1"
+        ).fetchone()
+        return row["embedding_modell"] if row else ""
+
+    def entwurf_zuruecklegen(self, entwurf_id: str) -> None:
+        """In Arbeit, aber Modell nicht erreichbar: zurück in die Warteschlange, kein Fehler."""
+        with self.conn:
+            self.conn.execute(
+                "UPDATE entwuerfe SET status = 'wartet', geaendert_am = ? WHERE id = ? AND status = 'in_arbeit'",
+                (jetzt(), entwurf_id),
+            )
 
     # Entwürfe (Hintergrund-Warteschlange) ---------------------------------
     @staticmethod

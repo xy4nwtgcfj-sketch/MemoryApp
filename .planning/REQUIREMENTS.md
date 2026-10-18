@@ -70,6 +70,18 @@
 - [x] **FOTO-06**: Verwaiste Fotos (nie verknüpft) werden nach 2 Tagen gelöscht; mit einer Lesson gelöschte Fotos werden mit entfernt
 - [x] **FOTO-07**: Export enthält Fotos optional nicht (JSON bleibt schlank); Hinweis im Backup-Abschnitt
 
+### Härtung (HART), Phase 1.4
+
+- [ ] **HART-01**: Lokal-Zusage auf allen Pfaden ohne Bereichswahl (H1)
+- [ ] **HART-02**: Namensprüfung vor dem Senden, Sperrliste blockiert, Bestätigung bei Treffern, "beruflich" als Bereichseigenschaft (H2)
+- [ ] **HART-03**: Prompt fragt beruflich nach Relationen statt Projektwerten (H3)
+- [ ] **HART-04**: Atomare Migrationen mit Sicherung vorher (H4)
+- [ ] **HART-05**: Timeouts für Claude, Abbruch im Frontend, Schutz gegen Doppelaufrufe (H5)
+- [ ] **HART-06**: Entwürfe warten bei Ollama-Ausfall (H6)
+- [ ] **HART-07**: Embedding-Anbieter stabil, keine Herabstufung semantischer Embeddings (H7)
+- [ ] **HART-08**: Zugangstoken verpflichtend (automatisch erzeugt), Host- und Origin-Prüfung, Sicherheits-Header, keine API-Doku (H8)
+- [ ] **HART-09**: Backup unter Windows inkl. Fotos und Wiederherstellung, Neustart nach Absturz, Einzelinstanz, Energiesparhinweise (H9)
+
 ## v2 Requirements
 
 ### Briefing (BRIEF), Phase 2
@@ -106,6 +118,7 @@
 | LOCAL-01..07 | Phase 1.1 | Built (UAT ausstehend) |
 | BRIEF-01, 02, 06, 07 | Phase 1.2 | Built (UAT ausstehend) |
 | FOTO-01..07 | Phase 1.3 | Built (UAT ausstehend) |
+| HART-01..09 | Phase 1.4 | Pending |
 | BRIEF-03..05 | Phase 2 | Deferred |
 | PATT-01..04 | Phase 3 | Deferred |
 

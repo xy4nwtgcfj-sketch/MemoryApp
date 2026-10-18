@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -163,6 +164,11 @@ MIGRATIONS: list[str] = [
     ALTER TABLE briefings ADD COLUMN modus TEXT NOT NULL DEFAULT 'eigen';
     ALTER TABLE briefings ADD COLUMN plan_json TEXT NOT NULL DEFAULT '';
     """,
+    # Version 7: "beruflich" als Eigenschaft eines Bereichs statt am Namen "Beruf" festgemacht
+    """
+    ALTER TABLE bereiche ADD COLUMN beruflich INTEGER NOT NULL DEFAULT 0;
+    UPDATE bereiche SET beruflich = 1 WHERE name = 'Beruf';
+    """,
 ]
 
 
@@ -222,27 +228,65 @@ class LockedConnection:
         with self._lock:
             self._conn.close()
 
+    def atomar_ausfuehren(self, script: str) -> None:
+        """Skript mit eigenem BEGIN/COMMIT; bei Fehler Rollback."""
+        with self._lock:
+            try:
+                self._conn.executescript(script)
+            except Exception:
+                if self._conn.in_transaction:
+                    self._conn.execute("ROLLBACK")
+                raise
+
+    def sichern(self, ziel: Path) -> None:
+        """Konsistente Kopie per SQLite-Backup-API, auch im laufenden Betrieb."""
+        with self._lock:
+            ziel_conn = sqlite3.connect(str(ziel))
+            try:
+                self._conn.backup(ziel_conn)
+            finally:
+                ziel_conn.close()
+
 
 def connect(path: Path | str) -> LockedConnection:
-    if str(path) != ":memory:":
+    datei = str(path) != ":memory:"
+    if datei:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
     raw = sqlite3.connect(str(path), check_same_thread=False)
     raw.row_factory = sqlite3.Row
     raw.execute("PRAGMA foreign_keys = ON")
     raw.execute("PRAGMA journal_mode = WAL")
     conn = LockedConnection(raw)
-    migrate(conn)
+    migrate(conn, Path(path).parent / "sicherungen" if datei else None)
     return conn
 
 
-def migrate(conn: LockedConnection) -> None:
+def _seed_sql() -> str:
+    """Standardbereiche als SQL, damit sie in derselben Transaktion wie Migration 1 landen."""
+
+    def q(text: str) -> str:
+        return "'" + text.replace("'", "''") + "'"
+
+    zeilen = [
+        f"INSERT INTO bereiche(name, aktiv, reihenfolge, beispiele) VALUES ({q(n)}, {a}, {i}, {q(b)});"
+        for i, (n, a, b) in enumerate(STANDARD_BEREICHE)
+    ]
+    return "\n".join(zeilen)
+
+
+def migrate(conn: LockedConnection, sicherungs_ordner: Path | None = None) -> None:
+    """Führt ausstehende Migrationen aus, jede atomar.
+
+    Python's executescript() committet vorher und läuft dann im Autocommit. Deshalb steht jede Migration
+    in einem eigenen BEGIN/COMMIT samt user_version. Bricht sie ab, wird zurückgerollt und der alte,
+    startbare Stand bleibt. Vor der ersten Migration einer bestehenden Datenbank entsteht eine Sicherung.
+    """
     version = conn.execute("PRAGMA user_version").fetchone()[0]
-    for index, script in enumerate(MIGRATIONS[version:], start=version + 1):
-        with conn:
-            conn.executescript(script)
-            if index == 1:
-                conn.executemany(
-                    "INSERT INTO bereiche(name, aktiv, reihenfolge, beispiele) VALUES (?, ?, ?, ?)",
-                    [(n, a, i, b) for i, (n, a, b) in enumerate(STANDARD_BEREICHE)],
-                )
-            conn.execute(f"PRAGMA user_version = {index}")
+    ausstehend = list(enumerate(MIGRATIONS[version:], start=version + 1))
+    if ausstehend and version > 0 and sicherungs_ordner is not None:
+        sicherungs_ordner.mkdir(parents=True, exist_ok=True)
+        zeit = datetime.now().strftime("%Y%m%d-%H%M%S")
+        conn.sichern(sicherungs_ordner / f"vor-migration-v{version}-auf-v{len(MIGRATIONS)}-{zeit}.db")
+    for index, script in ausstehend:
+        seed = _seed_sql() if index == 1 else ""
+        conn.atomar_ausfuehren(f"BEGIN;\n{script}\n{seed}\nPRAGMA user_version = {index};\nCOMMIT;")

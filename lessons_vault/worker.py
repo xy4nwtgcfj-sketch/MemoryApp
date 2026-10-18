@@ -20,6 +20,10 @@ log = logging.getLogger(__name__)
 Verarbeiter = Callable[[EntwurfEintrag], Entwurf]
 
 
+class ModellNichtBereit(Exception):
+    """Das lokale Modell ist (gerade) nicht erreichbar. Der Entwurf wartet, statt als Fehler zu enden."""
+
+
 class Hintergrund:
     def __init__(
         self,
@@ -31,6 +35,7 @@ class Hintergrund:
         backoff_sekunden: float = 60.0,
         pflege: Callable[[], object] | None = None,
         pflege_intervall: float = 3600.0,
+        bereit: Callable[[], bool] | None = None,
     ):
         self.repo = repo
         self.provider = provider
@@ -42,12 +47,18 @@ class Hintergrund:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.aktueller_entwurf: str | None = None
+        self.bereit = bereit
+        self.wartet_auf_modell = False
         self.pflege = pflege
         self.pflege_intervall = pflege_intervall
         self._letzte_pflege = float("-inf")
 
     # Einzelschritte (direkt testbar) ------------------------------------
     def verarbeite_naechsten(self) -> bool:
+        if self.bereit is not None and self.repo.entwuerfe_zaehlen()["wartet"]:
+            self.wartet_auf_modell = not self.bereit()
+            if self.wartet_auf_modell:
+                return False
         eintrag = self.repo.naechsten_entwurf_reservieren()
         if eintrag is None:
             return False
@@ -61,6 +72,11 @@ class Hintergrund:
                 entwurf.ki_fehler if fehlgeschlagen else "", entwurf.ki_modell or self.modell_name,
                 time.monotonic() - start,
             )
+        except ModellNichtBereit:
+            log.info("Lokales Modell nicht erreichbar, Entwurf %s wartet", eintrag.id)
+            self.repo.entwurf_zuruecklegen(eintrag.id)
+            self.wartet_auf_modell = True
+            return False
         except Exception as exc:  # Worker darf nie sterben; Rohtext bleibt erhalten.
             log.exception("Entwurf %s fehlgeschlagen", eintrag.id)
             self.repo.entwurf_ergebnis(eintrag.id, None, "fehler", str(exc) or exc.__class__.__name__, self.modell_name, time.monotonic() - start)
@@ -69,7 +85,8 @@ class Hintergrund:
         return True
 
     def nachindexieren(self, batch: int = 16) -> int:
-        lessons = self.repo.lessons_ohne_embedding(self.provider.name, batch)
+        # Ein nicht-semantischer Ersatz überschreibt nie vorhandene (bessere) Embeddings.
+        lessons = self.repo.lessons_ohne_embedding(self.provider.name, batch, nur_fehlende=not self.provider.semantisch)
         if not lessons:
             return 0
         texte = [lesson_text(l.titel, l.situation, l.ereignis, l.lesson, l.massnahme, l.tags) for l in lessons]

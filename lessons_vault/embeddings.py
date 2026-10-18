@@ -155,17 +155,36 @@ def create_provider(
     ollama_url: str = "",
     ollama_embed_model: str = "",
 ) -> EmbeddingProvider:
-    if kind == "voyage" or (kind == "auto" and voyage_api_key):
+    if kind == "voyage":
         if not voyage_api_key:
             raise ValueError("LV_EMBEDDINGS=voyage erfordert VOYAGE_API_KEY")
         return VoyageProvider(voyage_api_key, voyage_model)
     if kind == "ollama":
         return OllamaEmbeddings(ollama_url, ollama_embed_model)
-    if kind == "auto" and ollama_url and ollama_embed_model:
+    if kind == "lokal":
+        return HashingProvider()
+    # auto: lokal vor Cloud. Ollama, wenn erreichbar; sonst Voyage, wenn ein Key da ist; sonst Hashing.
+    if ollama_url and ollama_embed_model:
         status = ollama_status(ollama_url)
         if status["erreichbar"] and modell_installiert(ollama_embed_model, status["modelle"]):  # type: ignore[arg-type]
             return OllamaEmbeddings(ollama_url, ollama_embed_model)
+    if voyage_api_key:
+        return VoyageProvider(voyage_api_key, voyage_model)
     return HashingProvider()
+
+
+def provider_fuer_bestand(
+    bestand: str, voyage_api_key: str, voyage_model: str, ollama_url: str, ollama_embed_model: str
+) -> EmbeddingProvider | None:
+    """Im Modus auto beim bisher genutzten Anbieter bleiben, auch wenn er beim Start noch nicht erreichbar ist.
+
+    Sonst würde ein langsamer Ollama-Start den ganzen Bestand auf ein schwächeres Verfahren umindexieren.
+    """
+    if bestand.startswith("ollama:") and ollama_url:
+        return OllamaEmbeddings(ollama_url, bestand.split(":", 1)[1])
+    if bestand.startswith("voyage:") and voyage_api_key:
+        return VoyageProvider(voyage_api_key, bestand.split(":", 1)[1])
+    return None
 
 
 def lesson_text(titel: str, situation: str, ereignis: str, lesson: str, massnahme: str = "", tags: list[str] | None = None) -> str:

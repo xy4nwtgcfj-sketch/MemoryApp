@@ -156,3 +156,44 @@ def test_lokal_eingestellt_ohne_modell_bleibt_privat(tmp_path, monkeypatch):
     assert "Geheimes" not in claude.calls[-1]["messages"][0]["content"]
     r = client.post("/api/erfassen", json={"text": "Bankgespräch", "bereich": "Beruf"}).json()
     assert r["modus"] == "sofort" and r["entwurf"]["ki_verwendet"] is False
+
+
+def test_ollama_faellt_aus_entwurf_wartet(tmp_path, monkeypatch):
+    erreichbar = {"wert": True}
+    monkeypatch.setattr(main, "ollama_status", lambda url, timeout=2.0: {"erreichbar": erreichbar["wert"], "modelle": ["qwen2.5:7b"]})
+    ollama = OllamaMock()
+    app = create_app(Settings(db_path=tmp_path / "t.db", anthropic_api_key="", ollama_model="qwen2.5:7b"),
+                     Strukturierer(None, "m"), HashingProvider(),
+                     OllamaStrukturierer("http://o", "qwen2.5:7b", client=ollama.client()))
+    client = TestClient(app)
+    client.put("/api/einstellungen", json={"strukturierung_standard": "lokal"})
+    eid = client.post("/api/erfassen", json={"text": "x"}).json()["eintrag"]["id"]
+    erreichbar["wert"] = False
+    assert not app.state.worker.verarbeite_naechsten()
+    assert client.get(f"/api/entwuerfe/{eid}").json()["status"] == "wartet"
+    assert client.get("/api/status").json()["worker_wartet_auf_modell"] is True
+    # Verbindung bricht mitten im Aufruf ab
+    erreichbar["wert"] = True
+    import httpx
+    ollama.ausnahme = httpx.ConnectError("weg")
+    assert not app.state.worker.verarbeite_naechsten()
+    assert client.get(f"/api/entwuerfe/{eid}").json()["status"] == "wartet"
+
+
+def test_auto_bleibt_bei_bisherigem_anbieter(tmp_path, monkeypatch):
+    from lessons_vault.embeddings import OllamaEmbeddings
+    monkeypatch.setattr(main, "ollama_status", lambda url, timeout=2.0: {"erreichbar": False, "modelle": []})
+    monkeypatch.setattr("lessons_vault.embeddings.ollama_status", lambda url, timeout=2.0: {"erreichbar": False, "modelle": []})
+    pfad = tmp_path / "t.db"
+    from lessons_vault import db
+    from lessons_vault.repository import Repository
+    from .conftest import beispiel
+    conn = db.connect(pfad)
+    Repository(conn).anlegen(beispiel(), HashingProvider().embed(["x"])[0], "ollama:bge-m3")
+    conn.close()
+    app = create_app(Settings(db_path=pfad, anthropic_api_key="", ollama_model="", embedding_provider="auto", voyage_api_key=""),
+                     Strukturierer(None, "m"))
+    assert isinstance(app.state.provider, OllamaEmbeddings) and app.state.provider.name == "ollama:bge-m3"
+    leer = create_app(Settings(db_path=tmp_path / "u.db", anthropic_api_key="", ollama_model="", embedding_provider="auto", voyage_api_key=""),
+                      Strukturierer(None, "m"))
+    assert leer.state.provider.name == "lokal-hashing-v1"

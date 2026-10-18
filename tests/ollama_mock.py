@@ -21,6 +21,8 @@ class OllamaMock:
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.read() or b"{}")
+        if getattr(self, "ausnahme", None):
+            raise self.ausnahme
         if self.fehler_status:
             return httpx.Response(self.fehler_status, text="kaputt")
         if request.url.path == "/api/embed":
