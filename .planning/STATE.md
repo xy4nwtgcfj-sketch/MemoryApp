@@ -9,10 +9,10 @@ See: .planning/PROJECT.md (updated 2026-10-16)
 
 ## Current Position
 
-Phase: 1.3 of 3 (Fotos, eingeschoben)
-Plan: 4 of 4 in current phase
+Phase: 1.4 of 3 (Härtung, eingeschoben)
+Plan: 3 of 3 in current phase
 Status: Phase complete, Einrichtung und 3-Wochen-Abnahme ausstehend
-Last activity: 2026-10-18 — Quick 002 kombiniertes Briefing (135 Tests)
+Last activity: 2026-10-18 — Phase 1.4 Härtung (170 Tests); als Nächstes Design- und UX-Audit vor dem Freeze
 
 Progress: [███░░░░░░░] 33%
 
@@ -46,5 +46,5 @@ Siehe PROJECT.md Key Decisions. Wichtigste: Voyage statt nicht existierendem "Cl
 ## Session Continuity
 
 Last session: 2026-10-16
-Stopped at: Phase 1.3 complete
+Stopped at: Phase 1.4 complete
 Resume file: None

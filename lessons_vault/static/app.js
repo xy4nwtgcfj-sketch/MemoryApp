@@ -81,7 +81,12 @@ function formatDate(iso) {
 }
 
 class ApiError extends Error {
-  constructor(status, message) { super(message); this.status = status; }
+  constructor(status, message, extra = {}) {
+    super(message);
+    this.status = status;
+    this.code = extra.code || "";
+    this.hinweise = extra.hinweise || [];
+  }
 }
 
 async function api(path, { method = "GET", body, raw = false, timeoutMs = 150000 } = {}) {
@@ -116,14 +121,38 @@ async function api(path, { method = "GET", body, raw = false, timeoutMs = 150000
   }
   if (!res.ok) {
     let detail = res.statusText;
+    let extra = {};
     try {
       const data = await res.json();
-      detail = Array.isArray(data.detail) ? data.detail.map((d) => `${d.loc?.slice(-1)[0] ?? ""}: ${d.msg}`).join("; ") : data.detail;
+      if (data.detail && typeof data.detail === "object" && !Array.isArray(data.detail)) {
+        extra = data.detail;  // z. B. {code: "pruefung", meldung, hinweise}
+        detail = data.detail.meldung;
+      } else {
+        detail = Array.isArray(data.detail) ? data.detail.map((d) => `${d.loc?.slice(-1)[0] ?? ""}: ${d.msg}`).join("; ") : data.detail;
+      }
     } catch { /* kein JSON */ }
-    throw new ApiError(res.status, detail || `Fehler ${res.status}`);
+    throw new ApiError(res.status, detail || `Fehler ${res.status}`, extra);
   }
   if (raw) return res;
   return res.status === 204 ? null : res.json();
+}
+
+// Ergebnis der Namensprüfung vor dem Senden an Claude: Hinweise zeigen, Text bearbeiten oder bewusst senden.
+function freigabeKarte(err, { onSenden, onBearbeiten }) {
+  const gesperrt = err.code === "sperrliste";
+  return el("div", { class: "notice warn", role: "alert" },
+    el("strong", {}, err.message),
+    el("ul", {}, err.hinweise.map((h) => el("li", {}, h))),
+    el("p", { class: "small", style: "margin:6px 0 0" }, gesperrt
+      ? "Begriffe aus der Sperrliste werden nie gesendet. Bitte den Text anpassen."
+      : "Noch ist nichts an Claude gegangen. Passe den Text an oder sende bewusst trotzdem."),
+    el("div", { class: "actions" },
+      el("button", { type: "button", class: "primary", onclick: onBearbeiten }, "Text bearbeiten"),
+      gesperrt ? null : el("button", { type: "button", onclick: onSenden }, "Trotzdem senden")));
+}
+
+function istPruefung(err) {
+  return err instanceof ApiError && (err.code === "pruefung" || err.code === "sperrliste");
 }
 
 function errorNotice(err) {
@@ -484,7 +513,9 @@ async function viewErfassen() {
     try {
       kandidatenAnzeigen(await api("/api/foto/kandidaten", { method: "POST", body: { bild_ids: capture.bilder.map((b) => b.id), bereich: capture.bereich, notiz: textarea.value.trim(), ...body } }));
     } catch (err) {
-      fill(fotoPanel, errorNotice(err));
+      fill(fotoPanel, istPruefung(err)
+        ? freigabeKarte(err, { onSenden: () => kandidatenSuchen({ ...body, freigabe: true }), onBearbeiten: () => fotoVorbereiten() })
+        : errorNotice(err));
     }
   };
 
@@ -565,7 +596,7 @@ async function viewErfassen() {
   renderChips();
   updateModus();
 
-  const go = async (manual = false) => {
+  const go = async (manual = false, freigabe = false) => {
     const text = textarea.value.trim();
     if (!text && !manual) {
       textarea.focus();
@@ -582,7 +613,7 @@ async function viewErfassen() {
     try {
       const res = await api("/api/erfassen", {
         method: "POST",
-        body: { text, quelle: capture.quelle, bereich: capture.bereich, erfassung_sekunden: captureSeconds(), bild_ids: capture.bilder.map((b) => b.id) },
+        body: { text, quelle: capture.quelle, bereich: capture.bereich, erfassung_sekunden: captureSeconds(), bild_ids: capture.bilder.map((b) => b.id), freigabe },
       });
       if (res.modus === "hintergrund") {
         const seconds = captureSeconds();
@@ -593,7 +624,9 @@ async function viewErfassen() {
       }
       showDraft(result, res.entwurf);
     } catch (err) {
-      fill(result, errorNotice(err));
+      fill(result, istPruefung(err)
+        ? freigabeKarte(err, { onSenden: () => go(false, true), onBearbeiten: () => { fill(result); textarea.focus(); } })
+        : errorNotice(err));
     } finally {
       structureBtn.disabled = false;
     }
@@ -634,7 +667,9 @@ async function requestDraft(container, body) {
     const entwurf = await api("/api/erfassen/entwurf", { method: "POST", body: { ...body, bereich: capture.bereich } });
     showDraft(container, entwurf);
   } catch (err) {
-    fill(container, errorNotice(err));
+    fill(container, istPruefung(err)
+      ? freigabeKarte(err, { onSenden: () => requestDraft(container, { ...body, freigabe: true }), onBearbeiten: () => viewErfassen() })
+      : errorNotice(err));
   }
 }
 
@@ -1054,17 +1089,25 @@ function showBriefing(container, data) {
     );
   };
 
-  const loadSummary = async (neu = false) => {
+  const loadSummary = async (neu = false, freigabe = false) => {
     fill(summaryCard, el("strong", {}, titelText),
       el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }),
         istEntwurf ? " Claude gleicht den Entwurf mit deinen Lessons ab …" : istPlan ? " Claude erstellt den Plan aus Fachwissen und deinen Erfahrungen …" : " Claude fasst zusammen …"));
     try {
       const params = new URLSearchParams();
       if (neu) params.set("neu", "true");
+      if (freigabe) params.set("freigabe", "true");
       if (!istEntwurf) params.set("modus", data.modus);
       const res = await api(`/api/briefing/${data.id}/zusammenfassung?${params}`, { method: "POST" });
       showSummary(res);
     } catch (err) {
+      if (istPruefung(err)) {
+        fill(summaryCard, el("strong", {}, titelText), freigabeKarte(err, {
+          onSenden: () => loadSummary(neu, true),
+          onBearbeiten: () => { const feld = document.getElementById("briefing-text"); feld?.focus(); feld?.scrollIntoView({ block: "center" }); },
+        }));
+        return;
+      }
       fill(summaryCard, el("strong", {}, titelText),
         el("div", { class: "notice warn" }, err.message),
         el("button", { type: "button", onclick: () => loadSummary(neu) }, "Erneut versuchen"));
@@ -1622,7 +1665,18 @@ async function viewEinstellungen() {
               catch (err) { e.target.checked = !e.target.checked; toast(err.message); }
             },
           }),
-          el("span", {}, b.name, el("br"), el("span", { class: "muted small" }, b.beispiele)),
+          el("span", { class: "grow" }, b.name, el("br"), el("span", { class: "muted small" }, b.beispiele)),
+          el("button", {
+            type: "button",
+            class: "ghost small",
+            "aria-pressed": String(b.beruflich),
+            title: "Beruflich: strengere Prüfung auf Namen und Zahlen, Fotos nur per Texterkennung",
+            onclick: async (e) => {
+              e.preventDefault();
+              try { await api(`/api/bereiche/${encodeURIComponent(b.name)}`, { method: "PATCH", body: { beruflich: !b.beruflich } }); bereicheCache = null; viewEinstellungen(); }
+              catch (err) { toast(err.message); }
+            },
+          }, b.beruflich ? "beruflich" : "privat"),
         )),
       el("div", { class: "row", style: "margin-top:8px" },
         el("div", { class: "grow" }, newBereich),

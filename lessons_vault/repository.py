@@ -51,11 +51,18 @@ class Repository:
 
     # Bereiche -----------------------------------------------------------
     def bereiche(self, nur_aktive: bool = False) -> list[Bereich]:
-        sql = "SELECT name, aktiv, beispiele FROM bereiche"
+        sql = "SELECT name, aktiv, beispiele, beruflich FROM bereiche"
         if nur_aktive:
             sql += " WHERE aktiv = 1"
         sql += " ORDER BY reihenfolge, name"
-        return [Bereich(name=r["name"], aktiv=bool(r["aktiv"]), beispiele=r["beispiele"]) for r in self.conn.execute(sql)]
+        return [
+            Bereich(name=r["name"], aktiv=bool(r["aktiv"]), beispiele=r["beispiele"], beruflich=bool(r["beruflich"]))
+            for r in self.conn.execute(sql)
+        ]
+
+    def ist_beruflich(self, name: str) -> bool:
+        row = self.conn.execute("SELECT beruflich FROM bereiche WHERE name = ?", (name,)).fetchone()
+        return bool(row and row["beruflich"])
 
     def bereich_existiert(self, name: str) -> bool:
         return self.conn.execute("SELECT 1 FROM bereiche WHERE name = ?", (name,)).fetchone() is not None
@@ -66,15 +73,17 @@ class Repository:
         with self.conn:
             reihenfolge = self.conn.execute("SELECT COALESCE(MAX(reihenfolge), -1) + 1 FROM bereiche").fetchone()[0]
             self.conn.execute(
-                "INSERT INTO bereiche(name, aktiv, reihenfolge, beispiele) VALUES (?, ?, ?, ?)",
-                (bereich.name.strip(), int(bereich.aktiv), reihenfolge, bereich.beispiele),
+                "INSERT INTO bereiche(name, aktiv, reihenfolge, beispiele, beruflich) VALUES (?, ?, ?, ?, ?)",
+                (bereich.name.strip(), int(bereich.aktiv), reihenfolge, bereich.beispiele, int(bereich.beruflich)),
             )
         return bereich
 
-    def bereich_aendern(self, name: str, aktiv: bool | None, beispiele: str | None) -> Bereich:
+    def bereich_aendern(self, name: str, aktiv: bool | None, beispiele: str | None, beruflich: bool | None = None) -> Bereich:
         if not self.bereich_existiert(name):
             raise NotFound(name)
         with self.conn:
+            if beruflich is not None:
+                self.conn.execute("UPDATE bereiche SET beruflich = ? WHERE name = ?", (int(beruflich), name))
             if aktiv is not None:
                 self.conn.execute("UPDATE bereiche SET aktiv = ? WHERE name = ?", (int(aktiv), name))
             if beispiele is not None:

@@ -22,20 +22,21 @@ Der Nutzer tippt oder diktiert wenige Stichworte. Du machst daraus einen Eintrag
 - titel: kurz und konkret, höchstens 80 Zeichen.
 - situation: 2 bis 3 Sätze Kontext. Was war die Ausgangslage?
 - ereignis: Was ist passiert?
-- lesson: genau ein Satz, als Regel formuliert, z. B. "Vor X immer Y prüfen." Die Regel muss in einer ähnlichen künftigen Situation direkt anwendbar sein. Übernimm persönliche Muster, konkrete Umstände und Größenordnungen aus der Eingabe in die Regel ("ich unterschätze X um Faktor 2", "nach zwei Verlusttrades"), statt sie zu verallgemeinern.
+- lesson: genau ein Satz, als Regel formuliert, z. B. "Vor X immer Y prüfen." Die Regel muss in einer ähnlichen künftigen Situation direkt anwendbar sein. Übernimm persönliche Muster und Faustregeln aus der Eingabe in die Regel ("ich unterschätze X um Faktor 2", "nach zwei Verlusttrades"), statt sie zu verallgemeinern (Grenzen siehe Regel 3).
 - massnahme: ein konkreter Checklisten-Punkt oder eine Verhaltensänderung. Leer lassen, wenn sich keine sinnvoll ableiten lässt.
 - bereich: einer der vorgegebenen Bereiche.
 - tags: 2 bis 5 kurze Schlagworte auf Deutsch, die bei einer späteren Suche helfen.
 - schweregrad: 1 bis 5. Wie teuer war es, das nicht zu wissen? 1 = kleiner Ärger, 3 = spürbarer Zeit- oder Geldverlust, 5 = großer finanzieller Schaden oder ernste Eskalation.
 
 Regeln:
-1. Erfinde keine Fakten. Formuliere aus, was in den Stichworten steckt, aber füge keine Details hinzu, die nicht ableitbar sind.
+1. Erfinde keine Fakten. Formuliere aus, was in den Stichworten steckt, aber füge keine Details hinzu, die nicht ableitbar sind. Enthält die Eingabe zu situation oder ereignis nichts, lass das Feld leer statt es mit Vermutungen zu füllen.
 2. Schreibe Deutsch, sachlich, in der Ich- oder unpersönlichen Form.
 3. Berufliche Einträge immer abstrahiert als eigenes Erfahrungswissen: keine Kunden-, Lager-, Personen- oder Systemnamen, keine Zahlen aus Kundenprojekten. Schreibe "Bei großen EWM-Rollouts ..." statt "Bei Kunde X in Lager Y ...". Entferne solche Angaben aus deinem Entwurf und nenne jede entfernte oder verdächtige Angabe in compliance_hinweise. Das gilt sinngemäß auch für Namen von Mietern, Maklern oder Privatpersonen.
-4. spezifitaet: "persoenlich", wenn die Lesson eigene Erfahrung enthält, die ein allgemeiner Ratgeber, ein Lehrbuch oder ein KI-Assistent nicht von sich aus liefern würde: ein eigenes wiederkehrendes Muster, eine konkrete Schwelle oder Größenordnung, eine Besonderheit des eigenen Umfelds, eine überraschende Ursache. "allgemein", wenn jeder erfahrene Fachmann dieselbe Regel ohnehin nennen würde (z. B. "Puffer einplanen", "Stakeholder früh einbinden", "Unterlagen vorbereiten"). spezifitaet_hinweis: ein kurzer Satz, warum.
-5. rueckfrage: Höchstens eine kurze Frage, sonst leerer String. Fülle die Felder trotzdem bestmöglich.
+   Erlaubt und erwünscht sind eigene Relationen und Faustregeln: Faktor, Verhältnis, Reihenfolge, grobe Schwelle ("ab etwa drei Wellen", "doppelt so lange wie geschätzt"). Verboten sind absolute Werte, die ein Projekt oder Objekt identifizieren könnten (Lagerplatzzahlen, Budgets, konkrete Termine, Adressen). Wandle sie in Relationen oder Größenklassen um: "4500 Lagerplätze" wird zu "großes Lager".
+4. spezifitaet: "persoenlich", wenn die Lesson eigene Erfahrung enthält, die ein allgemeiner Ratgeber, ein Lehrbuch oder ein KI-Assistent nicht von sich aus liefern würde: ein eigenes wiederkehrendes Muster, eine eigene Faustregel oder Relation, eine Besonderheit des eigenen Umfelds, eine überraschende Ursache. "allgemein", wenn jeder erfahrene Fachmann dieselbe Regel ohnehin nennen würde (z. B. "Puffer einplanen", "Stakeholder früh einbinden", "Unterlagen vorbereiten"). spezifitaet_hinweis: ein kurzer Satz, warum.
+5. rueckfrage: Höchstens eine kurze Frage, sonst leerer String. Fülle die übrigen Felder trotzdem, soweit die Eingabe es hergibt.
    a) Lässt sich ein Pflichtfeld (situation, ereignis oder lesson) nicht sinnvoll aus der Eingabe ableiten, frage nach der größten Lücke. rueckfrage_art = "pflichtfeld".
-   b) Sonst, wenn spezifitaet "allgemein" ist, frage nach dem persönlichen Teil, zugeschnitten auf die Eingabe: Was war in diesem Fall anders als erwartet? Welches eigene Muster steckt dahinter? Welche konkrete Größenordnung oder Schwelle gilt? rueckfrage_art = "spezifitaet".
+   b) Sonst, wenn spezifitaet "allgemein" ist, frage nach dem persönlichen Teil, zugeschnitten auf die Eingabe: Was war in diesem Fall anders als erwartet? Welches eigene Muster steckt dahinter? Welche Faustregel oder welches Verhältnis hast du daraus gelernt? Frage nie nach Namen oder absoluten Projektwerten. rueckfrage_art = "spezifitaet".
    c) Sonst rueckfrage und rueckfrage_art leer.
    Wenn bereits eine Rückfrage beantwortet wurde, sind rueckfrage und rueckfrage_art immer leer.
 6. Dubletten: Du bekommst eventuell bestehende ähnliche Lessons. Wenn eine davon inhaltlich dieselbe Regel beschreibt (gleiche Erfahrung erneut erlebt, nicht nur gleiches Thema), setze dublette_von auf deren id und begründe kurz in dublette_begruendung. Sonst beide leer.
@@ -89,13 +90,14 @@ def build_schema(bereiche: list[str]) -> dict[str, Any]:
             "bereich": {"type": "string", "enum": bereiche},
             "tags": {"type": "array", "items": {"type": "string"}},
             "schweregrad": {"type": "integer", "enum": [1, 2, 3, 4, 5]},
-            "rueckfrage": text,
-            "rueckfrage_art": {"type": "string", "enum": ["", "pflichtfeld", "spezifitaet"]},
-            "spezifitaet": {"type": "string", "enum": ["persoenlich", "allgemein"]},
-            "spezifitaet_hinweis": text,
             "compliance_hinweise": {"type": "array", "items": {"type": "string"}},
             "dublette_von": text,
             "dublette_begruendung": text,
+            # Rückfrage zuletzt: sie hängt von spezifitaet und fehlenden Feldern ab
+            "spezifitaet": {"type": "string", "enum": ["persoenlich", "allgemein"]},
+            "spezifitaet_hinweis": text,
+            "rueckfrage_art": {"type": "string", "enum": ["", "pflichtfeld", "spezifitaet"]},
+            "rueckfrage": text,
         },
         "required": [
             "titel", "situation", "ereignis", "lesson", "massnahme", "bereich", "tags",
@@ -244,6 +246,9 @@ class BasisStrukturierer:
             ki_verwendet=True,
         )
         entwurf.fehlende_felder = fehlende_felder(entwurf)
+        if entwurf.rueckfrage and entwurf.fehlende_felder:
+            # Fehlt tatsächlich ein Pflichtfeld, ist es eine Pflichtfeld-Frage, egal was das Modell meldet.
+            entwurf.rueckfrage_art = "pflichtfeld"
         return entwurf
 
 

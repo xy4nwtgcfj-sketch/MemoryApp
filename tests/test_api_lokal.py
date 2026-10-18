@@ -60,7 +60,11 @@ def test_lokale_bereiche_gehen_nie_an_claude(setup):
     client.post("/api/lessons", json=lesson_json(bereich="Beruf", titel="Geheimes Bankgespräch Beruf"))
     client.post("/api/lessons", json=lesson_json(bereich="Immobilien", titel="Privates Bankgespräch"))
     client.put("/api/einstellungen", json={"strukturierung_bereiche": {"Beruf": "lokal"}})
-    client.post("/api/erfassen", json={"text": "Unterlagen vor Bankgespräch"})
+    # Ohne Bereich geht bei aktivem "lokal" gar nichts an Claude
+    anzahl = len(claude.calls)
+    assert client.post("/api/erfassen", json={"text": "Unterlagen vor Bankgespräch"}).json()["modus"] == "hintergrund"
+    assert len(claude.calls) == anzahl
+    client.post("/api/erfassen", json={"text": "Unterlagen vor Bankgespräch", "bereich": "Immobilien"})
     prompt = claude.calls[-1]["messages"][0]["content"]
     assert "Privates Bankgespräch" in prompt
     assert "Geheimes" not in prompt

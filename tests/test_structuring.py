@@ -155,3 +155,18 @@ def test_unbekannte_werte_bereinigt():
     client = FakeClient(payload(spezifitaet="weissnicht", rueckfrage="Was ist passiert?", rueckfrage_art="quatsch"))
     entwurf = Strukturierer(client, "m").strukturieren("x", "text", BEREICHE, [])
     assert entwurf.spezifitaet == "" and entwurf.spezifitaet_hinweis == "" and entwurf.rueckfrage_art == "pflichtfeld"
+
+
+def test_prompt_fragt_nach_relationen_nicht_projektwerten():
+    from lessons_vault.structuring import SYSTEM_PROMPT
+    assert "Faustregel" in SYSTEM_PROMPT and "großes Lager" in SYSTEM_PROMPT
+    assert "konkrete Größenordnung oder Schwelle gilt" not in SYSTEM_PROMPT
+    schema = build_schema(["Beruf"])
+    reihenfolge = list(schema["properties"])
+    assert reihenfolge.index("spezifitaet") < reihenfolge.index("rueckfrage")
+
+
+def test_rueckfrage_art_aus_fehlenden_feldern():
+    client = FakeClient(payload(ereignis="", rueckfrage="Was ist passiert?", rueckfrage_art="spezifitaet"))
+    entwurf = Strukturierer(client, "m").strukturieren("Notar", "text", BEREICHE, [])
+    assert entwurf.rueckfrage_art == "pflichtfeld"

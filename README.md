@@ -74,8 +74,14 @@ copy .env.example .env    # öffnen und ggf. ANTHROPIC_API_KEY eintragen
 powershell -ExecutionPolicy Bypass -File scripts\start.ps1
 ```
 
+`.env` mit dem Editor bearbeiten (nicht per `echo ... > .env` in PowerShell, das erzeugt UTF-16).
 Beim ersten Start wird eine eigene Python-Umgebung angelegt. Danach läuft die App unter
 `http://127.0.0.1:8765`, nur am PC selbst erreichbar.
+
+**Zugangstoken:** Ist in `.env` kein `LV_TOKEN` gesetzt, erzeugt die App beim ersten Start eines und legt
+es in `data\zugangstoken.txt` ab. Beim ersten Öffnen fragt die App danach; einmal eintragen genügt.
+Auf dem iPhone braucht die installierte Home-Bildschirm-App das Token einmal extra, auch wenn Safari es
+schon kennt.
 
 ### 4. Messung auf deinem PC
 
@@ -95,10 +101,15 @@ Mit `--claude` wird Claude als Referenz mitgemessen. Das bessere Modell trägst 
 tailscale serve --bg 8765
 ```
 
-Danach ist die App unter `https://<pc-name>.<tailnet>.ts.net` erreichbar, nur für deine Geräte.
-(HTTPS-Zertifikate müssen im Tailscale-Adminbereich unter "DNS" aktiviert sein.) Mikrofon und
+Danach ist die App unter `https://<pc-name>.<tailnet>.ts.net` erreichbar. `--bg` bleibt über Neustarts
+bestehen. Voraussetzungen im Tailscale-Adminbereich unter "DNS": MagicDNS an und "HTTPS Certificates"
+aktiviert. Der allererste Aufruf holt das Zertifikat und kann einige Sekunden dauern. Mikrofon und
 App-Installation brauchen dieses HTTPS. iPhone: Safari → Teilen → "Zum Home-Bildschirm".
 Android: Chrome → "App installieren".
+
+Empfohlen: In den Tailscale-Zugriffsregeln (ACL) den Port 443 des PCs nur für deine eigenen Geräte
+freigeben. Mit der Standardregel "alle dürfen alles" erreichen sonst auch geteilte oder fremde Geräte
+in deinem Tailnet die App (das Zugangstoken schützt trotzdem).
 
 ### 6. Texterkennung für Fotos (Tesseract)
 
@@ -113,21 +124,59 @@ Für Fotos im Bereich Beruf erkennt die App den Text lokal, damit das Foto selbs
 Unter Einstellungen → KI-Strukturierung steht, ob die Texterkennung bereit ist. Handschrift erkennt
 Tesseract schlecht; für handschriftliche Notizen die Kernpunkte besser abtippen.
 
-### 7. Autostart
+### 7. Autostart und tägliches Backup
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install-autostart.ps1
 ```
 
-Startet die App bei der Anmeldung unsichtbar (60 Sekunden verzögert, damit Ollama schon läuft).
-Protokoll: `data\server.log`. Entfernen: `Unregister-ScheduledTask -TaskName "Lessons Vault"`.
-Damit die App auch ohne Anmeldung nach einem Neustart läuft, in Windows die automatische Anmeldung
-aktivieren oder den Rechner nicht herunterfahren.
+Richtet zwei geplante Aufgaben ein:
+- **Lessons Vault:** startet die App bei der Anmeldung unsichtbar (60 Sekunden verzögert, damit Ollama
+  schon läuft). Stürzt sie ab, startet sie sich nach 10 Sekunden selbst neu. Protokoll: `data\server.log`
+  (ohne Suchbegriffe, wird ab 5 MB rotiert).
+- **Lessons Vault Backup:** sichert täglich um 12:17 Datenbank und Fotos (holt verpasste Läufe nach).
 
-### Backup
+Es läuft immer nur eine Instanz. Willst du die App von Hand starten, erst die Aufgabe beenden:
+`Stop-ScheduledTask -TaskName "Lessons Vault"`.
 
-Regelmäßig "Exportieren" unter Einstellungen (JSON, ohne Fotos). Für ein vollständiges Backup den Ordner
-`data\` sichern (Datenbank `lessons.db` und Fotos in `data\bilder\`), am besten, während die App nicht schreibt.
+### 8. Energie und Neustarts
+
+Damit die App unterwegs erreichbar ist, darf der PC nicht schlafen (PowerShell als Administrator):
+
+```powershell
+powercfg /change standby-timeout-ac 0     # Energiesparmodus bei Netzbetrieb: nie
+powercfg /h off                           # Ruhezustand aus
+```
+
+Unter Einstellungen → Windows Update eine Nutzungszeit setzen, damit Update-Neustarts nachts passieren.
+Die App startet erst nach der Anmeldung. Für Neustarts ohne dich: automatische Anmeldung einrichten
+(z. B. mit Sysinternals Autologon) oder den PC nach Updates einmal anmelden.
+
+### Backup und Wiederherstellung
+
+- **Automatisch:** Die tägliche Sicherung schreibt `lessons-<zeit>.db` und die Fotos nach `backups\`
+  (letzte 30 Stände). Besser ein Ordner außerhalb des PCs: `LV_BACKUP_ZIEL` in `.env`, z. B. ein
+  OneDrive- oder NAS-Ordner.
+- **Von Hand:** `powershell -File scripts\backup.ps1`. Prüfen einer Sicherung:
+  `.venv\Scripts\python scripts\backup.py --pruefen backups\lessons-<zeit>.db`.
+- **Vor Updates:** Vor jeder Datenbank-Migration legt die App selbst eine Kopie unter `data\sicherungen\` an.
+- **Wiederherstellen:** `Stop-ScheduledTask -TaskName "Lessons Vault"`, die gewünschte `lessons-<zeit>.db`
+  nach `data\lessons.db` kopieren (vorher `data\lessons.db-wal` und `-shm` löschen), Fotos aus
+  `backups\bilder\` nach `data\bilder\` kopieren, `Start-ScheduledTask -TaskName "Lessons Vault"`.
+- Der JSON-Export unter Einstellungen enthält nur Lessons und Bereiche, keine Fotos und Briefings.
+  Er ist gut zum Weitergeben oder Archivieren, ersetzt aber kein Backup.
+
+### Aktualisieren
+
+```powershell
+Stop-ScheduledTask -TaskName "Lessons Vault"
+powershell -File scripts\backup.ps1
+git pull
+Start-ScheduledTask -TaskName "Lessons Vault"
+```
+
+Beim Start werden fehlende Pakete nachinstalliert und die Datenbank migriert (mit Sicherung vorher).
+Die App auf dem Handy lädt die neue Version beim nächsten Öffnen.
 
 ## KI-Einstellungen
 
@@ -137,6 +186,10 @@ Unter Einstellungen → KI-Strukturierung:
 - **Pro Bereich überschreibbar**, zum Beispiel Beruf → Lokal, Immobilien → Claude.
 - Bereiche auf **Lokal** werden **nie** an Claude geschickt, auch nicht als Vergleichskandidaten für die
   Dublettenprüfung anderer Bereiche.
+- Steht **irgendein Bereich** auf Lokal, geht eine Erfassung **ohne Bereichswahl** ebenfalls nicht an Claude
+  (sie wird lokal oder manuell verarbeitet). Für Claude also den Bereich antippen.
+- Unter Einstellungen → Bereiche markierst du Bereiche als **beruflich**: strengere Prüfung auf Namen,
+  Beträge und Zahlen, Fotos nur per Texterkennung.
 
 Wenn Ollama mal nicht läuft, geht nichts verloren: Entwürfe warten, Embeddings werden automatisch
 nachgeholt, die Suche fällt auf Volltext zurück.
@@ -151,14 +204,18 @@ nachgeholt, die Suche fällt auf Volltext zurück.
 | `LV_OLLAMA_URL` | Adresse von Ollama | `http://127.0.0.1:11434` |
 | `LV_OLLAMA_MODEL` | Lokales Modell für die Strukturierung, leer = aus | `qwen2.5:7b` |
 | `LV_OLLAMA_EMBED_MODEL` | Lokales Embedding-Modell | `bge-m3` |
-| `LV_EMBEDDINGS` | `ollama`, `voyage`, `lokal` oder `auto` | `auto` (Vorlage: `ollama`) |
+| `LV_EMBEDDINGS` | `ollama`, `voyage`, `lokal` oder `auto` (Ollama vor Voyage; bleibt beim bisher genutzten Anbieter) | `auto` (Vorlage: `ollama`) |
 | `VOYAGE_API_KEY` / `LV_VOYAGE_MODEL` | Alternative: Embeddings über Voyage AI | leer / `voyage-3.5` |
 | `LV_DB_PATH` | SQLite-Datei | `data/lessons.db` |
-| `LV_TOKEN` | Optionaler Bearer-Token zusätzlich zu Tailscale | leer |
+| `LV_TOKEN` | Zugangstoken; leer = automatisch erzeugt in `data/zugangstoken.txt` | automatisch |
+| `LV_HOSTS` | Erlaubte Host-Namen (Schutz gegen DNS-Rebinding) | `127.0.0.1,localhost,*.ts.net` |
+| `LV_BACKUP_ZIEL` | Zielordner der täglichen Sicherung | `backups` |
 | `LV_TESSERACT_CMD` | Pfad zu `tesseract.exe`, falls nicht im Standardpfad | automatisch |
 | `LV_BILDER_PATH` | Ordner für Fotos | `data/bilder` |
 
 Nach einem Wechsel des Embedding-Modells werden alle Lessons im Hintergrund automatisch neu indexiert.
+Ein einfacheres Ersatzverfahren (wenn Ollama beim Start noch nicht läuft) überschreibt dabei nie
+vorhandene semantische Embeddings.
 
 ## Startbestand
 
@@ -172,17 +229,26 @@ Einstellungen → Importieren. Pflicht: `titel` (max. 80 Zeichen), `situation`, 
 
 - Daten liegen ausschließlich in der SQLite-Datei auf dem Home-PC.
 - **Lokal-Modus:** Nichts verlässt den PC (Ollama läuft lokal).
+- **Prüfung vor dem Senden:** Bevor Text an Claude geht (Erfassung, Rückfrage, Foto-Text und Notiz,
+  Briefing-Situation), prüft die App ihn lokal auf Namen, Firmen, Kontaktdaten und, in beruflichen
+  Bereichen, auf Beträge und Zahlen. Bei Treffern zeigt sie, was erkannt wurde; gesendet wird erst nach
+  "Trotzdem senden". Begriffe aus der Sperrliste werden nie gesendet. Die Prüfung ist musterbasiert:
+  Firmennamen ohne Rechtsform oder Städtenamen erkennt sie nur über die Sperrliste. Pflege sie.
 - **Claude-Modus:** An die Claude API gehen der Erfassungstext, eine Rückfrage-Antwort sowie Titel und Regel
-  von bis zu fünf ähnlichen Lessons aus Bereichen, die nicht auf "lokal" stehen.
+  von bis zu fünf ähnlichen Lessons aus Bereichen, die nicht auf "lokal" stehen. Lehnt Claude eine Anfrage
+  aus Sicherheitsgründen ab, beantwortet sie serverseitig ein anderes Claude-Modell (Fallback).
 - **Briefing-Zusammenfassung:** An Claude gehen die Situationsbeschreibung und die vollständigen Texte der
   gefundenen Lessons, ausgenommen Lessons aus Bereichen auf "lokal". Ist ein lokaler Bereich als Filter
-  gewählt, gibt es keine Zusammenfassung; Lessons und Checkliste kommen dann rein lokal.
-- **Voyage** (nur falls statt Ollama gewählt): Lesson-Texte und Suchanfragen.
+  gewählt oder der Standard "lokal", gibt es keine Zusammenfassung; Lessons und Checkliste kommen dann
+  rein lokal.
+- **Voyage** (nur falls aktiv): alle Lesson-Texte und Suchanfragen, auch aus lokalen Bereichen. Wer
+  "lokal" ernst meint, nutzt Ollama für Embeddings (Vorlage `.env.example`).
 - **Fotos:**
   - Werden lokal unter `data\bilder\` gespeichert, ohne Metadaten (Standort, Kamera, Zeit), schon im
     Browser verkleinert.
-  - *Beruf und ohne Bereichswahl:* Das Foto bleibt auf dem PC. Der Text wird lokal erkannt, du prüfst
-    und kürzt ihn, und nur dieser Text geht an Claude.
+  - *Berufliche Bereiche und ohne Bereichswahl:* Das Foto bleibt auf dem PC. Der Text wird lokal erkannt,
+    du prüfst und kürzt ihn, und nur dieser Text (plus deine Notiz, ebenfalls geprüft) geht an Claude.
+    Für berufliche Bereiche lässt sich das nicht auf "Claude sieht das Foto" umstellen.
   - *Private Bereiche:* Claude sieht das Foto selbst (umstellbar unter Einstellungen).
   - *Bereiche auf "lokal":* Weder Foto noch Text gehen an Claude.
   - Fotos, die nie an einer Lesson oder einem Briefing hingen, werden nach 2 Tagen gelöscht.

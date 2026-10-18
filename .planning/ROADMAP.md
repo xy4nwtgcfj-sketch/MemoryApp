@@ -12,7 +12,7 @@ Projekt) vor weiterer Investition geprüft.
 - [x] **Phase 1.1: Lokale KI (INSERTED)** - Ollama für Embeddings und Hintergrund-Strukturierung, Routing pro Bereich, Messskript für Windows
 - [x] **Phase 1.2: Manuelles Briefing (INSERTED)** - Situation beschreiben, Top 5 Lessons, Checkliste, Claude-Zusammenfassung, Feedback
 - [x] **Phase 1.3: Fotos (INSERTED)** - Fotos als Input: Lessons aus Folien (A), Entwurf gegen Erfahrung prüfen (B), lokal gespeichert
-- [ ] **Phase 1.4: Härtung (INSERTED)** - Neun Audit-Befunde vor der Inbetriebnahme, keine neuen Funktionen
+- [x] **Phase 1.4: Härtung (INSERTED)** - Neun Audit-Befunde vor der Inbetriebnahme, keine neuen Funktionen
 - [ ] **Phase 2: Briefings** - Manuelles und kalenderbasiertes Briefing, Erinnerungen, alle Bereiche
 - [ ] **Phase 3: Muster** - Monatliche Auswertung und Dashboard
 
@@ -110,9 +110,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01.4-01: Datenbank und Betrieb (H4, H6, H7, H9, Einzelinstanz)
-- [ ] 01.4-02: Zugriff und Timeouts (H5, H8)
-- [ ] 01.4-03: Datenschutz-Durchsetzung und Prompt (H1, H2, H3) inkl. Oberfläche
+- [x] 01.4-01: Datenbank und Betrieb (H4, H6, H7, H9, Einzelinstanz)
+- [x] 01.4-02: Zugriff und Timeouts (H5, H8)
+- [x] 01.4-03: Datenschutz-Durchsetzung und Prompt (H1, H2, H3) inkl. Oberfläche
 
 ### Phase 2: Briefings
 **Goal**: Vor einem relevanten Termin bekommt Stefan die 5 wichtigsten Lessons, ohne danach zu suchen.
@@ -144,6 +144,6 @@ Plans:
 | 1.1 Lokale KI | 3/3 | Built, Messung auf E5 ausstehend | 2026-10-16 |
 | 1.2 Manuelles Briefing | 2/2 | Built, Nutzung ausstehend | 2026-10-16 |
 | 1.3 Fotos | 4/4 | Built, Test mit echten Fotos ausstehend | 2026-10-16 |
-| 1.4 Härtung | 0/3 | In progress | - |
+| 1.4 Härtung | 3/3 | Built, Windows-Skripte ungetestet | 2026-10-18 |
 | 2. Briefings | 0/TBD | Not started | - |
 | 3. Muster | 0/TBD | Not started | - |

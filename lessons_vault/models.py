@@ -93,11 +93,14 @@ class Bereich(BaseModel):
     name: str = Field(min_length=1, max_length=40)
     aktiv: bool = True
     beispiele: str = ""
+    # Beruflich: strengere Namens- und Zahlenprüfung, Fotos standardmäßig nur per Texterkennung
+    beruflich: bool = False
 
 
 class BereichUpdate(BaseModel):
     aktiv: bool | None = None
     beispiele: str | None = None
+    beruflich: bool | None = None
 
 
 class Einstellungen(BaseModel):
@@ -121,6 +124,7 @@ class EntwurfAnfrage(BaseModel):
     text: str = Field(min_length=1, max_length=8000)
     quelle: Quelle = "text"
     bereich: str = ""
+    freigabe: bool = False
     rueckfrage: str = ""
     antwort: str = ""
 
@@ -189,6 +193,8 @@ class ErfassenAnfrage(BaseModel):
     bereich: str = ""
     erfassung_sekunden: float | None = Field(default=None, ge=0)
     bild_ids: list[str] = Field(default_factory=list, max_length=10)
+    # Nutzer hat Hinweise der Namensprüfung gesehen und will trotzdem senden (Sperrliste blockiert immer)
+    freigabe: bool = False
 
 
 class FotoAnfrage(BaseModel):
@@ -196,6 +202,7 @@ class FotoAnfrage(BaseModel):
     bereich: str = ""
     text: str = Field(default="", max_length=20000)
     notiz: str = Field(default="", max_length=2000)
+    freigabe: bool = False
 
 
 class BildLinks(BaseModel):

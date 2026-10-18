@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from . import __version__, db
 from .briefing import BriefingSchreiber, kombinieren, lokale_checkliste, rangliste
-from .compliance import lesson_text_fuer_pruefung, pruefen
+from .compliance import lesson_text_fuer_pruefung, pruefen, sperrliste_treffer
 from .config import Settings, load_settings
 from .foto import abgleich_inhalt, abgleichen, kandidaten_finden, kandidaten_inhalt
 from .images import BildFehler, Bildspeicher, Texterkennung
@@ -140,9 +140,16 @@ def create_app(
         status = lokal_status(frisch)
         return bool(lokal and status["erreichbar"] and modell_installiert(lokal.model, status["modelle"]))
 
+    def privat_aktiv(einst: Einstellungen) -> bool:
+        """Ist irgendetwas auf "lokal" gestellt? Dann darf ohne Bereichswahl nichts an Claude gehen."""
+        return einst.strukturierung_standard == "lokal" or "lokal" in einst.strukturierung_bereiche.values()
+
     def modus_fuer(bereich: str, einst: Einstellungen | None = None) -> str:
         """Wirksamer Strukturierungsmodus: claude, lokal oder manuell."""
         einst = einst or repo.einstellungen()
+        if not bereich and privat_aktiv(einst):
+            # Ohne Bereich ist unklar, ob der Text zu einem lokalen Bereich gehört: im Zweifel nicht an Claude.
+            return "lokal" if lokal is not None else "manuell"
         modus = einst.strukturierung_bereiche.get(bereich, einst.strukturierung_standard) if bereich else einst.strukturierung_standard
         if modus == "auto":
             if strukturierer.verfuegbar:
@@ -171,11 +178,36 @@ def create_app(
         einst = einst or repo.einstellungen()
         if bereich and bereich in lokale_bereiche(einst):
             return "lokal"
+        if not bereich and privat_aktiv(einst):
+            return "lokal"
         if not (isinstance(strukturierer, Strukturierer) and strukturierer.verfuegbar):
             return "lokal"
         if not bereich:
             return "text"  # sicherer Standard ohne Bereichswahl
-        return einst.bild_bereiche.get(bereich, "text" if bereich == "Beruf" else "bild")
+        beruflich = repo.ist_beruflich(bereich)
+        weg = einst.bild_bereiche.get(bereich, "text" if beruflich else "bild")
+        # Berufliche Fotos (Kundenfolien) gehen nie als Bild an Claude, unabhängig von der Einstellung.
+        return "text" if beruflich else weg
+
+    def vorabpruefung(text: str, bereich: str, freigabe: bool) -> None:
+        """Namensprüfung, bevor Text an Claude geht. Sperrliste blockiert immer, andere Treffer brauchen Freigabe."""
+        einst = repo.einstellungen()
+        gesperrt = sperrliste_treffer(text, einst.sperrliste)
+        if gesperrt:
+            raise HTTPException(status_code=422, detail={
+                "code": "sperrliste",
+                "meldung": "Der Text enthält Begriffe aus deiner Sperrliste und wird nicht an Claude geschickt.",
+                "hinweise": [f"Sperrliste: \"{b}\"" for b in gesperrt],
+            })
+        if freigabe:
+            return
+        hinweise = pruefen(text, bereich, beruflich=repo.ist_beruflich(bereich) if bereich else False)
+        if hinweise:
+            raise HTTPException(status_code=409, detail={
+                "code": "pruefung",
+                "meldung": "Bevor das an Claude geht: Diese Angaben sehen nach Namen oder Projektdaten aus.",
+                "hinweise": hinweise,
+            })
 
     def verarbeite_lokal(eintrag: EntwurfEintrag) -> Entwurf:
         assert lokal is not None
@@ -258,7 +290,7 @@ def create_app(
 
     def compliance(data: Any) -> list[str]:
         text = lesson_text_fuer_pruefung(data.titel, data.situation, data.ereignis, data.lesson, data.massnahme, tags=data.tags)
-        return pruefen(text, data.bereich, repo.einstellungen().sperrliste)
+        return pruefen(text, data.bereich, repo.einstellungen().sperrliste, beruflich=repo.ist_beruflich(data.bereich))
 
     deps = [Depends(auth)]
 
@@ -298,7 +330,7 @@ def create_app(
 
     @app.patch("/api/bereiche/{name}", dependencies=deps)
     def bereich_aendern(name: str, update: BereichUpdate) -> Bereich:
-        return repo.bereich_aendern(name, update.aktiv, update.beispiele)
+        return repo.bereich_aendern(name, update.aktiv, update.beispiele, update.beruflich)
 
     @app.get("/api/einstellungen", dependencies=deps)
     def einstellungen() -> Einstellungen:
@@ -358,14 +390,18 @@ def create_app(
                                       ergebnis.lesson, ergebnis.massnahme, tags=ergebnis.tags),
             ergebnis.bereich,
             repo.einstellungen().sperrliste,
+            beruflich=repo.ist_beruflich(ergebnis.bereich) if ergebnis.bereich else False,
         )
         ergebnis.compliance_hinweise = list(dict.fromkeys([*lokale, *ergebnis.compliance_hinweise]))
         return ergebnis
 
-    def sofort_entwurf(text: str, quelle: str, vorgabe: str, modus: str, rueckfrage: str = "", antwort: str = "") -> Entwurf:
+    def sofort_entwurf(
+        text: str, quelle: str, vorgabe: str, modus: str, rueckfrage: str = "", antwort: str = "", freigabe: bool = False,
+    ) -> Entwurf:
         voller_text = text if not antwort else f"{text}\n{antwort}"
         bereiche = bereiche_fuer(vorgabe)
         if modus == "claude":
+            vorabpruefung(voller_text, vorgabe, freigabe)
             # Datenschutz: Lessons aus lokal verarbeiteten Bereichen gehen nie an Claude.
             kandidaten = kandidaten_fuer(voller_text, ausschliessen=lokale_bereiche())
             ergebnis = strukturierer.strukturieren(text, quelle, bereiche, kandidaten, rueckfrage, antwort)  # type: ignore[arg-type]
@@ -385,7 +421,7 @@ def create_app(
                 repo.bilder_verknuepfen(anfrage.bild_ids, "entwurf", eintrag.id)
             worker.wecken()
             return {"modus": "hintergrund", "eintrag": eintrag, "warteschlange": repo.entwuerfe_zaehlen()["wartet"]}
-        return {"modus": "sofort", "entwurf": sofort_entwurf(anfrage.text, anfrage.quelle, vorgabe, modus)}
+        return {"modus": "sofort", "entwurf": sofort_entwurf(anfrage.text, anfrage.quelle, vorgabe, modus, freigabe=anfrage.freigabe)}
 
     @app.post("/api/erfassen/entwurf", dependencies=deps)
     def entwurf(anfrage: EntwurfAnfrage) -> Entwurf:
@@ -394,7 +430,7 @@ def create_app(
         if modus == "lokal":
             # Rückfrage-Runde eines lokalen Bereichs nie über Claude schicken.
             modus = "manuell"
-        return sofort_entwurf(anfrage.text, anfrage.quelle, vorgabe, modus, anfrage.rueckfrage, anfrage.antwort)
+        return sofort_entwurf(anfrage.text, anfrage.quelle, vorgabe, modus, anfrage.rueckfrage, anfrage.antwort, anfrage.freigabe)
 
     # Entwürfe (Hintergrund) ----------------------------------------------
     @app.get("/api/entwuerfe", dependencies=deps)
@@ -427,7 +463,8 @@ def create_app(
 
     @app.post("/api/compliance", dependencies=deps)
     def compliance_pruefen(data: CompliancePruefung) -> list[str]:
-        return pruefen(data.text, data.bereich, repo.einstellungen().sperrliste)
+        beruflich = repo.ist_beruflich(data.bereich) if data.bereich else False
+        return pruefen(data.text, data.bereich, repo.einstellungen().sperrliste, beruflich=beruflich)
 
     # Lessons -------------------------------------------------------------
     @app.get("/api/lessons", dependencies=deps)
@@ -577,7 +614,7 @@ def create_app(
             "weg": weg,
             "text": text,
             # Im Zweifel streng prüfen: ohne Bereich wie "Beruf" (Zahlen und Beträge melden)
-            "compliance_hinweise": pruefen(text, vorgabe or "Beruf", sperrliste) if text else [],
+            "compliance_hinweise": pruefen(text, vorgabe, sperrliste, beruflich=repo.ist_beruflich(vorgabe) if vorgabe else True) if text else [],
             "texterkennung": {"verfuegbar": ocr.verfuegbar, "hinweis": ocr.status()[1]},
         }
 
@@ -592,8 +629,10 @@ def create_app(
         if weg == "text":
             if len(anfrage.text.strip()) < 3:
                 raise HTTPException(status_code=422, detail="Kein Text zum Auswerten. Text prüfen oder abtippen.")
+            vorabpruefung(f"{anfrage.text}\n{anfrage.notiz}", vorgabe, anfrage.freigabe)
             inhalt = kandidaten_inhalt([], anfrage.text, anfrage.notiz)
         else:
+            vorabpruefung(anfrage.notiz, vorgabe, anfrage.freigabe)
             inhalt = kandidaten_inhalt([speicher.fuer_claude(b) for b in anfrage.bild_ids], "", anfrage.notiz)
         assert isinstance(strukturierer, Strukturierer)
         try:
@@ -623,6 +662,8 @@ def create_app(
         data["bilder"] = [bild_info(b) for b in repo.bilder_von("briefing", briefing_id)]
         if data["bereich"] and data["bereich"] in lokale:
             ki_moeglich, ki_hinweis = False, "Der gewählte Bereich wird lokal verarbeitet, daher keine Claude-Zusammenfassung."
+        elif not data["bereich"] and einst.strukturierung_standard == "lokal":
+            ki_moeglich, ki_hinweis = False, "Standard ist \u201Elokal\u201C: Briefings ohne Bereichswahl gehen nicht an Claude."
         elif data["entwurf_weg"] == "lokal":
             ki_moeglich, ki_hinweis = False, "Fotos dieses Bereichs gehen nicht an Claude. Unten siehst du die passenden Lessons."
         elif data["entwurf_weg"] == "text" and not data["entwurf_text"].strip():
@@ -690,6 +731,7 @@ def create_app(
     @app.post("/api/briefing/{briefing_id}/zusammenfassung", dependencies=deps)
     def briefing_zusammenfassung(
         briefing_id: str, neu: bool = False, modus: str | None = Query(None, pattern="^(kombiniert|eigen)$"),
+        freigabe: bool = False,
     ) -> dict[str, Any]:
         data = briefing_antwort(briefing_id)
         if modus and modus != data["modus"]:
@@ -699,6 +741,8 @@ def create_app(
             return data
         if not data["ki_moeglich"]:
             raise HTTPException(status_code=409, detail=data["ki_hinweis"] or "Keine Zusammenfassung möglich.")
+        situation_text = "" if data["situation"].startswith("Entwurf prüfen (") else data["situation"]
+        vorabpruefung(f"{situation_text}\n{data['entwurf_text'] if data['entwurf_weg'] == 'text' else ''}", data["bereich"], freigabe)
         lokale = lokale_bereiche()
         # Datenschutz: Lessons aus lokal verarbeiteten Bereichen gehen nie an Claude.
         lessons = [t["lesson"] for t in data["treffer"] if t["lesson"].bereich not in lokale]

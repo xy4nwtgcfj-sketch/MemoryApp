@@ -40,17 +40,26 @@ def _sperrbegriff_regex(begriff: str) -> re.Pattern[str]:
     return re.compile(rf"(?<!\w){re.escape(begriff.strip())}(?!\w)", re.IGNORECASE)
 
 
-def pruefen(text: str, bereich: str = "", sperrliste: list[str] | None = None) -> list[str]:
-    """Liefert verständliche Warnungen; leere Liste heißt: nichts gefunden."""
+def sperrliste_treffer(text: str, sperrliste: list[str] | None) -> list[str]:
+    """Begriffe der Sperrliste, die im Text vorkommen (ganze Wörter, ohne Groß-/Kleinschreibung)."""
+    return [b.strip() for b in sperrliste or [] if b.strip() and _sperrbegriff_regex(b).search(text)]
+
+
+def pruefen(text: str, bereich: str = "", sperrliste: list[str] | None = None, beruflich: bool | None = None) -> list[str]:
+    """Liefert verständliche Warnungen; leere Liste heißt: nichts gefunden.
+
+    beruflich: strengere Prüfung (Beträge, Zahlen). Ohne Angabe gilt der Bereichsname "Beruf" als beruflich.
+    """
     hinweise: list[str] = []
+    if beruflich is None:
+        beruflich = bereich == "Beruf"
 
     def add(msg: str) -> None:
         if msg not in hinweise:
             hinweise.append(msg)
 
-    for begriff in sperrliste or []:
-        if begriff.strip() and _sperrbegriff_regex(begriff).search(text):
-            add(f"Enthält Begriff aus deiner Sperrliste: \"{begriff.strip()}\"")
+    for begriff in sperrliste_treffer(text, sperrliste):
+        add(f"Enthält Begriff aus deiner Sperrliste: \"{begriff}\"")
 
     for m in RECHTSFORM.finditer(text):
         add(f"Firmenname erkannt: \"{m.group(0).strip()}\". Abstrahieren, z. B. \"ein Logistikdienstleister\".")
@@ -66,7 +75,7 @@ def pruefen(text: str, bereich: str = "", sperrliste: list[str] | None = None) -
     if TELEFON.search(text):
         add("Telefonnummer erkannt. Kontaktdaten gehören nicht in eine Lesson.")
 
-    if bereich == "Beruf":
+    if beruflich:
         if BETRAG.search(text):
             add("Geldbetrag in beruflicher Lesson. Keine Zahlen aus Kundenprojekten, besser Größenordnung beschreiben.")
         zahlen = [z for z in ZAHL.findall(text) if not JAHR.match(z)]

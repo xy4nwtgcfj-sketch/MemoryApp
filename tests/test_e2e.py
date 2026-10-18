@@ -420,3 +420,25 @@ def test_anmeldung_mit_token(page, tmp_path):
     finally:
         srv.should_exit = True
         thread.join(timeout=5)
+
+
+def test_pruefung_vor_dem_senden(server, page):
+    base, fake = server
+    expect = playwright.expect
+    page.request.put(f"{base}/api/einstellungen", data=json.dumps({"strukturierung_bereiche": {}}),
+                     headers={"Content-Type": "application/json"})
+    page.goto(f"{base}/#/erfassen")
+    page.reload()
+    page.get_by_role("button", name="Beruf", exact=True).click()
+    page.fill("#capture-text", "Cutover bei Kunde Müller GmbH zu spät abgestimmt")
+    anzahl = len(fake.calls)
+    page.get_by_role("button", name="Strukturieren").click()
+    expect(page.get_by_text("Bevor das an Claude geht")).to_be_visible()
+    expect(page.get_by_text(re.compile("Müller GmbH"))).to_be_visible()
+    assert len(fake.calls) == anzahl  # noch nichts gesendet
+    shot(page, "17-pruefung-vor-senden")
+    page.get_by_role("button", name="Trotzdem senden").click()
+    expect(page.locator("#f-lesson")).to_be_visible()
+    assert len(fake.calls) == anzahl + 1
+    kein_null(page)
+    assert page.errors == []
