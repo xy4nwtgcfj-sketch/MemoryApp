@@ -1,7 +1,7 @@
 // Suchen, Lesson ansehen und bearbeiten.
 import {
   anf, aktionsblatt, ansicht, api, bereiche, bereicheSofort, el, errorNotice, eingabe, fill, fokusAufTitel, formatDate,
-  fotoInput, fotosHochladen, grosserTitel, hinweisBox, icon, kopf, leer, lessonKarte, metaZeile, quelleText,
+  fotoInput, fotosHochladen, grosserTitel, hinweisKompakt, icon, kopf, leer, lessonKarte, metaZeile, quelleText,
   refreshStats, say, skeleton, thumbsRow, toast, bestaetigen,
 } from "./core.js";
 import { lessonForm, loeschenBestaetigen } from "./entwurf.js";
@@ -17,11 +17,11 @@ export async function viewSuche(params = {}) {
   const anzahl = el("p", { class: "sr-only", role: "status" });
   const q = el("input", { type: "search", id: "q", value: searchState.q, placeholder: "Stichwort oder Frage", enterkeyhint: "search", autocomplete: "off" });
   const aktiveFilter = () => FILTER.filter((k) => (k === "modus" ? searchState.modus !== "hybrid" : searchState[k])).length;
-  const filterBtn = el("button", { type: "button", class: "icon-btn", "aria-expanded": "false", "aria-controls": "filter-panel" });
+  const filterBtn = el("button", { type: "button", class: "text", "aria-expanded": "false", "aria-controls": "filter-panel" });
   const filterPanel = el("div", { id: "filter-panel", class: "card", hidden: true });
   const updateFilterBtn = () => {
     const n = aktiveFilter();
-    fill(filterBtn, icon("sliders"), n ? el("span", { class: "badge", style: "position:absolute;margin:-24px -28px 0 0;min-height:18px;padding:0 6px" }, n) : null);
+    fill(filterBtn, icon("sliders"), el("span", {}, "Filter"), n ? el("span", { class: "badge", style: "min-height:18px;padding:0 6px" }, n) : null);
     filterBtn.setAttribute("aria-label", n ? `Filter, ${n} aktiv` : "Filter");
     filterBtn.style.position = "relative";
   };
@@ -119,7 +119,7 @@ export async function viewLesson(id) {
   }
   const l = data.lesson;
   kopf(l.titel, zurueck);
-  const compliance = hinweisBox(data.compliance_hinweise);
+  const compliance = hinweisKompakt(data.compliance_hinweise);
 
   const erneut = el("button", { type: "button", class: "primary block" }, icon("refresh"), "Erneut erlebt");
   erneut.addEventListener("click", async () => {
@@ -170,7 +170,7 @@ export async function viewLesson(id) {
       feld("Situation", l.situation),
       feld("Was ist passiert?", l.ereignis),
       feld("Stichworte", l.tags.join(", "))),
-    compliance.node,
+    compliance,
     el("div", { class: "actions", style: "margin-top:24px" }, erneut),
     fotoSection(l, data.bilder || []),
     el("h2", {}, "Erlebt"),

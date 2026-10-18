@@ -146,6 +146,7 @@ body {
 
 p, li, dd { text-wrap: pretty; }
 h1, h2, h3, .headline { text-wrap: balance; }
+h1, h2, h3, .headline, .result h3, .lead, .quote, .chip, button, textarea, input, ::placeholder { hyphens: manual; -webkit-hyphens: manual; }
 button, a, summary, label, input, select, textarea { touch-action: manipulation; }
 
 .icon { width: 1.25rem; height: 1.25rem; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75;
@@ -187,8 +188,8 @@ a { color: var(--primary); }
 .nav-back { position: absolute; left: 4px; min-height: 44px; padding: 0 8px 0 2px; background: transparent; border: 0;
   color: var(--primary); font-weight: 400; gap: 0; }
 .nav-back[hidden] { display: none; }
-.progress-pill { position: absolute; right: 12px; display: inline-flex; align-items: center; gap: 6px; min-height: 32px;
-  padding: 2px 12px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border);
+.progress-pill { position: absolute; right: 12px; display: inline-flex; align-items: center; gap: 6px; min-height: 44px;
+  padding: 2px 14px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border);
   color: var(--text-2); font-size: .8125rem; font-variant-numeric: tabular-nums; text-decoration: none; }
 .progress-pill .ok { color: var(--success); font-weight: 600; }
 .progress-pill[hidden] { display: none; }
@@ -269,6 +270,8 @@ textarea:focus, input:focus, select:focus { outline: none; border-color: var(--p
 input[type="checkbox"], input[type="radio"] { accent-color: var(--primary-fill); }
 
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+/* Überschriften und Karten bekommen den Fokus nur für VoiceOver (tabindex=-1), ohne sichtbaren Rahmen */
+[tabindex="-1"]:focus, [tabindex="-1"]:focus-visible, main:focus, h1:focus { outline: none; }
 textarea:focus-visible, input:focus-visible, select:focus-visible { outline: none; }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
@@ -335,6 +338,7 @@ button[aria-disabled="true"], button:disabled { opacity: .45; cursor: not-allowe
   border-top: 1px solid var(--separator);
 }
 .sticky-actions .primary { flex: 1; }
+.sticky-actions > button:not(.primary) { flex: none; }
 body.kb .sticky-actions { bottom: 0; }
 
 /* ---------------------------------------------------------------- Chips, Segmente, Schalter */
@@ -380,6 +384,7 @@ body.kb .sticky-actions { bottom: 0; }
 .list > li:last-child, .list > .li:last-child { box-shadow: none; }
 .list > li > .grow, .list > .li > .grow { flex: 1; min-width: 0; }
 .list a.li { color: inherit; text-decoration: none; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 10px 16px; }
+.list a.li > .grow { flex: 1 1 auto; min-width: 0; }
 .li-sub { display: block; font-size: .8125rem; color: var(--text-2); font-weight: 400; }
 .list .li-col { flex-direction: column; align-items: stretch; }
 .list .chev { color: var(--text-3); }
@@ -399,11 +404,14 @@ body.kb .sticky-actions { bottom: 0; }
 
 /* ---------------------------------------------------------------- Lesson-Karten */
 .result { display: block; color: inherit; text-decoration: none; }
-.result h3 { margin: 0 0 4px; }
-.result .rule { margin: 0; color: var(--text-2); }
+.result { padding: 12px 14px; margin-bottom: 8px; }
+.result h3 { margin: 0 0 2px; font-size: 1rem; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.result .rule { margin: 0; color: var(--text-2); font-size: .9375rem; line-height: 1.4; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.result .meta { margin-top: 6px; }
 .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 10px 0 0; font-size: .8125rem;
   color: var(--text-2); font-variant-numeric: tabular-nums; }
-.meta .sev { letter-spacing: 1px; color: var(--text-2); }
+.meta .sev { letter-spacing: 1px; color: var(--text-2); white-space: nowrap; }
+.meta .sev-label { letter-spacing: 0; margin-right: 4px; }
 .meta .sep::before { content: "·"; margin-right: 10px; }
 .result.ueberholt h3, .result.ueberholt .rule { text-decoration: line-through; text-decoration-color: var(--text-3); }
 .result.abgewertet { border-style: dashed; box-shadow: none; }
@@ -635,3 +643,14 @@ dialog.sheet { width: min(520px, calc(100vw - 24px)); margin: auto auto calc(12p
 .ersetzen button b { font-weight: 600; }
 
 .waiting { display: flex; align-items: center; gap: 10px; color: var(--text-2); }
+
+/* ---------------------------------------------------------------- Dezenter Hinweis an gespeicherten Lessons */
+details.hinweis-kompakt { margin: 16px 0 0; border-radius: var(--r-md); background: var(--warning-tint); color: var(--warning); padding: 0 14px; }
+details.hinweis-kompakt > summary { font-weight: 500; font-size: .9375rem; color: var(--warning); }
+details.hinweis-kompakt ul { margin: 0 0 12px; padding-left: 18px; font-size: .9375rem; }
+details.hinweis-kompakt p { margin: 0 0 12px; font-size: .875rem; }
+
+/* Bereiche in den Einstellungen: aufklappbar */
+details.bereich-details > summary { font-weight: 500; color: var(--primary); font-size: .9375rem; min-height: 40px; }
+details.bereich-details[open] > summary { margin-bottom: 8px; }
+.bereich-details .stack { display: flex; flex-direction: column; gap: 10px; }

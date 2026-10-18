@@ -180,14 +180,14 @@ def test_ablauf(server, page):
     expect(page.locator("textarea[name=situation]")).to_have_value(re.compile("eine Ansprechperson"))
     shot(page, "02-entwurf")
 
-    page.locator(".sticky-actions button.primary").click()
+    page.locator(".sticky-actions button.primary:visible").click()
     expect(page.get_by_text("Taucht wieder auf bei")).to_be_visible()
     expect(page.locator("#toast")).to_contain_text("Gesichert")
 
     # Rückgängig holt den Entwurf zurück
     page.locator("#toast").get_by_role("button", name="Rückgängig").click()
     expect(page.locator("textarea.regel")).to_be_visible()
-    page.locator(".sticky-actions button.primary").click()
+    page.locator(".sticky-actions button.primary:visible").click()
     expect(page.get_by_text("Taucht wieder auf bei")).to_be_visible()
 
     # Suchen: Kompositum
@@ -218,7 +218,7 @@ def test_ablauf(server, page):
     page.fill("#capture-text", "Notar, Termin verschoben")
     page.get_by_role("button", name="Sichern", exact=True).click()
     page.locator("textarea.regel").fill("")
-    page.locator(".sticky-actions button.primary").click()
+    page.locator(".sticky-actions button.primary:visible").click()
     expect(page.locator("textarea.regel")).to_have_attribute("aria-invalid", "true")
     expect(page.get_by_text("Bitte die Regel in einem Satz notieren.")).to_be_visible()
     page.get_by_role("button", name="Später", exact=True).click()
@@ -254,6 +254,8 @@ def test_lokaler_ablauf(server, page):
     expect(zeile).to_have_count(0)
 
     page.goto(f"{base}/#/einstellungen")
+    # Bereichsdetails sind eingeklappt; Beruf ist der erste Bereich
+    page.locator("details.bereich-details").first.locator("summary").click()
     gruppe = page.get_by_role("group", name="Datenschutz-Stufe Beruf")
     expect(gruppe.get_by_role("button", name="Nur lokal")).to_have_attribute("aria-pressed", "true")
     # Stufe umstellen speichert direkt
@@ -353,7 +355,7 @@ def test_spezifitaet_schaerfen_nach_dem_sichern(server, page):
     page.get_by_role("button", name="Sichern", exact=True).click()
     expect(page.locator("textarea.regel")).to_have_value("Bei der Projektplanung Puffer einplanen.")
     expect(page.locator("#draft input[role=switch]")).not_to_be_checked()  # Claude: eher Allgemeinwissen
-    page.locator(".sticky-actions button.primary").click()
+    page.locator(".sticky-actions button.primary:visible").click()
     expect(page.get_by_text("Schärfen?")).to_be_visible()
     shot(page, "10-schaerfen")
     page.locator("textarea[id^=schaerfen-]").fill("Datenmigration, ich schätze sie jedes Mal um die Hälfte zu niedrig")
@@ -397,7 +399,7 @@ def test_lessons_aus_foto(server, page, tmp_path):
     eintrag = next(e for e in page.request.get(f"{base}/api/entwuerfe").json()["eintraege"] if e["rohtext"].startswith("Schichtleiter einplanen"))
     page.goto(f"{base}/#/entwurf/{eintrag['id']}")
     expect(page.locator(".card.hero .thumbs img")).to_be_visible(timeout=15000)
-    page.locator(".sticky-actions button.primary").click()
+    page.locator(".sticky-actions button.primary:visible").click()
     page.get_by_role("link", name="Ansehen").click()
     expect(page.get_by_role("heading", name="Fotos (1)")).to_be_visible()
     expect(page.locator(".thumbs img")).to_have_attribute("src", re.compile("^blob:"))

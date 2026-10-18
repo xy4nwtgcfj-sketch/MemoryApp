@@ -104,17 +104,21 @@ export async function viewEinstellungen() {
         text: "Text geht nach der Namensprüfung an Claude. Fotos werden auf dem PC gelesen, nur der geprüfte Text geht raus.",
         foto: "Text und Fotos gehen an Claude.",
       }[stufe];
+      // Eingeklappt zeigt jede Zeile nur Name, Schalter und die aktuelle Stufe; Details nur auf Wunsch.
+      // Ohne Claude gibt es nichts zu wählen, daher entfällt die Stufenwahl ganz (Hinweis steht einmal oben).
+      const stufenText = ohneClaude ? "Bleibt auf dem PC" : STUFEN.find((x) => x[0] === stufe)?.[1] || "";
+      const offen = li.querySelector("details")?.open || false;
       fill(li,
         el("div", { class: "row" },
           el("label", { for: aktivId, class: "grow", style: "margin:0" }, b.name, el("span", { class: "li-sub" }, b.beispiele)),
           aktiv),
-        b.aktiv ? [
-          seg,
-          el("p", { class: "footnote", style: "margin:0" }, erklaerung, stufe !== "lokal" && ohneClaude ? " Claude ist nicht eingerichtet, daher gerade ohne KI." : ""),
-          el("div", { class: "row" },
-            el("label", { for: berufId, class: "grow", style: "margin:0;font-weight:500" }, "Beruflich", el("span", { class: "li-sub" }, "Strengere Prüfung auf Namen und Zahlen, Fotos nie als Bild")),
-            beruf),
-        ] : null);
+        b.aktiv ? el("details", { class: "bereich-details", open: offen || null },
+          el("summary", {}, `${stufenText}${b.beruflich ? " · beruflich" : ""}`),
+          el("div", { class: "stack" },
+            ohneClaude ? null : [seg, el("p", { class: "footnote", style: "margin:0" }, erklaerung)],
+            el("div", { class: "row" },
+              el("label", { for: berufId, class: "grow", style: "margin:0;font-weight:500" }, "Beruflich", el("span", { class: "li-sub" }, "Strengere Prüfung auf Namen und Zahlen, Fotos nie als Bild")),
+              beruf))) : null);
     };
     zeichnen();
     return li;
@@ -124,6 +128,9 @@ export async function viewEinstellungen() {
   const bereicheSection = el("section", { class: "section" },
     el("h2", {}, "Bereiche und Datenschutz"),
     el("p", { class: "small muted", style: "margin-top:-4px" }, "Pro Bereich legst du fest, was an Claude gehen darf. Fokus schlägt Vollständigkeit: Lass anfangs nur zwei Bereiche aktiv."),
+    ohneClaude ? el("div", { class: "notice info" }, icon("lock"), el("div", {},
+      el("strong", {}, "Claude ist nicht eingerichtet."),
+      "Alles bleibt auf deinem PC. Die Wahl, was an Claude gehen darf, erscheint hier, sobald ein API-Key in der .env steht.")) : null,
     bereicheListe,
     el("div", { class: "row" },
       el("div", { class: "grow" }, el("label", { for: "neuer-bereich", class: "sr-only" }, "Neuer Bereich"), neuerBereich),

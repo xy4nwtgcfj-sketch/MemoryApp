@@ -390,8 +390,8 @@ export function statsAnzeigen(s) {
   if (!s) return;
   statsEl.hidden = false;
   fill(statsEl,
-    el("span", {}, `${s.gesamt} / ${ZIEL_LESSONS}`),
-    s.woche_aktiv ? el("span", { class: "ok" }, "· Woche ", icon("check", "icon sm")) : null);
+    el("span", {}, `${s.gesamt} / ${ZIEL_LESSONS} Lessons`),
+    s.woche_aktiv ? el("span", { class: "ok", title: "Diese Woche schon etwas erfasst" }, icon("check", "icon sm")) : null);
   statsEl.setAttribute("aria-label", `Fortschritt: ${s.gesamt} von ${ZIEL_LESSONS} Lessons${s.woche_aktiv ? ", diese Woche aktiv" : ""}`);
   const badge = document.getElementById("eingang-count");
   badge.hidden = !s.offene_entwuerfe;
@@ -427,7 +427,8 @@ export function leer({ symbol = "inbox", titel, text = "", aktionen = [] }) {
 }
 
 export function sevPunkte(n) {
-  return el("span", { class: "sev", title: `Schwere ${n} von 5`, "aria-label": `Schwere ${n} von 5` }, "●".repeat(n) + "○".repeat(5 - n));
+  return el("span", { class: "sev", title: `Schwere ${n} von 5`, "aria-label": `Schwere ${n} von 5` },
+    el("span", { class: "sev-label", "aria-hidden": "true" }, "Schwere"), el("span", { "aria-hidden": "true" }, "●".repeat(n) + "○".repeat(5 - n)));
 }
 
 export function quelleText(q) {
@@ -684,6 +685,15 @@ export function ersetzenKnoepfe(hinweise, anwenden) {
     type: "button",
     onclick: (e) => { anwenden(r); e.currentTarget.remove(); say(`${r.von} ersetzt durch ${r.nach}.`); },
   }, el("span", {}, el("b", {}, `„${r.von}“`), " ersetzen durch ", el("b", {}, `„${r.nach}“`)))));
+}
+
+// Für bereits gespeicherte Lessons: eine einklappbare Zeile statt einer großen Warnbox.
+export function hinweisKompakt(hinweise) {
+  if (!hinweise?.length) return null;
+  return el("details", { class: "hinweis-kompakt" },
+    el("summary", {}, icon("shield", "icon sm"), `Datenschutz: ${hinweise.length} Hinweis${hinweise.length > 1 ? "e" : ""}`),
+    el("ul", {}, hinweise.map((h) => el("li", {}, anf(h)))),
+    el("p", {}, "Nur relevant, wenn diese Lesson an Claude geht. Über „Bearbeiten“ kannst du Zahlen und Namen abstrahieren."));
 }
 
 export function hinweisBox(hinweise, { titel = "Datenschutz-Hinweis: bitte abstrahieren", anwenden = null } = {}) {

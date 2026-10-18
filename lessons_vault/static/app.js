@@ -86,5 +86,14 @@ refreshStats();
 ausgangSenden();
 
 if ("serviceWorker" in navigator && window.isSecureContext) {
-  navigator.serviceWorker.register("sw.js").catch(() => { /* optional */ });
+  // Hatte die Seite schon einen Service Worker und übernimmt ein neuer, einmal neu laden:
+  // So läuft nach einem Update nie neue Logik mit altem Stil (oder umgekehrt).
+  const hatteSteuerung = Boolean(navigator.serviceWorker.controller);
+  let neuGeladen = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hatteSteuerung || neuGeladen) return;
+    neuGeladen = true;
+    location.reload();
+  });
+  navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then((reg) => reg.update()).catch(() => { /* optional */ });
 }

@@ -28,7 +28,7 @@ function sekunden() { return capture.start ? Math.round((Date.now() - capture.st
 const MODUS_ZEILE = {
   claude: ["cloud", "Claude strukturiert. Namen und Projektdaten prüft die App vorher."],
   lokal: ["lock", "Bleibt auf deinem PC und wird dort strukturiert."],
-  manuell: ["pencil", "Ohne KI: Du füllst den Entwurf selbst aus."],
+  manuell: ["pencil", "Ohne KI: „Sichern“ öffnet das Formular, „Nur merken“ legt die Notiz in den Eingang."],
 };
 
 function modusFuer(st, bereich) {
@@ -69,7 +69,9 @@ export async function viewErfassen(params = {}) {
   const modusZeile = el("p", { class: "footnote row", style: "gap:8px;margin:12px 0 0" });
   const chips = el("div", { class: "chips", role: "group", "aria-labelledby": "bereich-label" });
   const bereichBlock = el("div", {}, el("p", { class: "overline", id: "bereich-label", style: "margin-top:16px" }, "Bereich ", el("span", { style: "text-transform:none;letter-spacing:0;font-weight:400" }, "(optional)")), chips);
-  const sichernBtn = el("button", { type: "button", class: "primary block" }, "Sichern");
+  const sichernBtn = el("button", { type: "button", class: "primary" }, "Sichern");
+  const merkenBtn = el("button", { type: "button" }, icon("inbox", "icon sm"), "Nur merken");
+  const tagesSlot = el("div", { id: "erfassen-tag", style: "margin-top:24px" });
 
   const renderThumbs = () => fill(thumbs, capture.bilder.length ? thumbsRow(capture.bilder, {
     onRemove: (b) => {
@@ -114,8 +116,9 @@ export async function viewErfassen(params = {}) {
     fotoPanel,
     bereichBlock,
     modusZeile,
-    el("div", { class: "actions", style: "margin-bottom:0" }, sichernBtn),
-    fehlerSlot);
+    fehlerSlot,
+    // Fest über der Leiste, damit Sichern ohne Scrollen erreichbar ist
+    el("div", { class: "sticky-actions" }, sichernBtn, merkenBtn));
 
   const notizZeile = el("div", { class: "card flat", hidden: true });
 
@@ -215,7 +218,7 @@ export async function viewErfassen(params = {}) {
     ergebnis.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
   }
 
-  const sichern = async () => {
+  const sichern = async ({ nurMerken = false } = {}) => {
     const text = textarea.value.trim();
     if (!text) {
       textarea.setAttribute("aria-invalid", "true");
@@ -225,7 +228,7 @@ export async function viewErfassen(params = {}) {
       say(textFehler.textContent);
       return;
     }
-    if (sichernBtn.getAttribute("aria-disabled") === "true") return;
+    if (sichernBtn.getAttribute("aria-disabled") === "true" || merkenBtn.getAttribute("aria-disabled") === "true") return;
     const notiz = { text, quelle: capture.quelle, bereich: capture.bereich, erfassung_sekunden: sekunden(), bild_ids: capture.bilder.map((b) => b.id) };
     fill(fehlerSlot);
     const imAusgang = () => {
@@ -240,6 +243,7 @@ export async function viewErfassen(params = {}) {
     };
     if (istOffline()) return imAusgang();
     sichernBtn.setAttribute("aria-disabled", "true");
+    merkenBtn.setAttribute("aria-disabled", "true");
     try {
       const eintrag = await api("/api/notiz", { method: "POST", body: notiz, timeoutMs: 15000 });
       captureLeeren();
@@ -247,15 +251,23 @@ export async function viewErfassen(params = {}) {
       renderThumbs();
       fill(fotoPanel);
       refreshStats();
+      if (nurMerken) {
+        toast("Im Eingang gemerkt. Du ergänzt sie, wenn du Zeit hast.");
+        say("Im Eingang gemerkt.");
+        textarea.focus();
+        return;
+      }
       zeigeEintrag(eintrag);
     } catch (err) {
       if (err.netz) imAusgang();
       else fill(fehlerSlot, errorNotice(err));
     } finally {
       sichernBtn.removeAttribute("aria-disabled");
+      merkenBtn.removeAttribute("aria-disabled");
     }
   };
-  sichernBtn.addEventListener("click", sichern);
+  sichernBtn.addEventListener("click", () => sichern());
+  merkenBtn.addEventListener("click", () => sichern({ nurMerken: true }));
 
   // ---------------------------------------------------------- Fotos
   const fotoIn = fotoInput(async (files) => {
@@ -385,7 +397,8 @@ export async function viewErfassen(params = {}) {
   renderChips();
   updateModus();
   renderThumbs();
-  const ok = render(grosserTitel("Erfassen"), oben, composer, fotoIn, notizZeile, ergebnis);
+  // Notizfeld zuerst: Tageskarten (Woche, Wiedersehen …) stehen darunter und verdrängen das Erfassen nicht.
+  const ok = render(grosserTitel("Erfassen"), oben, composer, fotoIn, notizZeile, ergebnis, tagesSlot);
   if (!ok) return;
   fokusAufTitel();
 
@@ -394,7 +407,7 @@ export async function viewErfassen(params = {}) {
   if (laufend) {
     api(`/api/entwuerfe/${laufend}`).then((e) => zeigeEintrag(e)).catch(() => store.remove("lv-laufend"));
   } else {
-    heuteKarte(oben, textarea);
+    heuteKarte(tagesSlot, textarea);
   }
 
   // Frische Daten nachladen, ohne die Seite neu aufzubauen
