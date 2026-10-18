@@ -9,10 +9,10 @@ See: .planning/PROJECT.md (updated 2026-10-16)
 
 ## Current Position
 
-Phase: 1.4 of 3 (Härtung, eingeschoben)
+Phase: 1.5 of 3 (Design und Bedienung, eingeschoben)
 Plan: 3 of 3 in current phase
 Status: Phase complete, Einrichtung und 3-Wochen-Abnahme ausstehend
-Last activity: 2026-10-18 — Phase 1.4 Härtung (170 Tests); als Nächstes Design- und UX-Audit vor dem Freeze
+Last activity: 2026-10-18: Phase 1.5 Design und Bedienung (186 Tests); als Nächstes Freeze, Einrichtung, Test auf dem iPhone
 
 Progress: [███░░░░░░░] 33%
 
@@ -24,7 +24,9 @@ Siehe PROJECT.md Key Decisions. Wichtigste: Voyage statt nicht existierendem "Cl
 
 ### Pending Todos
 
-- Startbestand (20 bis 30 Lessons) schreiben und importieren
+- Startbestand über "Startbestand anlegen" (Fragen) oder JSON-Import
+- iOS-Kurzbefehl "Lesson merken" einrichten, Wochenrückblick in den Kalender
+- Auf echtem iPhone prüfen: VoiceOver, Tastatur-Diktat, Statusleiste, Offline-Postausgang
 - Auf E5 (Windows 11) einrichten: Python, Ollama, Modelle, .env, tailscale serve, Autostart
 - benchmark_lokal.py ausführen und LV_OLLAMA_MODEL festlegen
 - Tesseract (UB Mannheim, Sprachpaket German) installieren

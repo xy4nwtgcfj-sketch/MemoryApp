@@ -1,0 +1,19 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Lessons Vault//Wochenrueckblick//DE
+CALSCALE:GREGORIAN
+BEGIN:VEVENT
+UID:lessons-vault-wochenrueckblick@lessons-vault.local
+DTSTAMP:20261018T120000Z
+DTSTART:20261023T163000
+DURATION:PT10M
+RRULE:FREQ=WEEKLY;BYDAY=FR
+SUMMARY:Lessons: Was nehme ich aus dieser Woche mit?
+DESCRIPTION:10 Minuten. Lessons Vault öffnen\, Wochenrückblick\, Eingang sichten.
+BEGIN:VALARM
+TRIGGER:PT0M
+ACTION:DISPLAY
+DESCRIPTION:Lessons: Wochenrückblick
+END:VALARM
+END:VEVENT
+END:VCALENDAR

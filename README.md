@@ -3,51 +3,77 @@
 Ein zweites Gedächtnis für Erfahrungen. Lessons in unter 30 Sekunden erfassen (Text oder Sprache),
 eine KI strukturiert sie, und du findest sie wieder, wenn eine ähnliche Situation bevorsteht.
 
-Stand: Phase 1 "Erfassen und Finden", 1.1 "Lokale KI", 1.2 "Manuelles Briefing" und 1.3 "Fotos"
-(siehe `.planning/ROADMAP.md`). Kalender-Briefings, Erinnerungen und Mustererkennung folgen nach der
-Abnahme von Phase 1 (drei Wochen echte Nutzung, mindestens 10 neue Lessons).
+Stand: Phase 1 "Erfassen und Finden", 1.1 "Lokale KI", 1.2 "Manuelles Briefing", 1.3 "Fotos", 1.4 "Härtung"
+und 1.5 "Design und Bedienung" (siehe `.planning/ROADMAP.md`). Kalender-Briefings, Push-Erinnerungen und
+Mustererkennung folgen nach der Abnahme von Phase 1 (drei Wochen echte Nutzung, mindestens 10 neue Lessons).
 
 ## Funktionen
 
-- **Erfassen:** Stichworte tippen oder diktieren, optional einen Bereich antippen. Je nach Einstellung:
-  - **Claude (sofort):** Entwurf in wenigen Sekunden, höchstens eine Rückfrage. Klingt eine Lesson nach
-    Lehrbuchwissen, das Claude ohnehin kennt ("Puffer einplanen"), fragt Claude nach deinem persönlichen Teil:
-    Was war bei dir anders, welches eigene Muster, welche Größenordnung? Die Frage ist optional.
-    Im Formular markiert "Persönliche Erfahrung", ob die Lesson Wissen enthält, das nur du hast.
-  - **Lokal (Hintergrund):** Der Rohtext ist sofort gespeichert. Ein lokales Modell auf dem PC strukturiert
-    ihn in 1 bis 3 Minuten, der Entwurf landet unter **Prüfen**.
-  - **Manuell:** Formular selbst ausfüllen.
-- **Briefing:** Vor einer Aufgabe die Situation in einem Satz beschreiben ("Projektplanung für Rollout
-  Welle 4 schreiben"). Du bekommst:
-  - die bis zu 5 wichtigsten eigenen Lessons, sortiert nach Relevanz × Schweregrad × wie oft erlebt,
-    überholte nie, mit Begründung je Lesson,
-  - eine Checkliste zum Abhaken und Kopieren (aus deinen Maßnahmen, mit Claude auf die Situation
-    zugeschnitten und mit Quellenangabe je Punkt),
-  - eine kurze Claude-Zusammenfassung "Worauf du achten solltest", nur aus deinen Lessons.
+- **Erfassen: erst sichern, dann veredeln.** Stichworte tippen oder diktieren, optional einen Bereich
+  antippen, **Sichern**. Die Notiz liegt sofort auf dem PC, erst danach wird strukturiert:
+  - **Claude:** In wenigen Sekunden erscheint eine kompakte Karte: die Regel groß, Bereich und Schwere,
+    der Rest eingeklappt unter "Details". Pflicht sind nur Regel und Bereich. **Sichern** übernimmt die
+    Lesson (mit Rückgängig), **Später** legt sie in den Eingang. Fragt Claude nach deinem persönlichen Teil,
+    kommt das nach dem Sichern als optionales "Schärfen? Ein Satz genügt".
+  - **Lokal:** Ein lokales Modell auf dem PC strukturiert in 1 bis 3 Minuten, der Entwurf landet im **Eingang**.
+  - **Ohne KI:** Du füllst den Entwurf selbst aus.
+  - Halbe Eingaben überleben einen Neustart der App. Ohne Verbindung zum PC wird die Notiz auf dem iPhone
+    gesichert und automatisch gesendet, sobald der PC erreichbar ist.
+- **Eingang:** Alle gesicherten Notizen, die noch nicht übernommen sind (vom Kurzbefehl, aus dem
+  Startbestand, mit "Später" gesicherte, lokal strukturierte). Fertige mit **einem Tipp übernehmen**,
+  mehrere auf einmal mit "Alle übernehmen". Der Zähler in der Leiste zeigt offene Notizen.
+- **Startbestand:** Bei weniger als 20 Lessons bietet die App einen Fragenkatalog je Bereich an
+  ("Was lief beim letzten Cutover anders als geplant?"). Du antwortest in Stichworten, Claude strukturiert,
+  du übernimmst im Eingang.
+- **Briefing:** Situation in einem Satz beschreiben ("Hypercare-Plan für ein SAP-EWM-Projekt"). Das Ergebnis
+  steht oben, die Eingabe klappt zu einer Zeile zusammen:
+  - "Worauf es ankommt" als kurze Zusammenfassung,
+  - **Aus deiner Erfahrung** zuerst: wo du vom Üblichen abweichst, dazu deine passendsten Lessons mit
+    Daumen hoch/runter (verbessert künftige Briefings),
+  - der **Plan** zum Abhaken und Kopieren. Jeder Punkt zeigt seine Quelle: deine Erfahrung (antippen zeigt
+    die Regel und "Passt nicht") oder Claude (Fachwissen, nicht geprüft),
+  - weniger passende Treffer eingeklappt, unten die Angabe, was an Claude gesendet wurde.
 
-  Zwei Modi:
-  - **Mit Claude-Wissen** (Standard): Claude baut aus seinem Fachwissen und deinen Lessons einen gegliederten
-    Plan, z. B. für die Hypercare-Phase eines EWM-Projekts. Jeder Punkt zeigt seine Quelle ("Deine Erfahrung"
-    oder "Allgemein (Claude)"). "Deine Besonderheiten" zeigt, wo deine Erfahrung vom üblichen Vorgehen
-    abweicht. Allgemeinwissen ist nicht geprüft. Geht auch ohne passende Lessons, dann klar gekennzeichnet.
-  - **Nur meine Erfahrung:** ausschließlich deine Lessons.
-
-  Mit "Hilfreich" / "Nicht relevant" verbesserst du künftige Briefings zu ähnlichen Situationen.
-  Frühere Briefings bleiben abrufbar.
+  Der Schalter **Mit Claude-Fachwissen** im Ergebnis wechselt zwischen Plan und "nur deine Erfahrung".
+  Fehlt eigene Erfahrung, lädt das Briefing ein, sie direkt festzuhalten. Am nächsten Tag fragt die App
+  einmal nach: "Wie lief ...? Was nimmst du mit?"
 - **Fotos:**
   - *Lessons aus Fotos:* Folie, Whiteboard oder Notiz fotografieren. Die App findet darin Erfahrungen,
-    du wählst aus, und jede läuft einzeln durch die normale Erfassung. Das Foto hängt an jeder Lesson.
-  - *Entwurf prüfen* (im Briefing): Foto eines Entwurfs, etwa eines Projektplans. Claude gleicht ihn mit
-    deinen passenden Lessons ab: was fehlt, was schon berücksichtigt ist.
-  - Fotos lassen sich auch nachträglich an eine Lesson hängen und in groß ansehen.
-- **Prüfen** (nur sichtbar, wenn ein Bereich lokal strukturiert wird): Lokal strukturierte Entwürfe übernehmen, korrigieren, Rückfrage beantworten, neu strukturieren
-  oder verwerfen. Der Zähler in der Leiste zeigt offene Entwürfe.
-- **Dubletten:** Ähnliche Lessons werden erkannt; "Als Bestätigung zählen" erhöht den Zähler, ab 2× wird
+    du wählst aus, alle landen strukturiert im Eingang. Das Foto hängt an jeder Lesson.
+  - *Plan gegenchecken* (Kamera im Briefing): Foto eines Entwurfs, etwa eines Projektplans. Claude gleicht
+    ihn mit deinen Lessons ab: was fehlt, was schon berücksichtigt ist.
+- **Datenschutzprüfung vor dem Senden:** Namen von Firmen und Personen, "Kunde X", Kontaktdaten, in
+  beruflichen Bereichen auch Beträge und Zahlen. Treffer lassen sich mit einem Tipp durch neutrale Begriffe
+  ersetzen; danach geht der Text automatisch an Claude. Begriffe der Sperrliste gehen nie raus.
+- **Dubletten:** Ähnliche Lessons werden erkannt; "Als erneut erlebt zählen" erhöht den Zähler, ab 2× wird
   eine Lesson "bestätigt".
-- **Suche:** Volltext (findet Wortteile: "Bank" findet "Finanzierungsbankgespräch"), semantisch, hybrid,
-  mit Filtern. Ungeprüfte Entwürfe werden mit durchsucht.
-- **Datenschutz-Warnung** bei Firmen, Personen, "Kunde X", Kontaktdaten, in "Beruf" auch Beträge und Zahlen.
-  Eigene Sperrliste unter Einstellungen.
+- **Suche:** genaue Wörter (findet Wortteile: "Bank" findet "Finanzierungsbankgespräch") und ähnliche
+  Bedeutung kombiniert, mit Filtern. Passende Notizen im Eingang werden mit angezeigt.
+- **Rhythmus ohne Druck:** Kopfzeile "23 / 60 · Woche ✓", freitags ein Wochenrückblick mit Leitfragen,
+  einmal am Tag "Erinnerst du dich?" mit einer älteren Lesson (Gilt noch, Schärfen, Überholt). Keine Serien,
+  keine Punkte: gezählt wird, in wie vielen der letzten 6 Wochen du aktiv warst.
+
+## iPhone: Kurzbefehl "Lesson merken"
+
+Damit hältst du eine Lesson in unter 10 Sekunden fest, ohne die App zu öffnen: per Siri, Action-Taste,
+Sperrbildschirm oder Rückseite antippen. Die Notiz landet strukturiert im Eingang.
+
+1. App **Kurzbefehle** öffnen, neuen Kurzbefehl anlegen.
+2. Aktion **Text diktieren** (Sprache Deutsch).
+3. Aktion **Inhalte von URL abrufen**:
+   - URL: `https://<dein-pc>.<tailnet>.ts.net/api/notiz`
+   - Methode: POST
+   - Header: `Authorization` = `Bearer <Inhalt von data\zugangstoken.txt>`
+   - Anfragetext: JSON, Feld `text` = *Diktierter Text*, Feld `quelle` = `sprache`
+     (optional Feld `bereich`, z. B. `Immobilien`)
+4. Optional **Mitteilung anzeigen**: "Gesichert".
+5. Name "Lesson merken". Unter Einstellungen > Bedienungshilfen > Tippen > Auf Rückseite tippen oder auf
+   der Action-Taste ablegen.
+
+In der App unter Einstellungen > Erinnerungen stehen dieselben Schritte mit Knöpfen zum Kopieren von
+Adresse und Header-Wert. Dort gibt es auch den **Wochenrückblick** (freitags 16:30, 10 Minuten) als
+Kalenderserie. Eine persönliche Automation in Kurzbefehle (Uhrzeit, z. B. täglich 17:30) kann den
+Kurzbefehl zusätzlich anstoßen. Für Notizen aus beruflichen Bereichen gilt: Das Diktat läuft über Apple.
 
 ## Einrichtung auf dem Home-PC (Windows 11)
 
@@ -178,21 +204,24 @@ Start-ScheduledTask -TaskName "Lessons Vault"
 Beim Start werden fehlende Pakete nachinstalliert und die Datenbank migriert (mit Sicherung vorher).
 Die App auf dem Handy lädt die neue Version beim nächsten Öffnen.
 
-## KI-Einstellungen
+## Datenschutz-Stufen und KI
 
-Unter Einstellungen → KI-Strukturierung:
+Unter Einstellungen → Bereiche und Datenschutz legst du pro Bereich eine Stufe fest:
 
-- **Standard:** Automatisch (Claude, wenn ein API-Key da ist, sonst lokal, sonst manuell), Claude, Lokal, Manuell.
-- **Pro Bereich überschreibbar**, zum Beispiel Beruf → Lokal, Immobilien → Claude.
-- Bereiche auf **Lokal** werden **nie** an Claude geschickt, auch nicht als Vergleichskandidaten für die
-  Dublettenprüfung anderer Bereiche.
-- Steht **irgendein Bereich** auf Lokal, geht eine Erfassung **ohne Bereichswahl** ebenfalls nicht an Claude
-  (sie wird lokal oder manuell verarbeitet). Für Claude also den Bereich antippen.
-- Unter Einstellungen → Bereiche markierst du Bereiche als **beruflich**: strengere Prüfung auf Namen,
-  Beträge und Zahlen, Fotos nur per Texterkennung.
+- **Nur lokal:** geht **nie** an Claude, auch nicht als Vergleichskandidat für die Dublettenprüfung anderer
+  Bereiche. Ein lokales Modell strukturiert, ohne Modell füllst du selbst aus. Notizen, die einmal lokal
+  gesichert wurden, bleiben lokal, auch wenn du die Stufe später änderst.
+- **Text an Claude:** Text geht nach der Namensprüfung an Claude. Fotos werden auf dem PC gelesen, nur der
+  geprüfte Text geht raus.
+- **Claude mit Foto:** auch Fotos gehen an Claude (für berufliche Bereiche gesperrt).
 
-Wenn Ollama mal nicht läuft, geht nichts verloren: Entwürfe warten, Embeddings werden automatisch
-nachgeholt, die Suche fällt auf Volltext zurück.
+Steht **irgendein Bereich** auf "Nur lokal", geht eine Erfassung **ohne Bereichswahl** ebenfalls nicht an
+Claude. **Beruflich** (Schalter je Bereich): strengere Prüfung auf Namen, Beträge und Zahlen, Fotos nie als
+Bild. Unter "Erweitert" stellst du ein, wie Erfassungen ohne Bereich verarbeitet werden (Automatisch:
+Claude, wenn eingerichtet, sonst lokal, sonst ohne KI).
+
+Wenn Ollama mal nicht läuft, geht nichts verloren: lokale Notizen warten, Claude-Notizen laufen weiter,
+Embeddings werden automatisch nachgeholt, die Suche fällt auf Volltext zurück.
 
 ## Konfiguration (`.env`)
 
@@ -221,7 +250,8 @@ vorhandene semantische Embeddings.
 
 `startbestand/vorlage.json` enthält drei als BEISPIEL markierte Lessons, die Form und Abstraktionsgrad
 zeigen. Ersetze sie durch deine 20 bis 30 eigenen Lessons und importiere die Datei unter
-Einstellungen → Importieren. Pflicht: `titel` (max. 80 Zeichen), `situation`, `ereignis`, `lesson`
+Einstellungen → Bestand → Importieren. Ohne PC geht es direkt am iPhone: Einstellungen → Bestand →
+"Startbestand mit Fragen anlegen". Pflicht: `titel` (max. 80 Zeichen), `situation`, `ereignis`, `lesson`
 (ein Satz als Regel), `bereich`, `schweregrad` (1–5). Optional: `massnahme`, `tags`, `bestaetigungen`,
 `erstellt_am` (`YYYY-MM-DD`).
 

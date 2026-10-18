@@ -137,6 +137,18 @@ def kein_null(page):
     assert not re.search(r"\bnull\b|\bundefined\b", page.locator("#view").inner_text()), "null/undefined im UI"
 
 
+def frisch(page, base, route="erfassen"):
+    """Ohne Reste vorheriger Tests starten (Autosave, laufender Entwurf, offene Frage)."""
+    page.goto(f"{base}/#/{route}")
+    page.evaluate("""() => { for (const k of ['lv-laufend', 'lv-capture', 'lv-offen', 'lv-ausgang']) localStorage.removeItem(k);
+        localStorage.setItem('lv-ernte-aus', String(Date.now())); localStorage.setItem('lv-rueckblick', 'x'); }""")
+    page.reload()
+
+
+def einstellungen(page, base, **data):
+    page.request.put(f"{base}/api/einstellungen", data=json.dumps(data), headers={"Content-Type": "application/json"})
+
+
 def shot(page, name):
     if SHOTS:
         Path(SHOTS).mkdir(parents=True, exist_ok=True)
@@ -151,108 +163,150 @@ def test_ablauf(server, page):
     vorlage = json.loads((ROOT / "startbestand" / "vorlage.json").read_text(encoding="utf-8"))
     page.request.post(f"{base}/api/import", data=json.dumps(vorlage), headers={"Content-Type": "application/json"})
 
-    page.goto(base)
+    frisch(page, base)
     expect(page.locator("#capture-text")).to_be_visible()
+    expect(page).to_have_title(re.compile("^Erfassen"))
     shot(page, "01-erfassen")
 
-    # Erfassen mit KI-Entwurf
+    # Sichern: Notiz liegt sofort auf dem PC, Claude strukturiert, kompakte Karte
     page.fill("#capture-text", "Bankgespräch, Gehaltsnachweise vergessen, zweiter Termin")
-    page.get_by_role("button", name="Strukturieren").click()
-    expect(page.locator("#f-lesson")).to_have_value("Vor jedem Bankgespräch die Unterlagenliste anfordern.")
+    page.get_by_role("button", name="Sichern", exact=True).click()
+    expect(page.locator("textarea.regel")).to_have_value("Vor jedem Bankgespräch die Unterlagenliste anfordern.")
     expect(page.locator(".notice.warn")).to_contain_text("Herr Meier")
-    expect(page.get_by_text("Ähnliche Lessons (1)")).to_be_visible()
-    shot(page, "02-entwurf")
     assert fake.calls, "Claude-Client wurde nicht aufgerufen"
+    # Ersetzen mit einem Tipp
+    page.get_by_role("button", name=re.compile("Herr Meier.*ersetzen")).click()
+    page.locator("details.plain summary").click()
+    expect(page.locator("textarea[name=situation]")).to_have_value(re.compile("eine Ansprechperson"))
+    shot(page, "02-entwurf")
 
-    # Speichern
-    page.fill("#f-situation", "Termin bei der Bank für eine vermietete Wohnung.")
-    page.get_by_role("button", name="Speichern").click()
-    expect(page.locator("#toast")).to_contain_text("Gespeichert")
+    page.locator(".sticky-actions button.primary").click()
+    expect(page.get_by_text("Taucht wieder auf bei")).to_be_visible()
+    expect(page.locator("#toast")).to_contain_text("Gesichert")
+
+    # Rückgängig holt den Entwurf zurück
+    page.locator("#toast").get_by_role("button", name="Rückgängig").click()
+    expect(page.locator("textarea.regel")).to_be_visible()
+    page.locator(".sticky-actions button.primary").click()
+    expect(page.get_by_text("Taucht wieder auf bei")).to_be_visible()
 
     # Suchen: Kompositum
     page.goto(f"{base}/#/suche")
     page.fill("#q", "Bank")
-    expect(page.get_by_text("Treffer")).to_be_visible()
+    expect(page.locator("#treffer").get_by_text(re.compile("Treffer"))).to_be_visible()
     expect(page.locator(".result h3").first).to_contain_text("Bank")
     shot(page, "03-suche")
 
-    # Detail, erneut erlebt
+    # Detail, erneut erlebt (Dialog statt prompt)
     page.locator(".result").first.click()
-    expect(page.locator(".rule-big")).to_be_visible()
-    page.once("dialog", lambda d: d.accept("wieder passiert"))
+    expect(page.locator(".quote")).to_be_visible()
     page.get_by_role("button", name="Erneut erlebt").click()
-    expect(page.locator("#toast")).to_contain_text("Bestätigt")
-    expect(page.locator(".badges")).to_contain_text("bestätigt")
+    page.locator("dialog textarea").fill("wieder passiert")
+    page.locator("dialog").get_by_role("button", name="Zählen").click()
+    expect(page.locator("#toast")).to_contain_text("Gezählt")
+    expect(page.locator(".meta").first).to_contain_text("bestätigt")
     shot(page, "04-detail")
 
-    # Einstellungen
+    # Einstellungen: Fortschritt
     page.goto(f"{base}/#/einstellungen")
-    expect(page.get_by_text("Erfolgskriterien")).to_be_visible()
-    expect(page.locator("dd").first).to_have_text("4")
+    expect(page.get_by_role("heading", name="Fortschritt")).to_be_visible()
+    expect(page.locator(".tile .num").first).to_contain_text("4")
     shot(page, "05-einstellungen")
 
-    # Manuelle Erfassung blockiert Speichern ohne Pflichtfelder
-    page.goto(f"{base}/#/erfassen")
-    page.fill("#capture-text", "Notar")
-    page.get_by_role("button", name="Manuell").click()
-    expect(page.get_by_role("button", name="Speichern")).to_be_disabled()
-    expect(page.get_by_text("Noch offen:")).to_be_visible()
+    # Pflichtfelder: Regel fehlt -> Hinweis am Feld, Fokus dort
+    frisch(page, base)
+    page.fill("#capture-text", "Notar, Termin verschoben")
+    page.get_by_role("button", name="Sichern", exact=True).click()
+    page.locator("textarea.regel").fill("")
+    page.locator(".sticky-actions button.primary").click()
+    expect(page.locator("textarea.regel")).to_have_attribute("aria-invalid", "true")
+    expect(page.get_by_text("Bitte die Regel in einem Satz notieren.")).to_be_visible()
+    page.get_by_role("button", name="Später", exact=True).click()
+    expect(page.locator("#toast")).to_contain_text("Eingang")
 
     # Keine horizontale Scrollbar auf Handybreite
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    kein_null(page)
     assert page.errors == []
 
 
 def test_lokaler_ablauf(server, page):
     base, _ = server
     expect = playwright.expect
-    page.request.put(f"{base}/api/einstellungen", data=json.dumps({"strukturierung_bereiche": {"Beruf": "lokal"}}),
-                     headers={"Content-Type": "application/json"})
-    page.goto(f"{base}/#/erfassen")
-    page.reload()
-    page.get_by_role("button", name="Beruf").click()
-    expect(page.get_by_text("Verarbeitung: lokal im Hintergrund.")).to_be_visible()
+    einstellungen(page, base, strukturierung_bereiche={"Beruf": "lokal"})
+    frisch(page, base)
+    page.locator(".chip", has_text="Beruf").click()
+    expect(page.get_by_text("Bleibt auf deinem PC")).to_be_visible()
     page.fill("#capture-text", "Cutover, Schichtleiter fehlten, Inventur verzögert")
-    page.get_by_role("button", name="Speichern").click()
-    expect(page.locator("#toast")).to_contain_text("Wird lokal strukturiert")
+    page.get_by_role("button", name="Sichern", exact=True).click()
+    expect(page.get_by_text("Dein PC strukturiert die Notiz lokal")).to_be_visible()
 
-    # Worker-Thread verarbeitet im Hintergrund; Prüfen-Ansicht aktualisiert sich
-    page.goto(f"{base}/#/pruefen")
-    for _ in range(20):
-        if page.get_by_text("bereit zur Prüfung").count():
-            break
-        page.wait_for_timeout(250)
-        page.reload()
-    expect(page.get_by_text("bereit zur Prüfung")).to_be_visible()
-    expect(page.locator("#pruefen-count")).to_have_text("1")
-    shot(page, "06-pruefen")
+    # Worker-Thread verarbeitet im Hintergrund; der Eingang aktualisiert sich
+    page.goto(f"{base}/#/eingang")
+    zeile = page.locator("li", has_text="Vor jedem Cutover die Personalplanung")
+    expect(zeile).to_be_visible(timeout=15000)
+    expect(page.locator("#eingang-count")).not_to_have_text("")
+    shot(page, "06-eingang")
 
-    page.get_by_text("Cutover-Personal früh bestätigen").click()
-    expect(page.get_by_text("Deine Notiz")).to_be_visible()
-    expect(page.locator("#f-lesson")).to_have_value("Vor jedem Cutover die Personalplanung schriftlich bestätigen lassen.")
-    shot(page, "07-entwurf-pruefen")
-    page.get_by_role("button", name="Speichern").click()
-    expect(page.locator("#toast")).to_contain_text("Gespeichert")
-    expect(page.get_by_text("Nichts zu prüfen.")).to_be_visible()
+    # Übernehmen mit einem Tipp
+    zeile.get_by_role("button", name=re.compile("übernehmen$")).click()
+    expect(page.locator("#toast")).to_contain_text("Übernommen")
+    expect(zeile).to_have_count(0)
 
     page.goto(f"{base}/#/einstellungen")
-    expect(page.get_by_role("heading", name="KI-Strukturierung")).to_be_visible()
-    expect(page.locator("#ki-Beruf")).to_have_value("lokal")
-    shot(page, "08-einstellungen-ki")
+    gruppe = page.get_by_role("group", name="Datenschutz-Stufe Beruf")
+    expect(gruppe.get_by_role("button", name="Nur lokal")).to_have_attribute("aria-pressed", "true")
+    # Stufe umstellen speichert direkt
+    gruppe.get_by_role("button", name="Text an Claude").click()
+    expect(gruppe.get_by_role("button", name="Text an Claude")).to_have_attribute("aria-pressed", "true")
+    assert page.request.get(f"{base}/api/einstellungen").json()["strukturierung_bereiche"].get("Beruf") != "lokal"
+    shot(page, "08-einstellungen")
+    assert page.errors == []
+
+
+def test_briefing_kombiniert(server, page):
+    base, fake = server
+    expect = playwright.expect
+    einstellungen(page, base, strukturierung_bereiche={})
+    frisch(page, base, "briefing")
+    page.evaluate("localStorage.setItem('lv-briefing-modus', 'kombiniert')")
+    page.reload()
+    page.fill("#briefing-text", "Plan für die Hypercare-Phase eines SAP-EWM-Projekts")
+    page.get_by_role("button", name="Briefing erstellen").click()
+    expect(page.get_by_text("Hypercare braucht klare Eskalationswege")).to_be_visible()
+    expect(page.get_by_text("Hier weichst du vom Üblichen ab")).to_be_visible()
+    expect(page.get_by_role("heading", name="Vor dem Go-live")).to_be_visible()
+    expect(page.locator("button.src.eigen")).to_have_count(1)
+    expect(page.get_by_text("1 aus deiner Erfahrung")).to_be_visible()
+    expect(page.get_by_text(re.compile("^An Claude gesendet: deine Situation"))).to_be_visible()
+    # Eingabe ist eingeklappt, Kopieren steht oben
+    expect(page.locator("#briefing-text")).to_be_hidden()
+    assert fake.calls[-1]["system"] == KOMBI_PROMPT
+    # Quelle antippen zeigt die eigene Regel
+    page.locator("button.src.eigen").click()
+    expect(page.locator(".src-detail")).to_be_visible()
+    shot(page, "15-briefing-kombiniert")
+    kein_null(page)
+
+    page.locator("#modus-schalter").click()
+    expect(page.get_by_text("Auf die Situation zugeschnitten (Claude, aus deinen Lessons)")).to_be_visible()
+    assert fake.calls[-1]["system"] == BRIEFING_PROMPT
+    assert page.evaluate("localStorage.getItem('lv-briefing-modus')") == "eigen"
+    kein_null(page)
     assert page.errors == []
 
 
 def test_briefing(server, page):
     base, _ = server
     expect = playwright.expect
-    page.goto(f"{base}/#/briefing")
-    page.get_by_role("button", name="Nur meine Erfahrung").click()
+    frisch(page, base, "briefing")
+    page.evaluate("localStorage.setItem('lv-briefing-modus', 'eigen')")
+    page.reload()
     page.fill("#briefing-text", "Bankgespräch für die nächste Wohnung vorbereiten")
     page.get_by_role("button", name="Briefing erstellen").click()
     expect(page.get_by_text("Fordere die Unterlagenliste der Bank vorab an")).to_be_visible()
-    expect(page.get_by_text("Auf die Situation zugeschnitten (Claude)")).to_be_visible()
-    expect(page.locator(".checklist li")).to_have_count(2)
-    expect(page.locator(".why").first).to_contain_text("Relevanz")
+    expect(page.locator("#briefing-result .checklist li")).to_have_count(2)
+    expect(page.locator(".relevanz").first).to_contain_text("%")
     text = page.locator("#briefing-result").inner_text()
     assert "überholt" not in text and "null" not in text
     shot(page, "09-briefing")
@@ -261,42 +315,53 @@ def test_briefing(server, page):
     expect(page.locator(".feedback .up").first).to_have_attribute("aria-pressed", "true")
     page.locator(".feedback .down").nth(1).click()
     expect(page.locator(".result.abgewertet")).to_have_count(1)
+    # Offene Frage für später gemerkt
+    assert page.evaluate("JSON.parse(localStorage.getItem('lv-offen')).situation").startswith("Bankgespräch")
 
     # Verlauf und Wiederaufruf
     page.goto(f"{base}/#/briefing")
     page.reload()
     expect(page.get_by_role("heading", name="Frühere Briefings")).to_be_visible()
-    expect(page.locator("a.result").first).to_contain_text("1 hilfreich")
-    page.locator("a.result").first.click()
+    eintrag = page.locator(".list a", has_text="Bankgespräch für die nächste Wohnung")
+    expect(eintrag).to_contain_text("1 hilfreich")
+    eintrag.click()
     expect(page.get_by_text("Fordere die Unterlagenliste der Bank vorab an")).to_be_visible()
 
     page.goto(f"{base}/#/einstellungen")
-    expect(page.get_by_text("1 von 1 (1 bewertet)")).to_be_visible()
+    expect(page.locator(".tile", has_text="Briefings mit hilfreicher Lesson")).to_contain_text("1")
     assert page.errors == []
 
 
-def test_spezifitaets_rueckfrage(server, page):
+def test_offene_frage_am_naechsten_tag(server, page):
     base, _ = server
     expect = playwright.expect
-    page.request.put(f"{base}/api/einstellungen", data=json.dumps({"strukturierung_bereiche": {}}),
-                     headers={"Content-Type": "application/json"})
-    page.goto(f"{base}/#/erfassen")
+    frisch(page, base)
+    page.evaluate("localStorage.setItem('lv-offen', JSON.stringify({id: 'x', situation: 'Besichtigung Wuppertal', t: Date.now() - 20*3600*1000}))")
     page.reload()
-    page.fill("#capture-text", "Projektplanung, Puffer zu knapp")
-    page.get_by_role("button", name="Strukturieren").click()
-    expect(page.get_by_text("Was ist dein persönlicher Teil?")).to_be_visible()
-    expect(page.get_by_role("button", name="Speichern")).to_be_enabled()  # Rückfrage ist optional
-    expect(page.locator("#f-spezifisch")).not_to_be_checked()
-    shot(page, "10-spezifitaet-frage")
+    expect(page.get_by_text(re.compile("Wie lief „Besichtigung Wuppertal“"))).to_be_visible()
+    page.get_by_role("button", name="Jetzt notieren").click()
+    expect(page.locator("#capture-text")).to_have_value(re.compile("^Nach „Besichtigung Wuppertal“: "))
+    assert page.errors == []
 
-    page.fill("#rueckfrage-antwort", "Datenmigration, ich schätze sie jedes Mal um die Hälfte zu niedrig")
-    page.get_by_role("button", name="Antworten").click()
-    expect(page.locator("#f-lesson")).to_have_value("Bei jeder Welle die Datenmigration mit dem doppelten meiner Schätzung einplanen.")
-    expect(page.locator("#f-spezifisch")).to_be_checked()
-    page.get_by_role("button", name="Speichern").click()
-    expect(page.locator("#toast")).to_contain_text("Gespeichert")
-    page.locator("#toast a").click()
-    expect(page.locator(".badges")).to_contain_text("persönlich")
+
+def test_spezifitaet_schaerfen_nach_dem_sichern(server, page):
+    base, _ = server
+    expect = playwright.expect
+    einstellungen(page, base, strukturierung_bereiche={})
+    frisch(page, base)
+    page.fill("#capture-text", "Projektplanung, Puffer zu knapp")
+    page.get_by_role("button", name="Sichern", exact=True).click()
+    expect(page.locator("textarea.regel")).to_have_value("Bei der Projektplanung Puffer einplanen.")
+    expect(page.locator("#draft input[role=switch]")).not_to_be_checked()  # Claude: eher Allgemeinwissen
+    page.locator(".sticky-actions button.primary").click()
+    expect(page.get_by_text("Schärfen?")).to_be_visible()
+    shot(page, "10-schaerfen")
+    page.locator("textarea[id^=schaerfen-]").fill("Datenmigration, ich schätze sie jedes Mal um die Hälfte zu niedrig")
+    page.get_by_role("button", name="Ergänzen").click()
+    expect(page.get_by_text("Geschärft.")).to_be_visible()
+    expect(page.locator("#erfassen-oben .quote")).to_have_text("Bei jeder Welle die Datenmigration mit dem doppelten meiner Schätzung einplanen.")
+    page.locator("#erfassen-oben").get_by_role("link", name="Ansehen").click()
+    expect(page.locator(".meta").first).to_contain_text("eigene Erfahrung")
     assert page.errors == []
 
 
@@ -314,83 +379,58 @@ def folie_datei(tmp_path):
 def test_lessons_aus_foto(server, page, tmp_path):
     base, fake = server
     expect = playwright.expect
-    page.goto(f"{base}/#/erfassen")
-    page.reload()
-    page.locator("#view input[type=file]").set_input_files(str(folie_datei(tmp_path)))
-    expect(page.get_by_text("Erkannter Text")).to_be_visible(timeout=15000)
-    expect(page.locator("#ocr-text")).to_have_value(re.compile("Schichtleiter"))
+    einstellungen(page, base, strukturierung_bereiche={})
+    frisch(page, base)
+    page.locator("#view input[type=file]").first.set_input_files(str(folie_datei(tmp_path)))
+    expect(page.locator("#ocr-text")).to_have_value(re.compile("Schichtleiter"), timeout=15000)
     expect(page.locator(".thumbs img")).to_have_count(1)
     shot(page, "11-foto-text")
     anzahl = len(fake.calls)
     page.get_by_role("button", name="Lessons finden").click()
-    expect(page.get_by_text("Gefundene Erfahrungen (2)")).to_be_visible()
+    expect(page.get_by_text("Auf dem Foto gefunden (2)")).to_be_visible()
     # Text-Weg: kein Bild an Claude
     assert all(isinstance(c["messages"][0]["content"], str) for c in fake.calls[anzahl:])
     page.locator("#kand-0").uncheck()
     shot(page, "12-kandidaten")
-    page.get_by_role("button", name="Ausgewählte erfassen (1)").click()
-    expect(page.get_by_text("Lesson 1 von 1 aus dem Foto")).to_be_visible()
-    expect(page.get_by_text("1 Foto wird an die Lesson gehängt.")).to_be_visible()
-    page.get_by_role("button", name="Speichern").click()
-    expect(page.locator("#toast")).to_contain_text("Gespeichert")
-    page.locator("#toast a").click()
+    page.get_by_role("button", name="Ausgewählte übernehmen (1)").click()
+    expect(page).to_have_url(re.compile("#/eingang$"))
+    eintrag = next(e for e in page.request.get(f"{base}/api/entwuerfe").json()["eintraege"] if e["rohtext"].startswith("Schichtleiter einplanen"))
+    page.goto(f"{base}/#/entwurf/{eintrag['id']}")
+    expect(page.locator(".card.hero .thumbs img")).to_be_visible(timeout=15000)
+    page.locator(".sticky-actions button.primary").click()
+    page.get_by_role("link", name="Ansehen").click()
     expect(page.get_by_role("heading", name="Fotos (1)")).to_be_visible()
     expect(page.locator(".thumbs img")).to_have_attribute("src", re.compile("^blob:"))
     page.locator(".thumb-open").click()
-    expect(page.locator(".lightbox img")).to_have_attribute("src", re.compile("^blob:"))
+    expect(page.locator("dialog.lightbox img")).to_have_attribute("src", re.compile("^blob:"))
     shot(page, "13-lightbox")
     kein_null(page)
     page.keyboard.press("Escape")
-    expect(page.locator(".lightbox")).to_have_count(0)
+    expect(page.locator("dialog.lightbox")).to_have_count(0)
+    expect(page.locator(".thumb-open")).to_be_focused()  # Fokus zurück auf das Vorschaubild
     assert page.errors == []
 
 
 @braucht_ocr
-def test_entwurf_pruefen(server, page, tmp_path):
+def test_plan_gegenchecken(server, page, tmp_path):
     base, fake = server
     expect = playwright.expect
-    page.goto(f"{base}/#/briefing")
-    page.reload()
-    page.get_by_role("button", name="Beruf").click()
+    einstellungen(page, base, strukturierung_bereiche={})
+    frisch(page, base, "briefing")
+    page.get_by_role("button", name="Beruf", exact=True).click()
     page.locator("#view input[type=file]").set_input_files(str(folie_datei(tmp_path)))
     expect(page.get_by_text("Erkannter Text des Entwurfs")).to_be_visible(timeout=15000)
-    page.get_by_role("button", name="Prüfen", exact=True).click()
+    page.get_by_role("button", name="Gegenchecken", exact=True).click()
     expect(page.get_by_text("Im Plan fehlt die schriftliche Personalfreigabe")).to_be_visible()
     expect(page.get_by_text("Was im Entwurf fehlt, laut deinen Lessons (Claude)")).to_be_visible()
     expect(page.get_by_text("Schon berücksichtigt (1)")).to_be_visible()
-    expect(page.get_by_role("heading", name="Abgleich mit deinen Erfahrungen")).to_have_count(0)  # ist ein <strong>
     call = fake.calls[-1]
     assert call["system"] == ABGLEICH_PROMPT and isinstance(call["messages"][0]["content"], str)
     shot(page, "14-entwurf-pruefen")
     kein_null(page)
-    # Suche ohne Entwürfe darf auch kein "null" zeigen
     page.goto(f"{base}/#/suche")
     page.fill("#q", "Cutover")
-    expect(page.get_by_text("Treffer")).to_be_visible()
-    kein_null(page)
-    assert page.errors == []
-
-
-def test_briefing_kombiniert(server, page):
-    base, fake = server
-    expect = playwright.expect
-    page.goto(f"{base}/#/briefing")
-    page.get_by_role("button", name="Mit Claude-Wissen").click()
-    page.fill("#briefing-text", "Plan für die Hypercare-Phase eines SAP-EWM-Projekts")
-    page.get_by_role("button", name="Briefing erstellen").click()
-    expect(page.get_by_text("Hypercare braucht klare Eskalationswege")).to_be_visible()
-    expect(page.get_by_text("Deine Besonderheiten")).to_be_visible()
-    expect(page.get_by_role("heading", name="Vor dem Go-live")).to_be_visible()
-    expect(page.locator(".src-eigen", has_text="Deine Erfahrung")).to_have_count(1)
-    expect(page.get_by_text("Allgemein (Claude)").first).to_be_visible()
-    expect(page.get_by_text(re.compile(r"1 von 3 Punkten aus deiner Erfahrung"))).to_be_visible()
-    assert fake.calls[-1]["system"] == KOMBI_PROMPT
-    shot(page, "15-briefing-kombiniert")
-    kein_null(page)
-
-    page.get_by_role("button", name="Nur meine Erfahrung zeigen").click()
-    expect(page.get_by_text("Zusammengefasst von Claude, nur aus deinen Lessons.")).to_be_visible()
-    assert fake.calls[-1]["system"] == BRIEFING_PROMPT
+    expect(page.locator("#treffer").get_by_text(re.compile("Treffer"))).to_be_visible()
     kein_null(page)
     assert page.errors == []
 
@@ -422,23 +462,67 @@ def test_anmeldung_mit_token(page, tmp_path):
         thread.join(timeout=5)
 
 
-def test_pruefung_vor_dem_senden(server, page):
+def test_pruefung_ersetzen_und_senden(server, page):
     base, fake = server
     expect = playwright.expect
-    page.request.put(f"{base}/api/einstellungen", data=json.dumps({"strukturierung_bereiche": {}}),
-                     headers={"Content-Type": "application/json"})
-    page.goto(f"{base}/#/erfassen")
-    page.reload()
+    einstellungen(page, base, strukturierung_bereiche={})
+    frisch(page, base)
     page.get_by_role("button", name="Beruf", exact=True).click()
     page.fill("#capture-text", "Cutover bei Kunde Müller GmbH zu spät abgestimmt")
     anzahl = len(fake.calls)
-    page.get_by_role("button", name="Strukturieren").click()
-    expect(page.get_by_text("Bevor das an Claude geht")).to_be_visible()
-    expect(page.get_by_text(re.compile("Müller GmbH"))).to_be_visible()
+    page.get_by_role("button", name="Sichern", exact=True).click()
+    expect(page.get_by_text("Kurz prüfen, bevor es an Claude geht", exact=True)).to_be_visible()
     assert len(fake.calls) == anzahl  # noch nichts gesendet
-    shot(page, "17-pruefung-vor-senden")
-    page.get_by_role("button", name="Trotzdem senden").click()
-    expect(page.locator("#f-lesson")).to_be_visible()
+    shot(page, "17-pruefung")
+    page.get_by_role("button", name=re.compile("„Kunde Müller GmbH“ ersetzen")).click()
+    # Nach dem Ersetzen fällt nichts mehr auf: geht automatisch an Claude
+    expect(page.locator("textarea.regel")).to_be_visible()
     assert len(fake.calls) == anzahl + 1
+    assert "Müller" not in json.dumps(fake.calls[-1], ensure_ascii=False, default=str)
+    kein_null(page)
+    assert page.errors == []
+
+
+def test_offline_postausgang_und_autosave(server, page):
+    base, _ = server
+    expect = playwright.expect
+    frisch(page, base)
+    # Autosave: Text überlebt einen Neustart der App
+    page.fill("#capture-text", "Halbe Notiz vor dem Neustart")
+    page.wait_for_timeout(600)
+    page.reload()
+    expect(page.locator("#capture-text")).to_have_value("Halbe Notiz vor dem Neustart")
+    expect(page.get_by_text("Deine letzte Notiz ist wiederhergestellt.")).to_be_visible()
+
+    vorher = len(page.request.get(f"{base}/api/entwuerfe").json()["eintraege"])
+    page.context.set_offline(True)
+    page.get_by_role("button", name="Sichern", exact=True).click()
+    expect(page.get_by_text("Auf dem iPhone gesichert", exact=True)).to_be_visible()
+    assert page.evaluate("JSON.parse(localStorage.getItem('lv-ausgang')).length") == 1
+    page.context.set_offline(False)
+    page.evaluate("window.dispatchEvent(new Event('online'))")
+    expect(page.locator("#toast")).to_contain_text("an den PC gesendet")
+    assert page.evaluate("JSON.parse(localStorage.getItem('lv-ausgang')).length") == 0
+    assert len(page.request.get(f"{base}/api/entwuerfe").json()["eintraege"]) == vorher + 1
+
+
+def test_deep_link_und_startbestand(server, page):
+    base, _ = server
+    expect = playwright.expect
+    frisch(page, base)
+    page.goto(f"{base}/#/erfassen?text=Notiz%20vom%20Kurzbefehl&bereich=Immobilien")
+    expect(page.locator("#capture-text")).to_have_value("Notiz vom Kurzbefehl")
+    expect(page.get_by_role("button", name="Immobilien")).to_have_attribute("aria-pressed", "true")
+    expect(page).to_have_url(re.compile("#/erfassen$"))
+
+    page.goto(f"{base}/#/ernte?bereich=Immobilien")
+    expect(page.get_by_text(re.compile("Frage 1 von 10"))).to_be_visible()
+    page.fill("#ernte-antwort", "Energieausweis und Heizungsalter zuerst")
+    page.get_by_role("button", name="Sichern und weiter").click()
+    expect(page.get_by_text(re.compile("Frage 2 von 10"))).to_be_visible()
+    page.get_by_role("button", name="Überspringen").click()
+    expect(page.get_by_text(re.compile("Frage 3 von 10"))).to_be_visible()
+    eintraege = page.request.get(f"{base}/api/entwuerfe").json()["eintraege"]
+    assert any(e["rohtext"].startswith("Was prüfst du bei der nächsten Besichtigung zuerst?") for e in eintraege), [e["rohtext"][:60] for e in eintraege]
     kein_null(page)
     assert page.errors == []

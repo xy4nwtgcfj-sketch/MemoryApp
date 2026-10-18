@@ -13,6 +13,7 @@ Projekt) vor weiterer Investition geprüft.
 - [x] **Phase 1.2: Manuelles Briefing (INSERTED)** - Situation beschreiben, Top 5 Lessons, Checkliste, Claude-Zusammenfassung, Feedback
 - [x] **Phase 1.3: Fotos (INSERTED)** - Fotos als Input: Lessons aus Folien (A), Entwurf gegen Erfahrung prüfen (B), lokal gespeichert
 - [x] **Phase 1.4: Härtung (INSERTED)** - Neun Audit-Befunde vor der Inbetriebnahme, keine neuen Funktionen
+- [x] **Phase 1.5: Design und Bedienung (INSERTED)** - Design- und UX-Audit umgesetzt, danach Freeze
 - [ ] **Phase 2: Briefings** - Manuelles und kalenderbasiertes Briefing, Erinnerungen, alle Bereiche
 - [ ] **Phase 3: Muster** - Monatliche Auswertung und Dashboard
 
@@ -114,6 +115,23 @@ Plans:
 - [x] 01.4-02: Zugriff und Timeouts (H5, H8)
 - [x] 01.4-03: Datenschutz-Durchsetzung und Prompt (H1, H2, H3) inkl. Oberfläche
 
+### Phase 1.5: Design und Bedienung (INSERTED)
+**Goal**: Die App wird gern und oft genutzt: Festhalten in Sekunden ohne Datenverlust, ein ruhiges, hochwertiges Erscheinungsbild, Abruf mit eigener Erfahrung zuerst.
+**Depends on**: Design- und UX-Audit 2026-10-18 (docs/DESIGN-UX-AUDIT-2026-10-18.md)
+**Success Criteria** (what must be TRUE):
+  1. Jede Erfassung ist gesichert, bevor die KI arbeitet (Server-Entwurf, Autosave, Postausgang offline)
+  2. Eine Lesson lässt sich per iOS-Kurzbefehl ohne App-Start festhalten
+  3. Der Entwurf ist eine kompakte Karte, Pflicht nur Regel und Bereich, Sichern ohne Scrollen
+  4. Briefing zeigt eigene Erfahrung vor Claudes Fachwissen und sagt, was an Claude ging
+  5. Startbestand am iPhone über Fragen, Fortschritt und Wochenrhythmus sichtbar, ohne Streaks
+  6. Einheitliches Design-System hell/dunkel, SVG-Icons, WCAG-2.2-AA-Befunde behoben
+**Plans**: 3 plans
+
+Plans:
+- [x] 01.5-01: Schnellnotiz-Server, Hintergrund-Strukturierung für alle Modi, Statistik, Wiedersehen
+- [x] 01.5-02: Frontend neu (Module, Design-System, Erfassen, Eingang, Briefing, Suche, Einstellungen, Ernte)
+- [x] 01.5-03: Tests, README, Kurzbefehl-Anleitung
+
 ### Phase 2: Briefings
 **Goal**: Vor einem relevanten Termin bekommt Stefan die 5 wichtigsten Lessons, ohne danach zu suchen.
 **Depends on**: Phase 1 (inkl. Abnahme)
@@ -136,7 +154,7 @@ Plans:
 
 ## Progress
 
-**Execution Order:** 1 → 1.1 → 1.2 → 1.3 → 1.4 → Design-/UX-Audit → Freeze und Abnahme → 2 → 3
+**Execution Order:** 1 → 1.1 → 1.2 → 1.3 → 1.4 → 1.5 → Freeze und Abnahme → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -145,5 +163,6 @@ Plans:
 | 1.2 Manuelles Briefing | 2/2 | Built, Nutzung ausstehend | 2026-10-16 |
 | 1.3 Fotos | 4/4 | Built, Test mit echten Fotos ausstehend | 2026-10-16 |
 | 1.4 Härtung | 3/3 | Built, Windows-Skripte ungetestet | 2026-10-18 |
+| 1.5 Design und Bedienung | 3/3 | Built, Test auf echtem iPhone ausstehend | 2026-10-18 |
 | 2. Briefings | 0/TBD | Not started | - |
 | 3. Muster | 0/TBD | Not started | - |

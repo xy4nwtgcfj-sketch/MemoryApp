@@ -200,3 +200,25 @@ Die Pakete 1 bis 5 zusammen sind etwa so viel Arbeit wie eine eigene Phase. Das 
 sind 10 echte Lessons in drei Wochen, nicht ein perfektes Design. Wenn nur ein Teil möglich ist: Paket 1 und die
 Kurzfassung von Paket 2 (Icons, Tokens, eine Hauptaktion) bringen den größten Teil der Wirkung. Danach einfrieren
 und nutzen; die Wochenbilanz "Was hat dich gebremst?" liefert dann echte Daten statt Vermutungen.
+
+## 7. Umsetzungsstand (18.10.2026)
+
+Auf Wunsch umgesetzt: alle Pakete 1 bis 5 und die Fehler F1 bis F7. Strittige Punkte nach Abschnitt 4
+entschieden (Schärfen nach dem Sichern, keine Tab-Zusammenlegung, Fotos sichtbar). Nicht umgesetzt wie
+empfohlen: Web Push und App-Badge, Kalender-API, Streaks, Briefing zweispaltig auf dem Desktop,
+Startbilder für iOS.
+
+| Bereich | Umsetzung |
+|---|---|
+| Erfassen | `/api/notiz` sichert sofort; kompakte Entwurfskarte mit fixiertem Sichern; Pflicht nur Regel und Bereich; Rückgängig nach Sichern und Verwerfen; "Später" in den Eingang; Schärfen nach dem Sichern; Autosave; Postausgang offline; Deep Link `#/erfassen?text=&bereich=` |
+| Datenschutz | Ersetzen mit einem Tipp, danach automatisch senden; Namensprüfung auch im Hintergrund (nichts wird gesendet, Entwurf trägt die Hinweise); lokale Absicht bleibt dauerhaft lokal |
+| Eingang | Immer sichtbarer Tab mit Zähler; Übernehmen mit einem Tipp, "Alle übernehmen"; Aktualisierung ohne Fokusverlust (F5) |
+| Briefing | Eingabe klappt ein; eigene Erfahrung zuerst; Plan mit Quellen, eigene Quelle antippbar mit "Passt nicht"; Modusschalter und Kopieren im Ergebniskopf (F1, F2); schwache Treffer eingeklappt; Transparenzzeile; Lücken-Einladung; offene Frage am nächsten Tag |
+| Gewohnheit | Startbestand per Fragen (Ernte); Kopfzeile "x / 60 · Woche ✓"; Wochenrückblick mit Leitfragen und "Was hat dich gebremst?"; "Erinnerst du dich?"; Kalenderserie (.ics); Kurzbefehl-Anleitung |
+| Design | Tokens hell/dunkel mit Farbsemantik, SVG-Icons (Lucide), Typo-Skala mit Large Title, eine Hauptaktion je Ansicht, Meta-Zeile statt Badges, neues App-Icon, iOS-Listen in den Einstellungen, Seitenleiste auf dem Desktop |
+| iPhone | Service Worker Cache zuerst; Erfassen zeichnet sofort; GET-Zeitlimit 10 s; Statusleiste passend; Tabbar und Toasts bei offener Tastatur; Zurück-Knopf; Aktualisierung bei Rückkehr; Token einfügen; GZip; Tastatur-Diktat statt Web Speech auf iOS |
+| Barrierefreiheit | Live-Region und Fokus auf neue Inhalte; Toasts pausierbar, Fehler bleiben; Dialoge und Lightbox als `<dialog>`; Kontraste (Rahmen, Gold, Zähler, Placeholder); iOS-Textgröße; scroll-padding; 44-px-Ziele; Seitentitel je Ansicht; Emoji entfernt; F6 |
+| Fehler | F1 bis F7 behoben, dazu ein "null"-Text in Briefing-Karten (beim Umbau gefunden) |
+
+Tests: 186 (davon 12 Browser-Tests der neuen Abläufe). Offen: Test auf einem echten iPhone (VoiceOver,
+Tastatur-Diktat, Statusleiste, Offline-Postausgang, Kurzbefehl).

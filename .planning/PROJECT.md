@@ -66,9 +66,14 @@ Erfassen und zuverlässiges Wiederfinden funktionieren.
 | Rückfrage darf auch nach dem persönlichen Teil fragen (Abweichung von Konzept 4.1), weiter max. eine Frage, optional | Allgemeine Lessons liefert Claude ohnehin; der Mehrwert der App liegt im persönlichen Wissen. Entscheidung Stefan. | — Pending |
 | Fotos: Beruf und ohne Bereich nur lokal erkannter, geprüfter Text an Claude; private Bereiche Claude Vision; Fotos lokal gespeichert | Kundenfolien sind das größte Compliance-Risiko; Bild ungeprüft an Claude wäre nicht kontrollierbar. Speicherung lokal auf Wunsch Stefans (Richtlinien-Check offen). | — Pending |
 | Briefing standardmäßig kombiniert (Claude-Fachwissen + Lessons), Quelle je Punkt sichtbar, Modus "nur eigene" bleibt | Stefan will Fachwissen und Erfahrung in einem Plan; die Quellenkennzeichnung erhält die Messbarkeit des Mehrwerts. | — Pending |
+| Erst sichern, dann veredeln: jede Erfassung ist zuerst ein Entwurf auf dem PC, Claude strukturiert danach | Kein Datenverlust (iOS beendet PWAs im Hintergrund), Kurzbefehl ohne App-Start möglich, ein Weg für alle Modi | — Pending |
+| Lokale Absicht wird am Entwurf gespeichert und bleibt dauerhaft lokal | Eine spätere Umstellung darf alte Notizen nicht nachträglich an Claude geben | — Pending |
+| Rückfrage nach dem persönlichen Teil erst nach dem Sichern ("Schärfen") | Die Lesson ist in jedem Fall gesichert; die Frage wird Angebot statt Hürde | — Pending |
+| Wöchentliche Kadenz ("x von 6 Wochen") statt Streaks und Punkten | Lessons entstehen unregelmäßig; Streak-Abbrüche sind ein typischer Ausstiegsmoment | — Pending |
+| Briefing: eigene Erfahrung vor Claude-Fachwissen, Transparenzzeile was gesendet wurde | Der Nutzen soll dem eigenen Archiv zugeschrieben werden, nicht Claude | — Pending |
 | Single-User ohne Rechtemodell | Offene Frage 1 unbeantwortet; Teilen später ist ein eigener Meilenstein. Datenmodell enthält keine Owner-Spalte. | ⚠️ Revisit |
 | Sprache über Browser-Spracherkennung (Web Speech API), Whisper später | Kein zusätzlicher Dienst. Einschränkung: Chrome schickt Audio an Google, Safari/iOS nutzt Apple-Dienste. Für berufliche Inhalte kritisch, siehe Compliance. | ⚠️ Revisit |
 | Alle fünf Bereiche angelegt, nur Beruf und Immobilien aktiv | Konzept fordert Fokus in Phase 1, Bereiche bleiben konfigurierbar. | — Pending |
 
 ---
-*Last updated: 2026-10-16 after Phase 1.3 (Fotos)*
+*Last updated: 2026-10-18 after Phase 1.5 (Design und Bedienung)*

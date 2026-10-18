@@ -749,7 +749,9 @@ def create_app(
             # Kombiniert geht auch ohne eigene Lessons (dann reines Claude-Wissen, klar gekennzeichnet).
             ki_moeglich = kombiniert or (bool(treffer) and ausgeschlossen < len(treffer))
             ki_hinweis = (f"{ausgeschlossen} Lesson(s) aus lokalen Bereichen sind nicht an Claude gegangen." if ausgeschlossen else "")
-        return {**data, "treffer": treffer, "ki_moeglich": ki_moeglich, "ki_hinweis": ki_hinweis}
+        # Transparenz: wie viele Lessons Claude für dieses Briefing gesehen hat (lokale Bereiche nie).
+        an_claude = sum(1 for t in treffer if t["lesson"].bereich not in lokale) if ki_moeglich else 0
+        return {**data, "treffer": treffer, "ki_moeglich": ki_moeglich, "ki_hinweis": ki_hinweis, "an_claude": an_claude}
 
     @app.post("/api/briefing", dependencies=deps, status_code=201)
     def briefing_erstellen(anfrage: BriefingAnfrage) -> dict[str, Any]:

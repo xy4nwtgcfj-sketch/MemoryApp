@@ -1,0 +1,244 @@
+// Suchen, Lesson ansehen und bearbeiten.
+import {
+  anf, aktionsblatt, ansicht, api, bereiche, bereicheSofort, el, errorNotice, eingabe, fill, fokusAufTitel, formatDate,
+  fotoInput, fotosHochladen, grosserTitel, hinweisBox, icon, kopf, leer, lessonKarte, metaZeile, quelleText,
+  refreshStats, say, skeleton, thumbsRow, toast, bestaetigen,
+} from "./core.js";
+import { lessonForm, loeschenBestaetigen } from "./entwurf.js";
+
+const searchState = { q: "", modus: "hybrid", bereich: "", status: "", schweregrad_min: "", von: "", bis: "" };
+const FILTER = ["bereich", "status", "schweregrad_min", "von", "bis", "modus"];
+
+export async function viewSuche(params = {}) {
+  const render = ansicht();
+  kopf("Suchen");
+  if (params.q !== undefined) searchState.q = params.q;
+  const results = el("div", { id: "treffer" });
+  const anzahl = el("p", { class: "sr-only", role: "status" });
+  const q = el("input", { type: "search", id: "q", value: searchState.q, placeholder: "Stichwort oder Frage", enterkeyhint: "search", autocomplete: "off" });
+  const aktiveFilter = () => FILTER.filter((k) => (k === "modus" ? searchState.modus !== "hybrid" : searchState[k])).length;
+  const filterBtn = el("button", { type: "button", class: "icon-btn", "aria-expanded": "false", "aria-controls": "filter-panel" });
+  const filterPanel = el("div", { id: "filter-panel", class: "card", hidden: true });
+  const updateFilterBtn = () => {
+    const n = aktiveFilter();
+    fill(filterBtn, icon("sliders"), n ? el("span", { class: "badge", style: "position:absolute;margin:-24px -28px 0 0;min-height:18px;padding:0 6px" }, n) : null);
+    filterBtn.setAttribute("aria-label", n ? `Filter, ${n} aktiv` : "Filter");
+    filterBtn.style.position = "relative";
+  };
+  updateFilterBtn();
+  filterBtn.addEventListener("click", () => {
+    filterPanel.hidden = !filterPanel.hidden;
+    filterBtn.setAttribute("aria-expanded", String(!filterPanel.hidden));
+    if (!filterPanel.hidden) filterPanel.querySelector("select")?.focus();
+  });
+
+  const run = async () => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(searchState)) if (v !== "") p.set(k, v);
+    if (!results.childNodes.length) fill(results, skeleton());
+    try {
+      const [items, drafts] = await Promise.all([
+        api(`/api/suche?${p}`),
+        searchState.q.trim() ? api(`/api/entwuerfe?q=${encodeURIComponent(searchState.q)}`).catch(() => ({ eintraege: [] })) : { eintraege: [] },
+      ]);
+      if (!render.aktiv()) return;
+      anzahl.textContent = searchState.q ? `${items.length} Treffer` : "";
+      fill(results,
+        drafts.eintraege.length ? el("a", { class: "card result row", href: "#/eingang", style: "gap:12px" }, icon("inbox"),
+          el("span", { class: "grow" }, `${drafts.eintraege.length} passende Notiz${drafts.eintraege.length > 1 ? "en" : ""} im Eingang`), icon("chevron-right", "icon sm")) : null,
+        items.length
+          ? el("p", { class: "overline", style: "margin-top:16px" }, searchState.q ? `${items.length} Treffer` : "Neueste Lessons")
+          : searchState.q
+            ? leer({ symbol: "search", titel: "Nichts gefunden", text: "Probier ein anderes Stichwort oder entferne Filter." })
+            : leer({ symbol: "sprout", titel: "Noch keine Lessons", text: "Leg den Startbestand an oder erfasse deine erste Lesson.",
+              aktionen: [el("a", { class: "button primary", href: "#/ernte" }, "Startbestand anlegen"), el("a", { class: "button", href: "#/erfassen" }, "Erfassen")] }),
+        items.map((item) => lessonKarte(item.lesson)));
+    } catch (err) {
+      fill(results, errorNotice(err, { erneut: run }));
+    }
+  };
+  let t;
+  q.addEventListener("input", () => { searchState.q = q.value; clearTimeout(t); t = setTimeout(run, 300); });
+  q.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); q.blur(); } });
+
+  const bereichListe = bereicheSofort();
+  const select = (key, label, options) => {
+    const node = el("select", { id: `s-${key}`, onchange: (e) => { searchState[key] = e.target.value; updateFilterBtn(); run(); } },
+      options.map(([v, tx]) => el("option", { value: v, selected: searchState[key] === String(v) }, tx)));
+    return el("div", {}, el("label", { for: `s-${key}` }, label), node);
+  };
+  const datum = (key, label) => el("div", {}, el("label", { for: `s-${key}` }, label),
+    el("input", { type: "date", id: `s-${key}`, value: searchState[key], onchange: (e) => { searchState[key] = e.target.value; updateFilterBtn(); run(); } }));
+  const modi = [["hybrid", "Beides"], ["volltext", "Wörter"], ["semantisch", "Bedeutung"]];
+  const seg = el("div", { class: "segmented", role: "group", "aria-label": "Suchart" }, modi.map(([v, tx]) => el("button", {
+    type: "button", "aria-pressed": String(searchState.modus === v),
+    onclick: (e) => {
+      searchState.modus = v;
+      seg.querySelectorAll("button").forEach((b, i) => b.setAttribute("aria-pressed", String(modi[i][0] === v)));
+      updateFilterBtn();
+      run();
+      e.currentTarget.focus();
+    },
+  }, tx)));
+  fill(filterPanel,
+    el("div", { class: "grid2" },
+      select("bereich", "Bereich", [["", "Alle"], ...bereichListe.map((b) => [b.name, b.name])]),
+      select("status", "Status", [["", "Alle"], ["neu", "neu"], ["bestätigt", "bestätigt"], ["überholt", "überholt"]]),
+      select("schweregrad_min", "Schwere ab", [["", "Alle"], ...[2, 3, 4, 5].map((n) => [String(n), `${n} und mehr`])]),
+      el("div"),
+      datum("von", "Erfasst ab"),
+      datum("bis", "Erfasst bis")),
+    el("details", { class: "plain", style: "margin-top:12px" }, el("summary", {}, "Erweitert: Suchart"),
+      el("p", { class: "footnote", style: "margin:0 0 8px" }, "Standard ist beides: genaue Wörter und ähnliche Bedeutung."), seg),
+    el("div", { class: "actions" }, el("button", {
+      type: "button", class: "text",
+      onclick: () => { Object.assign(searchState, { bereich: "", status: "", schweregrad_min: "", von: "", bis: "", modus: "hybrid" }); viewSuche(); },
+    }, "Filter zurücksetzen")));
+
+  if (!render(grosserTitel("Suchen"),
+    el("div", { class: "row" },
+      el("div", { class: "grow", style: "position:relative" }, el("label", { for: "q", class: "sr-only" }, "Suchbegriff"), q),
+      filterBtn),
+    filterPanel, anzahl, results)) return;
+  fokusAufTitel();
+  run();
+}
+
+// ---------------------------------------------------------------- Detail
+export async function viewLesson(id) {
+  const render = ansicht();
+  const zurueck = { text: "Zurück", href: "#/suche" };
+  kopf("Lesson", zurueck);
+  render(skeleton());
+  let data;
+  try {
+    data = await api(`/api/lessons/${encodeURIComponent(id)}`);
+  } catch (err) {
+    render(grosserTitel("Lesson"), errorNotice(err), el("a", { href: "#/suche" }, "Zur Suche"));
+    return;
+  }
+  const l = data.lesson;
+  kopf(l.titel, zurueck);
+  const compliance = hinweisBox(data.compliance_hinweise);
+
+  const erneut = el("button", { type: "button", class: "primary block" }, icon("refresh"), "Erneut erlebt");
+  erneut.addEventListener("click", async () => {
+    const notiz = await eingabe({ titel: "Erneut erlebt", text: "Das zählt die Lesson als bestätigt. Was war diesmal?", label: "Kurze Notiz", ok: "Zählen" });
+    if (notiz === null) return;
+    try {
+      const updated = await api(`/api/lessons/${l.id}/bestaetigen`, { method: "POST", body: { notiz } });
+      toast(`Gezählt: jetzt ${updated.bestaetigungen}× erlebt.`);
+      refreshStats();
+      viewLesson(l.id);
+    } catch (err) { toast(err.message, { fehler: true }); }
+  });
+
+  const mehr = el("button", { type: "button", class: "icon-btn", "aria-label": "Weitere Aktionen" }, icon("more"));
+  mehr.addEventListener("click", () => aktionsblatt(l.titel, [
+    { text: "Bearbeiten", icon: "pencil", onclick: () => { location.hash = `#/lesson/${l.id}/bearbeiten`; } },
+    {
+      text: l.status === "überholt" ? "Wieder aktivieren" : "Als überholt markieren",
+      icon: "clock",
+      onclick: async () => {
+        const next = l.status === "überholt" ? (l.bestaetigungen >= 2 ? "bestätigt" : "neu") : "überholt";
+        if (next === "überholt" && !(await bestaetigen({ titel: "Als überholt markieren?", text: "Sie bleibt sichtbar, erscheint aber nicht mehr in Briefings.", ok: "Markieren" }))) return;
+        try { await api(`/api/lessons/${l.id}`, { method: "PUT", body: { status: next } }); viewLesson(l.id); }
+        catch (err) { toast(err.message, { fehler: true }); }
+      },
+    },
+    {
+      text: "Löschen", icon: "trash", gefahr: true,
+      onclick: async () => {
+        if (!(await loeschenBestaetigen(l))) return;
+        try { await api(`/api/lessons/${l.id}`, { method: "DELETE" }); toast("Gelöscht."); refreshStats(); location.hash = "#/suche"; }
+        catch (err) { toast(err.message, { fehler: true }); }
+      },
+    },
+  ]));
+
+  const feld = (label, value) => (value ? [el("dt", {}, label), el("dd", {}, anf(value))] : []);
+  const ok = render(
+    el("div", { class: "card-head" },
+      el("div", { class: "grow" }, grosserTitel(anf(l.titel), { style: "font-size:1.375rem;margin:8px 0 12px" })),
+      el("a", { class: "button icon-btn", href: `#/lesson/${l.id}/bearbeiten`, "aria-label": "Bearbeiten", style: "margin-top:4px" }, icon("pencil")),
+      el("span", { style: "margin-top:4px" }, mehr)),
+    el("p", { class: `quote ${l.spezifisch ? "own" : ""}` }, anf(l.lesson)),
+    metaZeile(l),
+    data.hilfreich ? el("p", { class: "helped" }, icon("thumbs-up", "icon sm"), `${data.hilfreich}× im Briefing geholfen`) : null,
+    el("dl", { class: "fields" },
+      feld("Nächstes Mal", l.massnahme || "Noch offen. Was würdest du beim nächsten Mal konkret anders machen?"),
+      feld("Situation", l.situation),
+      feld("Was ist passiert?", l.ereignis),
+      feld("Stichworte", l.tags.join(", "))),
+    compliance.node,
+    el("div", { class: "actions", style: "margin-top:24px" }, erneut),
+    fotoSection(l, data.bilder || []),
+    el("h2", {}, "Erlebt"),
+    el("ul", { class: "timeline" }, data.protokoll.map((p) => el("li", {}, el("span", { class: "footnote" }, formatDate(p.datum)), p.notiz && p.notiz !== "erstmals erlebt" ? el("span", {}, ` · ${anf(p.notiz)}`) : el("span", {}, p.notiz === "erstmals erlebt" ? " · erstmals erlebt" : "")))),
+    el("p", { class: "footnote", style: "margin-top:24px" }, `Erfasst am ${formatDate(l.erstellt_am)}`, quelleText(l.quelle) ? ` ${quelleText(l.quelle)}` : "",
+      l.geaendert_am !== l.erstellt_am ? `, zuletzt geändert am ${formatDate(l.geaendert_am)}` : "", "."),
+  );
+  if (ok) fokusAufTitel();
+}
+
+function fotoSection(l, bilder) {
+  const btn = el("button", { type: "button", class: "text" }, icon("camera", "icon sm"), "Foto hinzufügen");
+  const input = fotoInput(async (files) => {
+    btn.setAttribute("aria-disabled", "true");
+    try {
+      const neu = await fotosHochladen(files);
+      await api(`/api/lessons/${l.id}/bilder`, { method: "POST", body: { bild_ids: neu.map((b) => b.id) } });
+      toast("Foto angehängt.");
+      viewLesson(l.id);
+    } catch (err) {
+      btn.removeAttribute("aria-disabled");
+      toast(err.message, { fehler: true });
+    }
+  });
+  btn.addEventListener("click", () => input.click());
+  return el("div", {},
+    el("h2", {}, `Fotos${bilder.length ? ` (${bilder.length})` : ""}`),
+    bilder.length ? thumbsRow(bilder, {
+      titel: l.titel,
+      onRemove: async (b) => {
+        if (!(await bestaetigen({ titel: "Foto entfernen?", text: "Das Foto wird von dieser Lesson gelöst.", ok: "Entfernen", gefahr: true }))) return;
+        try { await api(`/api/lessons/${l.id}/bilder/${b.id}`, { method: "DELETE" }); viewLesson(l.id); }
+        catch (err) { toast(err.message, { fehler: true }); }
+      },
+    }) : el("p", { class: "footnote", style: "margin-top:0" }, "Zum Beispiel die Folie oder das Whiteboard, aus dem die Lesson stammt."),
+    btn, input);
+}
+
+export async function editLesson(id) {
+  const render = ansicht();
+  kopf("Bearbeiten", { text: "Lesson", href: `#/lesson/${id}` });
+  let l;
+  try {
+    l = (await api(`/api/lessons/${encodeURIComponent(id)}`)).lesson;
+  } catch (err) {
+    render(grosserTitel("Bearbeiten"), errorNotice(err));
+    return;
+  }
+  const form = lessonForm(l, { bereichListe: await bereiche().catch(() => bereicheSofort()) });
+  const slot = el("div");
+  const saveBtn = el("button", { type: "button", class: "primary" }, icon("check"), "Sichern");
+  saveBtn.addEventListener("click", async () => {
+    if (!form.pruefen()) return;
+    const data = form.read();
+    if (!data.titel) data.titel = l.titel;
+    if (!data.situation) data.situation = l.situation;
+    if (!data.ereignis) data.ereignis = l.ereignis;
+    saveBtn.setAttribute("aria-disabled", "true");
+    try {
+      const res = await api(`/api/lessons/${l.id}`, { method: "PUT", body: data });
+      toast(res.compliance_hinweise.length ? "Gesichert. Datenschutz-Hinweise beachten." : "Gesichert.");
+      location.hash = `#/lesson/${l.id}`;
+    } catch (err) {
+      saveBtn.removeAttribute("aria-disabled");
+      fill(slot, errorNotice(err));
+    }
+  });
+  if (render(grosserTitel("Bearbeiten"), form.node, slot,
+    el("div", { class: "sticky-actions" }, saveBtn, el("a", { class: "button", href: `#/lesson/${l.id}` }, "Abbrechen")))) fokusAufTitel();
+  say("");
+}
