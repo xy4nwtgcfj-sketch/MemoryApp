@@ -306,3 +306,8 @@ details summary { cursor: pointer; font-weight: 600; min-height: 44px; display: 
   position: absolute; top: calc(12px + env(safe-area-inset-top)); right: 12px;
   background: rgba(255, 255, 255, .15); color: #fff; border: 0; border-radius: 50%; width: 44px; padding: 0;
 }
+
+.plan-section { font-size: .95rem; margin: 14px 0 0; }
+.checklist .src-eigen { color: var(--ok-text); font-weight: 600; }
+.card.highlight { border-color: var(--accent); border-width: 2px; }
+.segmented { margin-top: 4px; }

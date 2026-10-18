@@ -768,7 +768,23 @@ async function showDraft(container, entwurf, { entwurfId = null } = {}) {
 }
 
 // ----------------------------------------------------------------- Briefing
-const briefingState = { situation: "", bereich: "" };
+const briefingState = { situation: "", bereich: "", modus: store.get("lv-briefing-modus", "kombiniert") };
+const MODUS_LABEL = { kombiniert: "Mit Claude-Wissen", eigen: "Nur meine Erfahrung" };
+
+function planText(situation, plan) {
+  const zeilen = [`Plan: ${situation}`, ""];
+  if (plan.zusammenfassung) zeilen.push(plan.zusammenfassung, "");
+  for (const a of plan.abschnitte) {
+    zeilen.push(`## ${a.titel}`);
+    for (const p of a.punkte) zeilen.push(`- [ ] ${p.punkt}${p.quelle === "erfahrung" ? " (eigene Erfahrung)" : ""}`);
+    zeilen.push("");
+  }
+  if (plan.besonderheiten.length) {
+    zeilen.push("## Aus eigener Erfahrung anders als üblich");
+    for (const b of plan.besonderheiten) zeilen.push(`- ${b.punkt}`);
+  }
+  return zeilen.join("\n").trim();
+}
 
 function checklistText(situation, items) {
   return [`Checkliste: ${situation}`, "", ...items.map((i) => `- [ ] ${i.punkt}`)].join("\n");
@@ -824,7 +840,7 @@ async function viewBriefing(id) {
     goBtn.disabled = true;
     fill(result, el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), " Suche passende Erfahrungen …"));
     try {
-      const data = await api("/api/briefing", { method: "POST", body: { situation: text, bereich: briefingState.bereich } });
+      const data = await api("/api/briefing", { method: "POST", body: { situation: text, bereich: briefingState.bereich, modus: briefingState.modus } });
       history.replaceState(null, "", `#/briefing/${data.id}`);
       showBriefing(result, data);
     } catch (err) {
@@ -834,6 +850,13 @@ async function viewBriefing(id) {
     }
   };
   const goBtn = el("button", { type: "button", class: "primary", onclick: go }, "Briefing erstellen");
+  const modusSeg = el("div", { class: "segmented", role: "group", "aria-label": "Wissensquelle" });
+  const renderModus = () => fill(modusSeg, Object.entries(MODUS_LABEL).map(([v, t]) => el("button", {
+    type: "button",
+    "aria-pressed": String(briefingState.modus === v),
+    onclick: () => { briefingState.modus = v; store.set("lv-briefing-modus", v); renderModus(); },
+  }, t)));
+  renderModus();
 
   // Entwurf prüfen: Foto eines Entwurfs gegen die eigenen Lessons abgleichen
   const entwurfPanel = el("div");
@@ -877,10 +900,12 @@ async function viewBriefing(id) {
 
   render(
     el("h2", {}, "Briefing"),
-    el("p", { class: "muted small", style: "margin-top:0" }, "Beschreib die anstehende Situation in einem Satz. Du bekommst deine wichtigsten Erfahrungen dazu und eine Checkliste."),
+    el("p", { class: "muted small", style: "margin-top:0" }, "Beschreib die anstehende Situation in einem Satz. Du bekommst deine wichtigsten Erfahrungen dazu und einen Plan oder eine Checkliste."),
     el("label", { for: "briefing-text", class: "sr-only" }, "Situation"),
     situation,
     bereichListe.length > 1 ? chips : null,
+    modusSeg,
+    el("p", { class: "muted small", style: "margin:6px 0 0" }, "Mit Claude-Wissen: Claude ergänzt sein Fachwissen, jeder Punkt zeigt seine Quelle. Nur meine Erfahrung: ausschließlich deine Lessons."),
     el("div", { class: "actions" }, goBtn, mic, pruefBtn, pruefIn),
     entwurfPanel,
     result,
@@ -919,8 +944,9 @@ async function showVerlauf(container) {
 function showBriefing(container, data) {
   const istEntwurf = Boolean(data.entwurf_weg);
   const kopf = data.bilder?.length ? el("div", { class: "card" }, el("strong", {}, "Geprüfter Entwurf"), thumbsRow(data.bilder)) : null;
-  const titelText = istEntwurf ? "Abgleich mit deinen Erfahrungen" : "Worauf du achten solltest";
-  if (!data.treffer.length) {
+  const titelText = istEntwurf ? "Abgleich mit deinen Erfahrungen" : data.modus === "kombiniert" ? "Worauf es ankommt" : "Worauf du achten solltest";
+  const istPlan = data.modus === "kombiniert" && !istEntwurf;
+  if (!data.treffer.length && !(istPlan && (data.ki_moeglich || data.plan))) {
     fill(container, 
       ...(kopf ? [kopf] : []),
       el("div", { class: "notice info" },
@@ -933,6 +959,50 @@ function showBriefing(container, data) {
   const feedback = { ...data.feedback };
   const summaryCard = el("div", { class: "card" }, el("strong", {}, titelText));
   const beruecksichtigtCard = el("div");
+  const besonderheitenCard = el("div");
+  const titelVon = Object.fromEntries(data.treffer.map((t) => [t.lesson.id, t.lesson.titel]));
+
+  const renderPlan = (plan) => {
+    const alle = plan.abschnitte.flatMap((a) => a.punkte);
+    let n = 0;
+    fill(checklistCard,
+      el("div", { class: "row" },
+        el("strong", { class: "grow" }, "Plan"),
+        el("button", { type: "button", onclick: async () => toast((await copyText(planText(data.situation, plan))) ? "Plan kopiert." : "Kopieren nicht möglich.") }, "Kopieren")),
+      el("p", { class: "muted small", style: "margin:4px 0 0" },
+        `${plan.punkte_erfahrung} von ${alle.length} Punkten aus deiner Erfahrung. Allgemeinwissen von Claude ist nicht geprüft.`),
+      plan.abschnitte.map((a) => [
+        el("h3", { class: "plan-section" }, a.titel),
+        el("ul", { class: "checklist" }, a.punkte.map((p) => {
+          const id = `pl-${n++}`;
+          return el("li", {},
+            el("input", { type: "checkbox", id }),
+            el("label", { for: id, style: "margin:0;font-weight:400" },
+              el("span", {}, p.punkt),
+              p.quelle === "erfahrung"
+                ? el("span", { class: "src src-eigen" }, "Deine Erfahrung", titelVon[p.lesson_id] ? `: ${titelVon[p.lesson_id]}` : "")
+                : el("span", { class: "src" }, "Allgemein (Claude)")));
+        })),
+      ]));
+    fill(besonderheitenCard, plan.besonderheiten.length ? el("div", { class: "card highlight" },
+      el("strong", {}, "Deine Besonderheiten"),
+      el("p", { class: "muted small", style: "margin:4px 0 0" }, "Hier weicht deine Erfahrung vom üblichen Vorgehen ab. Das sagt dir kein Lehrbuch."),
+      el("ul", { class: "checklist" }, plan.besonderheiten.map((b) => el("li", {},
+        el("span", {}, b.punkt, titelVon[b.lesson_id] ? el("span", { class: "src src-eigen" }, `aus: ${titelVon[b.lesson_id]}`) : null))))) : null);
+  };
+
+  const modusWechsel = istEntwurf ? null : el("button", {
+    type: "button",
+    class: "ghost",
+    style: "min-height:32px;padding:2px 6px",
+    onclick: () => {
+      const neu = data.modus === "kombiniert" ? "eigen" : "kombiniert";
+      briefingState.modus = neu;
+      store.set("lv-briefing-modus", neu);
+      data.modus = neu;
+      showBriefing(container, { ...data, zusammenfassung: "", plan: null, ki_checkliste: null, modus: neu, _wechsel: true });
+    },
+  }, data.modus === "kombiniert" ? "Nur meine Erfahrung zeigen" : "Mit Claude-Wissen ergänzen");
   const checklistCard = el("div", { class: "card" });
 
   const renderChecklist = (items, quelle) => {
@@ -955,9 +1025,13 @@ function showBriefing(container, data) {
 
   const loadSummary = async (neu = false) => {
     fill(summaryCard, el("strong", {}, titelText),
-      el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), istEntwurf ? " Claude gleicht den Entwurf mit deinen Lessons ab …" : " Claude fasst zusammen …"));
+      el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }),
+        istEntwurf ? " Claude gleicht den Entwurf mit deinen Lessons ab …" : istPlan ? " Claude erstellt den Plan aus Fachwissen und deinen Erfahrungen …" : " Claude fasst zusammen …"));
     try {
-      const res = await api(`/api/briefing/${data.id}/zusammenfassung${neu ? "?neu=true" : ""}`, { method: "POST" });
+      const params = new URLSearchParams();
+      if (neu) params.set("neu", "true");
+      if (!istEntwurf) params.set("modus", data.modus);
+      const res = await api(`/api/briefing/${data.id}/zusammenfassung?${params}`, { method: "POST" });
       showSummary(res);
     } catch (err) {
       fill(summaryCard, el("strong", {}, titelText),
@@ -971,9 +1045,11 @@ function showBriefing(container, data) {
       el("strong", {}, titelText),
       el("p", { class: "summary" }, res.zusammenfassung || "Claude sah keinen klaren Bezug zu dieser Situation. Die Lessons unten sind trotzdem die besten Treffer."),
       res.ki_hinweis ? el("p", { class: "muted small" }, res.ki_hinweis) : null,
-      el("p", { class: "muted small" }, "Zusammengefasst von Claude, nur aus deinen Lessons. ",
-        el("button", { type: "button", class: "ghost", style: "min-height:32px;padding:2px 6px", onclick: () => loadSummary(true) }, "Neu formulieren")),
+      el("p", { class: "muted small" }, res.plan ? "Von Claude, aus Fachwissen und deinen Lessons. " : "Zusammengefasst von Claude, nur aus deinen Lessons. ",
+        el("button", { type: "button", class: "ghost", style: "min-height:32px;padding:2px 6px", onclick: () => loadSummary(true) }, "Neu formulieren"),
+        modusWechsel),
     );
+    if (res.plan) { renderPlan(res.plan); return; }
     if (istEntwurf) {
       renderChecklist(res.ki_checkliste || [], res.ki_checkliste?.length ? "Was im Entwurf fehlt, laut deinen Lessons (Claude)" : "Claude hat keine Lücken gefunden.");
       const ok = res.abgleich?.beruecksichtigt || [];
@@ -1024,15 +1100,18 @@ function showBriefing(container, data) {
 
   fill(container, el("div", {},
     kopf,
+    !data.treffer.length ? el("div", { class: "notice info" }, el("strong", {}, "Dazu hast du noch keine eigenen Erfahrungen."),
+      "Der Plan unten ist reines Allgemeinwissen von Claude. Nach der Aufgabe: ", el("a", { href: "#/erfassen" }, "eine Lesson erfassen"), ".") : null,
     data.ki_moeglich || data.zusammenfassung ? summaryCard : (data.ki_hinweis ? el("p", { class: "muted small" }, data.ki_hinweis) : null),
+    besonderheitenCard,
     checklistCard,
     beruecksichtigtCard,
-    el("h2", {}, `Deine Erfahrungen (${data.treffer.length})`),
-    el("p", { class: "muted small", style: "margin-top:0" }, "Markiere, was dir geholfen hat. Das verbessert künftige Briefings zu ähnlichen Situationen."),
+    data.treffer.length ? el("h2", {}, `Deine Erfahrungen (${data.treffer.length})`) : null,
+    data.treffer.length ? el("p", { class: "muted small", style: "margin-top:0" }, "Markiere, was dir geholfen hat. Das verbessert künftige Briefings zu ähnlichen Situationen.") : null,
     lessonCards,
   ));
   if (data.zusammenfassung) showSummary(data);
-  else if (data.ki_moeglich) loadSummary();
+  else if (data.ki_moeglich || data._wechsel) loadSummary();
 }
 
 // ------------------------------------------------------------------- Prüfen

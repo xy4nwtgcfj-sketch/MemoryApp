@@ -333,21 +333,45 @@ class Repository:
         checkliste: list[dict[str, str]],
         embedding: np.ndarray | None,
         embedding_modell: str,
+        modus: str = "eigen",
     ) -> str:
         briefing_id = str(uuid.uuid4())
         with self.conn:
             self.conn.execute(
-                "INSERT INTO briefings(id, situation, bereich, treffer_json, checkliste_json, embedding, embedding_modell, erstellt_am) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO briefings(id, situation, bereich, treffer_json, checkliste_json, embedding, embedding_modell, erstellt_am, modus) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (briefing_id, situation.strip(), bereich, json.dumps(treffer, ensure_ascii=False),
-                 json.dumps(checkliste, ensure_ascii=False), vector_to_blob(embedding), embedding_modell, jetzt()),
+                 json.dumps(checkliste, ensure_ascii=False), vector_to_blob(embedding), embedding_modell, jetzt(), modus),
             )
         return briefing_id
+
+    def briefing_plan_setzen(self, briefing_id: str, plan: dict[str, Any], modell: str) -> None:
+        """Kombinierter Plan; die Checkliste ist die flache Liste aller Planpunkte."""
+        checkliste = [
+            {"punkt": p["punkt"], "lesson_id": p["lesson_id"], "quelle": p["quelle"]}
+            for a in plan["abschnitte"] for p in a["punkte"]
+        ]
+        with self.conn:
+            self.conn.execute(
+                "UPDATE briefings SET zusammenfassung = ?, ki_checkliste_json = ?, ki_modell = ?, plan_json = ?, abgleich_json = '' "
+                "WHERE id = ?",
+                (plan["zusammenfassung"], json.dumps(checkliste, ensure_ascii=False), modell,
+                 json.dumps(plan, ensure_ascii=False), briefing_id),
+            )
+
+    def briefing_modus_setzen(self, briefing_id: str, modus: str) -> None:
+        """Moduswechsel verwirft das bisherige Claude-Ergebnis, damit nichts Veraltetes angezeigt wird."""
+        with self.conn:
+            self.conn.execute(
+                "UPDATE briefings SET modus = ?, zusammenfassung = '', ki_checkliste_json = '', plan_json = '', ki_modell = '' "
+                "WHERE id = ?",
+                (modus, briefing_id),
+            )
 
     def briefing_holen(self, briefing_id: str) -> dict[str, Any]:
         row = self.conn.execute(
             "SELECT id, situation, bereich, treffer_json, checkliste_json, zusammenfassung, ki_checkliste_json, ki_modell, "
-            "erstellt_am, entwurf_weg, entwurf_text, abgleich_json FROM briefings WHERE id = ?",
+            "erstellt_am, entwurf_weg, entwurf_text, abgleich_json, modus, plan_json FROM briefings WHERE id = ?",
             (briefing_id,),
         ).fetchone()
         if row is None:
@@ -359,6 +383,8 @@ class Repository:
         data["ki_checkliste"] = json.loads(raw) if raw else None
         abgleich = data.pop("abgleich_json")
         data["abgleich"] = json.loads(abgleich) if abgleich else None
+        plan = data.pop("plan_json")
+        data["plan"] = json.loads(plan) if plan else None
         data["feedback"] = self.feedback_fuer_briefing(briefing_id)
         return data
 
@@ -381,7 +407,7 @@ class Repository:
 
     def briefings(self, limit: int = 20) -> list[dict[str, Any]]:
         rows = self.conn.execute(
-            "SELECT b.id, b.situation, b.bereich, b.erstellt_am, b.entwurf_weg, json_array_length(b.treffer_json) AS anzahl, "
+            "SELECT b.id, b.situation, b.bereich, b.erstellt_am, b.entwurf_weg, b.modus, json_array_length(b.treffer_json) AS anzahl, "
             "(SELECT COUNT(*) FROM briefing_feedback f WHERE f.briefing_id = b.id AND f.bewertung = 'hilfreich') AS hilfreich "
             "FROM briefings b ORDER BY b.erstellt_am DESC LIMIT ?",
             (limit,),
@@ -505,6 +531,9 @@ class Repository:
         ).fetchone()
         offene_entwuerfe = q("SELECT COUNT(*) FROM entwuerfe").fetchone()[0]
         briefings = q("SELECT COUNT(*) FROM briefings").fetchone()[0]
+        plaene = [json.loads(r[0]) for r in q("SELECT plan_json FROM briefings WHERE plan_json != ''")]
+        punkte_gesamt = sum(p.get("punkte_gesamt", 0) for p in plaene)
+        punkte_erfahrung = sum(p.get("punkte_erfahrung", 0) for p in plaene)
         spez = q("SELECT COUNT(spezifisch), COALESCE(SUM(spezifisch), 0) FROM lessons WHERE status != 'überholt'").fetchone()
         briefings_bewertet = q("SELECT COUNT(DISTINCT briefing_id) FROM briefing_feedback").fetchone()[0]
         briefings_hilfreich = q(
@@ -524,6 +553,8 @@ class Repository:
             "ohne_massnahme": ohne_massnahme,
             "offene_entwuerfe": offene_entwuerfe,
             "briefings": briefings,
+            "plan_punkte_gesamt": punkte_gesamt,
+            "plan_punkte_erfahrung": punkte_erfahrung,
             "lessons_eingeschaetzt": spez[0],
             "lessons_persoenlich": spez[1],
             "briefings_bewertet": briefings_bewertet,

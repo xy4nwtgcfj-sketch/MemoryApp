@@ -158,6 +158,11 @@ MIGRATIONS: list[str] = [
     ALTER TABLE briefings ADD COLUMN entwurf_text TEXT NOT NULL DEFAULT '';
     ALTER TABLE briefings ADD COLUMN abgleich_json TEXT NOT NULL DEFAULT '';
     """,
+    # Version 6: Briefing kombiniert eigene Erfahrung mit Claude-Wissen
+    """
+    ALTER TABLE briefings ADD COLUMN modus TEXT NOT NULL DEFAULT 'eigen';
+    ALTER TABLE briefings ADD COLUMN plan_json TEXT NOT NULL DEFAULT '';
+    """,
 ]
 
 

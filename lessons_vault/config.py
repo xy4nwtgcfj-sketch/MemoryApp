@@ -26,6 +26,8 @@ class Settings:
     anthropic_api_key: str = field(default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", ""))
     claude_model: str = field(default_factory=lambda: os.environ.get("LV_CLAUDE_MODEL", "claude-opus-5-5"))
     claude_effort: str = field(default_factory=lambda: os.environ.get("LV_CLAUDE_EFFORT", "low"))
+    # Ein Plan aus Fachwissen und Erfahrung braucht mehr Tiefe als die Strukturierung einer Notiz.
+    briefing_effort: str = field(default_factory=lambda: os.environ.get("LV_BRIEFING_EFFORT", "medium"))
     voyage_api_key: str = field(default_factory=lambda: os.environ.get("VOYAGE_API_KEY", ""))
     voyage_model: str = field(default_factory=lambda: os.environ.get("LV_VOYAGE_MODEL", "voyage-3.5"))
     embedding_provider: str = field(default_factory=lambda: os.environ.get("LV_EMBEDDINGS", "auto"))

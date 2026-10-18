@@ -18,7 +18,7 @@ playwright = pytest.importorskip("playwright.sync_api")
 uvicorn = pytest.importorskip("uvicorn")
 
 from lessons_vault import main  # noqa: E402
-from lessons_vault.briefing import BRIEFING_PROMPT  # noqa: E402
+from lessons_vault.briefing import BRIEFING_PROMPT, KOMBI_PROMPT  # noqa: E402
 from lessons_vault.foto import ABGLEICH_PROMPT, KANDIDATEN_PROMPT  # noqa: E402
 from lessons_vault.images import Texterkennung  # noqa: E402
 from lessons_vault.config import Settings  # noqa: E402
@@ -51,6 +51,20 @@ def server(tmp_path_factory):
                     {"punkt": "Unterlagenliste der Bank anfordern und abhaken", "lesson_nr": 1},
                     {"punkt": "WEG-Protokolle der letzten drei Jahre lesen", "lesson_nr": 2},
                 ],
+            }
+        if kwargs["system"] == KOMBI_PROMPT:
+            return {
+                "zusammenfassung": "Hypercare braucht klare Eskalationswege und eingeplantes Personal vor Ort.",
+                "abschnitte": [
+                    {"titel": "Vor dem Go-live", "punkte": [
+                        {"punkt": "Hypercare-Team, Dauer und Exit-Kriterien festlegen", "quelle": "allgemein", "lesson_nr": 0},
+                        {"punkt": "Schichtleiter für die ersten zwei Wochen schriftlich bestätigen lassen", "quelle": "erfahrung", "lesson_nr": 1},
+                    ]},
+                    {"titel": "Während der Hypercare", "punkte": [
+                        {"punkt": "Tägliches Hypercare-Meeting mit Ticket-Review", "quelle": "allgemein", "lesson_nr": 0},
+                    ]},
+                ],
+                "besonderheiten": [{"punkt": "Bei dir scheiterte es am Personal, nicht an der Technik", "lesson_nr": 1}],
             }
         if kwargs["system"] == KANDIDATEN_PROMPT:
             return {"kandidaten": [
@@ -232,6 +246,7 @@ def test_briefing(server, page):
     base, _ = server
     expect = playwright.expect
     page.goto(f"{base}/#/briefing")
+    page.get_by_role("button", name="Nur meine Erfahrung").click()
     page.fill("#briefing-text", "Bankgespräch für die nächste Wohnung vorbereiten")
     page.get_by_role("button", name="Briefing erstellen").click()
     expect(page.get_by_text("Fordere die Unterlagenliste der Bank vorab an")).to_be_visible()
@@ -352,5 +367,29 @@ def test_entwurf_pruefen(server, page, tmp_path):
     page.goto(f"{base}/#/suche")
     page.fill("#q", "Cutover")
     expect(page.get_by_text("Treffer")).to_be_visible()
+    kein_null(page)
+    assert page.errors == []
+
+
+def test_briefing_kombiniert(server, page):
+    base, fake = server
+    expect = playwright.expect
+    page.goto(f"{base}/#/briefing")
+    page.get_by_role("button", name="Mit Claude-Wissen").click()
+    page.fill("#briefing-text", "Plan für die Hypercare-Phase eines SAP-EWM-Projekts")
+    page.get_by_role("button", name="Briefing erstellen").click()
+    expect(page.get_by_text("Hypercare braucht klare Eskalationswege")).to_be_visible()
+    expect(page.get_by_text("Deine Besonderheiten")).to_be_visible()
+    expect(page.get_by_role("heading", name="Vor dem Go-live")).to_be_visible()
+    expect(page.locator(".src-eigen", has_text="Deine Erfahrung")).to_have_count(1)
+    expect(page.get_by_text("Allgemein (Claude)").first).to_be_visible()
+    expect(page.get_by_text(re.compile(r"1 von 3 Punkten aus deiner Erfahrung"))).to_be_visible()
+    assert fake.calls[-1]["system"] == KOMBI_PROMPT
+    shot(page, "15-briefing-kombiniert")
+    kein_null(page)
+
+    page.get_by_role("button", name="Nur meine Erfahrung zeigen").click()
+    expect(page.get_by_text("Zusammengefasst von Claude, nur aus deinen Lessons.")).to_be_visible()
+    assert fake.calls[-1]["system"] == BRIEFING_PROMPT
     kein_null(page)
     assert page.errors == []

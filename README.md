@@ -25,6 +25,13 @@ Abnahme von Phase 1 (drei Wochen echte Nutzung, mindestens 10 neue Lessons).
     zugeschnitten und mit Quellenangabe je Punkt),
   - eine kurze Claude-Zusammenfassung "Worauf du achten solltest", nur aus deinen Lessons.
 
+  Zwei Modi:
+  - **Mit Claude-Wissen** (Standard): Claude baut aus seinem Fachwissen und deinen Lessons einen gegliederten
+    Plan, z. B. für die Hypercare-Phase eines EWM-Projekts. Jeder Punkt zeigt seine Quelle ("Deine Erfahrung"
+    oder "Allgemein (Claude)"). "Deine Besonderheiten" zeigt, wo deine Erfahrung vom üblichen Vorgehen
+    abweicht. Allgemeinwissen ist nicht geprüft. Geht auch ohne passende Lessons, dann klar gekennzeichnet.
+  - **Nur meine Erfahrung:** ausschließlich deine Lessons.
+
   Mit "Hilfreich" / "Nicht relevant" verbesserst du künftige Briefings zu ähnlichen Situationen.
   Frühere Briefings bleiben abrufbar.
 - **Fotos:**
@@ -140,6 +147,7 @@ nachgeholt, die Suche fällt auf Volltext zurück.
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Claude für die sofortige Strukturierung | leer = keine Cloud-KI |
 | `LV_CLAUDE_MODEL` / `LV_CLAUDE_EFFORT` | Claude-Modell und Denkaufwand | `claude-opus-5-5` / `low` |
+| `LV_BRIEFING_EFFORT` | Denkaufwand für kombinierte Briefing-Pläne | `medium` |
 | `LV_OLLAMA_URL` | Adresse von Ollama | `http://127.0.0.1:11434` |
 | `LV_OLLAMA_MODEL` | Lokales Modell für die Strukturierung, leer = aus | `qwen2.5:7b` |
 | `LV_OLLAMA_EMBED_MODEL` | Lokales Embedding-Modell | `bge-m3` |

@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 
 from . import __version__, db
-from .briefing import BriefingSchreiber, lokale_checkliste, rangliste
+from .briefing import BriefingSchreiber, kombinieren, lokale_checkliste, rangliste
 from .compliance import lesson_text_fuer_pruefung, pruefen
 from .config import Settings, load_settings
 from .foto import abgleich_inhalt, abgleichen, kandidaten_finden, kandidaten_inhalt
@@ -69,6 +69,8 @@ class BriefingAnfrage(BaseModel):
     # Entwurf prüfen (Foto): Fotos und ggf. vom Nutzer geprüfter Text
     bild_ids: list[str] = Field(default_factory=list, max_length=5)
     entwurf_text: str = Field(default="", max_length=20000)
+    # kombiniert: Claude-Fachwissen + eigene Lessons; eigen: nur Lessons
+    modus: Literal["kombiniert", "eigen"] = "kombiniert"
 
 
 class FeedbackIn(BaseModel):
@@ -596,9 +598,11 @@ def create_app(
             ki_moeglich, ki_hinweis = False, "Claude ist nicht eingerichtet (ANTHROPIC_API_KEY fehlt)."
         else:
             ausgeschlossen = sum(1 for t in treffer if t["lesson"].bereich in lokale)
-            ki_moeglich = ausgeschlossen < len(treffer)
-            ki_hinweis = (f"{ausgeschlossen} Lesson(s) aus lokalen Bereichen sind nicht in der Zusammenfassung." if ausgeschlossen else "")
-        return {**data, "treffer": treffer, "ki_moeglich": ki_moeglich and bool(treffer), "ki_hinweis": ki_hinweis}
+            kombiniert = data["modus"] == "kombiniert" and not data["entwurf_weg"]
+            # Kombiniert geht auch ohne eigene Lessons (dann reines Claude-Wissen, klar gekennzeichnet).
+            ki_moeglich = kombiniert or (bool(treffer) and ausgeschlossen < len(treffer))
+            ki_hinweis = (f"{ausgeschlossen} Lesson(s) aus lokalen Bereichen sind nicht an Claude gegangen." if ausgeschlossen else "")
+        return {**data, "treffer": treffer, "ki_moeglich": ki_moeglich, "ki_hinweis": ki_hinweis}
 
     @app.post("/api/briefing", dependencies=deps, status_code=201)
     def briefing_erstellen(anfrage: BriefingAnfrage) -> dict[str, Any]:
@@ -631,7 +635,7 @@ def create_app(
         ]
         briefing_id = repo.briefing_anlegen(
             situation, vorgabe, gespeichert, lokale_checkliste([t.lesson for t in treffer]),
-            vektor, provider.name if vektor is not None else "",
+            vektor, provider.name if vektor is not None else "", anfrage.modus,
         )
         if anfrage.bild_ids:
             repo.bilder_verknuepfen(anfrage.bild_ids, "briefing", briefing_id)
@@ -651,8 +655,13 @@ def create_app(
         repo.briefing_loeschen(briefing_id)
 
     @app.post("/api/briefing/{briefing_id}/zusammenfassung", dependencies=deps)
-    def briefing_zusammenfassung(briefing_id: str, neu: bool = False) -> dict[str, Any]:
+    def briefing_zusammenfassung(
+        briefing_id: str, neu: bool = False, modus: str | None = Query(None, pattern="^(kombiniert|eigen)$"),
+    ) -> dict[str, Any]:
         data = briefing_antwort(briefing_id)
+        if modus and modus != data["modus"]:
+            repo.briefing_modus_setzen(briefing_id, modus)
+            data = briefing_antwort(briefing_id)
         if data["zusammenfassung"] and not neu:
             return data
         if not data["ki_moeglich"]:
@@ -672,6 +681,10 @@ def create_app(
                     briefing_id, abgleich["zusammenfassung"], abgleich["fehlt"], f"claude:{schreiber.model}",
                     {"beruecksichtigt": abgleich["beruecksichtigt"]},
                 )
+                return briefing_antwort(briefing_id)
+            if data["modus"] == "kombiniert":
+                plan = kombinieren(schreiber, data["situation"], lessons, settings.briefing_effort)
+                repo.briefing_plan_setzen(briefing_id, plan, f"claude:{schreiber.model}")
                 return briefing_antwort(briefing_id)
             ergebnis = schreiber.schreiben(data["situation"], lessons)
         except anthropic.APIConnectionError as exc:

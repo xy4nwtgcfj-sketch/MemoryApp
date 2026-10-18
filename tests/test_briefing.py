@@ -3,7 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from lessons_vault import main
-from lessons_vault.briefing import BRIEFING_PROMPT, faktor_bestaetigung, faktor_feedback, faktor_schwere
+from lessons_vault.briefing import BRIEFING_PROMPT, KOMBI_PROMPT, faktor_bestaetigung, faktor_feedback, faktor_schwere, kombi_auswerten
 from lessons_vault.config import Settings
 from lessons_vault.embeddings import HashingProvider
 from lessons_vault.main import create_app
@@ -13,8 +13,30 @@ from .test_api import lesson_json
 from .test_structuring import FakeClient, payload
 
 
+KOMBI_ANTWORT = {
+    "zusammenfassung": "Hypercare steht und fällt mit klaren Eskalationswegen.",
+    "abschnitte": [
+        {"titel": "Vorbereitung", "punkte": [
+            {"punkt": "Hypercare-Team und Eskalationsstufen festlegen", "quelle": "allgemein", "lesson_nr": 0},
+            {"punkt": "Schichtleiter für die ersten zwei Wochen schriftlich einplanen", "quelle": "erfahrung", "lesson_nr": 1},
+        ]},
+        {"titel": "Betrieb", "punkte": [
+            {"punkt": "Tägliches Hypercare-Meeting", "quelle": "allgemein", "lesson_nr": 0},
+            {"punkt": "Behauptete Erfahrung ohne Lesson", "quelle": "erfahrung", "lesson_nr": 0},
+        ]},
+        {"titel": "Leer", "punkte": []},
+    ],
+    "besonderheiten": [
+        {"punkt": "Bei dir fehlte das Personal, nicht die Technik: Personal früher bestätigen als üblich", "lesson_nr": 1},
+        {"punkt": "ohne Bezug", "lesson_nr": 0},
+    ],
+}
+
+
 def antwort(kwargs):
     """Fake-Claude: Briefing-Aufrufe bekommen eine Zusammenfassung, alles andere einen Lesson-Entwurf."""
+    if kwargs["system"] == KOMBI_PROMPT:
+        return KOMBI_ANTWORT
     if kwargs["system"] == BRIEFING_PROMPT:
         return {
             "zusammenfassung": "Plane die Personalfreigabe früh.",
@@ -60,7 +82,7 @@ def test_ranking_schwere_und_bestaetigung(env):
     weg = add(titel="Projektplanung Puffer D", schweregrad=5, **gleich)
     client.put(f"/api/lessons/{weg['id']}", json={"status": "überholt"})
 
-    data = client.post("/api/briefing", json={"situation": "Projektplanung für Rollout Welle 4 schreiben"}).json()
+    data = client.post("/api/briefing", json={"situation": "Projektplanung für Rollout Welle 4 schreiben", "modus": "eigen"}).json()
     ids = [t["lesson"]["id"] for t in data["treffer"]]
     assert weg["id"] not in ids
     assert ids.index(schwer["id"]) < ids.index(leicht["id"])
@@ -75,23 +97,23 @@ def test_max_fuenf_und_bereichsfilter(env):
     for i in range(7):
         add(titel=f"Bankgespräch Unterlagen {i}", lesson="Vor dem Bankgespräch Unterlagen prüfen.")
     add(titel="Bankgespräch im Beruf", bereich="Beruf", lesson="Bankgespräch vorbereiten.")
-    data = client.post("/api/briefing", json={"situation": "Bankgespräch nächste Woche"}).json()
+    data = client.post("/api/briefing", json={"situation": "Bankgespräch nächste Woche", "modus": "eigen"}).json()
     assert len(data["treffer"]) == 5
-    data = client.post("/api/briefing", json={"situation": "Bankgespräch nächste Woche", "bereich": "Beruf"}).json()
+    data = client.post("/api/briefing", json={"situation": "Bankgespräch nächste Woche", "bereich": "Beruf", "modus": "eigen"}).json()
     assert [t["lesson"]["bereich"] for t in data["treffer"]] == ["Beruf"]
 
 
 def test_nichts_passendes(env):
     client, _, add = env
     add(titel="Notar früh terminieren", lesson="Notartermin früh fixieren.", situation="Kauf.", ereignis="Termin zu spät.", tags=["Notar"])
-    data = client.post("/api/briefing", json={"situation": "xyzqq vvvvv"}).json()
+    data = client.post("/api/briefing", json={"situation": "xyzqq vvvvv", "modus": "eigen"}).json()
     assert data["treffer"] == [] and data["ki_moeglich"] is False
 
 
 def test_zusammenfassung(env):
     client, claude, add = env
     l1 = add(titel="Cutover Personal bestätigen", bereich="Beruf", lesson="Vor jedem Cutover Personal bestätigen.")
-    bid = client.post("/api/briefing", json={"situation": "Cutover planen"}).json()["id"]
+    bid = client.post("/api/briefing", json={"situation": "Cutover planen", "modus": "eigen"}).json()["id"]
     data = client.post(f"/api/briefing/{bid}/zusammenfassung").json()
     assert data["zusammenfassung"] == "Plane die Personalfreigabe früh."
     assert data["ki_checkliste"] == [{"punkt": "Schichtleiter schriftlich bestätigen", "lesson_id": l1["id"]}]
@@ -113,13 +135,13 @@ def test_lokale_bereiche_nicht_an_claude(env):
     add(titel="Geheim Cutover Beruf", bereich="Beruf", lesson="Cutover Personal bestätigen.")
     add(titel="Cutover privat Umzug", bereich="Immobilien", lesson="Beim Umzug Cutover der Versorger planen.")
     client.put("/api/einstellungen", json={"strukturierung_bereiche": {"Beruf": "lokal"}})
-    data = client.post("/api/briefing", json={"situation": "Cutover planen"}).json()
+    data = client.post("/api/briefing", json={"situation": "Cutover planen", "modus": "eigen"}).json()
     assert len(data["treffer"]) == 2 and "lokalen Bereichen" in data["ki_hinweis"]
     client.post(f"/api/briefing/{data['id']}/zusammenfassung")
     prompt = claude.calls[-1]["messages"][0]["content"]
     assert "Umzug" in prompt and "Geheim" not in prompt
 
-    nur_beruf = client.post("/api/briefing", json={"situation": "Cutover planen", "bereich": "Beruf"}).json()
+    nur_beruf = client.post("/api/briefing", json={"situation": "Cutover planen", "bereich": "Beruf", "modus": "eigen"}).json()
     assert nur_beruf["ki_moeglich"] is False
     assert client.post(f"/api/briefing/{nur_beruf['id']}/zusammenfassung").status_code == 409
 
@@ -129,7 +151,7 @@ def test_ohne_claude(tmp_path, monkeypatch):
     app = create_app(Settings(db_path=tmp_path / "t.db", anthropic_api_key="", ollama_model=""), Strukturierer(None, "m"), HashingProvider())
     client = TestClient(app)
     client.post("/api/lessons", json=lesson_json())
-    data = client.post("/api/briefing", json={"situation": "Bankgespräch"}).json()
+    data = client.post("/api/briefing", json={"situation": "Bankgespräch", "modus": "eigen"}).json()
     assert data["treffer"] and data["ki_moeglich"] is False and "ANTHROPIC_API_KEY" in data["ki_hinweis"]
 
 
@@ -139,7 +161,7 @@ def test_claude_fehler_502(tmp_path, monkeypatch):
                      Strukturierer(FakeClient(payload(), stop_reason="refusal"), "m"), HashingProvider())
     client = TestClient(app)
     client.post("/api/lessons", json=lesson_json())
-    bid = client.post("/api/briefing", json={"situation": "Bankgespräch"}).json()["id"]
+    bid = client.post("/api/briefing", json={"situation": "Bankgespräch", "modus": "eigen"}).json()["id"]
     r = client.post(f"/api/briefing/{bid}/zusammenfassung")
     assert r.status_code == 502 and "abgelehnt" in r.json()["detail"]
 
@@ -150,12 +172,12 @@ def test_feedback_verschiebt_ranking(env):
     a = add(titel="Besichtigung Keller prüfen", lesson="Bei jeder Besichtigung den Keller auf Feuchtigkeit prüfen.", **gleich)
     b = add(titel="Besichtigung Dach prüfen", lesson="Bei jeder Besichtigung das Dach auf Schäden prüfen.", **gleich)
     situation = "Besichtigung Wohnung morgen"
-    erstes = client.post("/api/briefing", json={"situation": situation}).json()
+    erstes = client.post("/api/briefing", json={"situation": situation, "modus": "eigen"}).json()
     oben = erstes["treffer"][0]["lesson"]["id"]
     unten = b["id"] if oben == a["id"] else a["id"]
     assert client.post(f"/api/briefing/{erstes['id']}/feedback", json={"lesson_id": oben, "bewertung": "nicht_relevant"}).json() == {oben: "nicht_relevant"}
     client.post(f"/api/briefing/{erstes['id']}/feedback", json={"lesson_id": unten, "bewertung": "hilfreich"})
-    zweites = client.post("/api/briefing", json={"situation": situation}).json()
+    zweites = client.post("/api/briefing", json={"situation": situation, "modus": "eigen"}).json()
     assert zweites["treffer"][0]["lesson"]["id"] == unten
     assert zweites["treffer"][1]["faktoren"]["feedback"] < 1.0
 
@@ -172,6 +194,73 @@ def test_feedback_verschiebt_ranking(env):
 def test_geloeschte_lesson_im_alten_briefing(env):
     client, _, add = env
     l = add(titel="Bankgespräch vorbereiten")
-    bid = client.post("/api/briefing", json={"situation": "Bankgespräch"}).json()["id"]
+    bid = client.post("/api/briefing", json={"situation": "Bankgespräch", "modus": "eigen"}).json()["id"]
     client.delete(f"/api/lessons/{l['id']}")
     assert client.get(f"/api/briefing/{bid}").json()["treffer"] == []
+
+
+def test_kombi_auswerten_sichert_quellen():
+    from lessons_vault.models import Lesson
+    l = Lesson(id="L1", titel="t", situation="s", ereignis="e", lesson="r", bereich="Beruf", schweregrad=3,
+               status="neu", bestaetigungen=1, erstellt_am="x", geaendert_am="x", quelle="text")
+    plan = kombi_auswerten(KOMBI_ANTWORT, [l])
+    punkte = [p for a in plan["abschnitte"] for p in a["punkte"]]
+    assert [a["titel"] for a in plan["abschnitte"]] == ["Vorbereitung", "Betrieb"]  # leere Abschnitte fallen weg
+    assert punkte[1] == {"punkt": "Schichtleiter für die ersten zwei Wochen schriftlich einplanen", "quelle": "erfahrung", "lesson_id": "L1"}
+    # "erfahrung" ohne gültige Lesson wird nie als eigene Erfahrung ausgewiesen
+    assert punkte[3]["quelle"] == "allgemein" and punkte[3]["lesson_id"] is None
+    assert plan["punkte_erfahrung"] == 1 and plan["punkte_gesamt"] == 4
+    assert plan["besonderheiten"] == [{"punkt": KOMBI_ANTWORT["besonderheiten"][0]["punkt"], "lesson_id": "L1"}]
+
+
+def test_kombiniert_ist_standard(env):
+    client, claude, add = env
+    l1 = add(titel="Schichtleiter in der Hypercare einplanen", bereich="Beruf",
+             lesson="In der Hypercare die Schichtleiter für zwei Wochen schriftlich einplanen.")
+    data = client.post("/api/briefing", json={"situation": "Plan für die Hypercare-Phase eines SAP-EWM-Projekts"}).json()
+    assert data["modus"] == "kombiniert" and data["ki_moeglich"]
+    r = client.post(f"/api/briefing/{data['id']}/zusammenfassung").json()
+    call = claude.calls[-1]
+    assert call["system"] == KOMBI_PROMPT
+    assert call["output_config"]["effort"] == "medium" and call["max_tokens"] == 16000
+    assert call["output_config"]["format"]["schema"]["properties"]["abschnitte"]["items"]["properties"]["punkte"]["items"]["properties"]["lesson_nr"]["enum"] == [0, 1]
+    assert r["plan"]["abschnitte"][0]["punkte"][1]["lesson_id"] == l1["id"]
+    assert r["zusammenfassung"].startswith("Hypercare")
+    assert {p["quelle"] for p in r["ki_checkliste"]} == {"erfahrung", "allgemein"}
+    stat = client.get("/api/statistik").json()
+    assert stat["plan_punkte_erfahrung"] == 1 and stat["plan_punkte_gesamt"] == 4
+
+
+def test_kombiniert_ohne_eigene_lessons(env):
+    client, claude, _ = env
+    data = client.post("/api/briefing", json={"situation": "Hypercare planen"}).json()
+    assert data["treffer"] == [] and data["ki_moeglich"] is True
+    client.post(f"/api/briefing/{data['id']}/zusammenfassung")
+    assert "keine passenden vorhanden" in claude.calls[-1]["messages"][0]["content"]
+    eigen = client.post("/api/briefing", json={"situation": "Hypercare planen", "modus": "eigen"}).json()
+    assert eigen["ki_moeglich"] is False
+
+
+def test_moduswechsel(env):
+    client, claude, add = env
+    add(titel="Hypercare Schichtleiter", lesson="In der Hypercare Schichtleiter einplanen.")
+    bid = client.post("/api/briefing", json={"situation": "Hypercare planen"}).json()["id"]
+    r = client.post(f"/api/briefing/{bid}/zusammenfassung").json()
+    assert r["plan"] is not None
+    r = client.post(f"/api/briefing/{bid}/zusammenfassung", params={"modus": "eigen"}).json()
+    assert r["modus"] == "eigen" and r["plan"] is None and claude.calls[-1]["system"] == BRIEFING_PROMPT
+    anzahl = len(claude.calls)
+    client.post(f"/api/briefing/{bid}/zusammenfassung", params={"modus": "eigen"})  # gleicher Modus: gespeichert
+    assert len(claude.calls) == anzahl
+    assert client.post(f"/api/briefing/{bid}/zusammenfassung", params={"modus": "quatsch"}).status_code == 422
+
+
+def test_kombiniert_lokal_bereich_nicht_an_claude(env):
+    client, claude, add = env
+    add(titel="Geheim Hypercare Beruf", bereich="Beruf", lesson="Hypercare Personal bestätigen.")
+    client.put("/api/einstellungen", json={"strukturierung_bereiche": {"Beruf": "lokal"}})
+    data = client.post("/api/briefing", json={"situation": "Hypercare planen"}).json()
+    client.post(f"/api/briefing/{data['id']}/zusammenfassung")
+    assert "Geheim" not in claude.calls[-1]["messages"][0]["content"]
+    nur_beruf = client.post("/api/briefing", json={"situation": "Hypercare planen", "bereich": "Beruf"}).json()
+    assert nur_beruf["ki_moeglich"] is False
