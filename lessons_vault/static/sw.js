@@ -1,5 +1,5 @@
 // App-Shell-Cache. API-Aufrufe gehen immer ans Netz, damit keine veralteten Daten angezeigt werden.
-const CACHE = "lessons-vault-v1";
+const CACHE = "lessons-vault-v2";
 const SHELL = ["./", "index.html", "style.css", "app.js", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -21,8 +21,11 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+        // Nur erfolgreiche Antworten cachen, sonst landet z. B. eine 502-Seite als App im Cache.
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+        }
         return response;
       })
       .catch(() => caches.match(event.request).then((hit) => hit || caches.match("index.html"))),

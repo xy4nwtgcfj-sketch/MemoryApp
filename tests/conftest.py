@@ -1,3 +1,9 @@
+import os
+
+# Tests laufen ohne erzwungenes Zugangstoken und mit dem Host-Namen des Testclients.
+os.environ.setdefault("LV_TOKEN_ERZWINGEN", "0")
+os.environ.setdefault("LV_HOSTS", "testserver,127.0.0.1,localhost")
+
 import pytest
 
 from lessons_vault import db

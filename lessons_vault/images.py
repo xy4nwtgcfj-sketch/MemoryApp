@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import uuid
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,7 +24,9 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 log = logging.getLogger(__name__)
 
 MAX_BYTES = 15 * 1024 * 1024
-MAX_PIXEL = 40_000_000  # Schutz vor "Dekompressionsbomben"
+MAX_PIXEL = 30_000_000  # Schutz vor "Dekompressionsbomben"
+# Nur Formate, die Kamera und Browser liefern. Andere (z. B. EPS) würden externe Programme aufrufen.
+FORMATE = ["JPEG", "PNG", "WEBP"]  # JPEG umfasst auch MPO (Mehrbild-JPEG mancher Handys)
 GROESSEN = {"voll": 2400, "vorschau": 400}
 CLAUDE_KANTE = 1568
 Image.MAX_IMAGE_PIXELS = MAX_PIXEL
@@ -70,11 +73,16 @@ class Bildspeicher:
         if len(daten) > MAX_BYTES:
             raise BildFehler("Bild ist größer als 15 MB.")
         try:
-            with Image.open(io.BytesIO(daten)) as roh:
-                roh.load()
-                # Ausrichtung aus EXIF anwenden, bevor die Metadaten wegfallen
-                img = ImageOps.exif_transpose(roh).convert("RGB")
-        except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
+            with warnings.catch_warnings():
+                # Pillow warnt zwischen MAX_PIXEL und 2 x MAX_PIXEL nur; hier ist das schon ein Fehler.
+                warnings.simplefilter("error", Image.DecompressionBombWarning)
+                with Image.open(io.BytesIO(daten), formats=FORMATE) as roh:
+                    if roh.width * roh.height > MAX_PIXEL:
+                        raise BildFehler("Bild hat zu viele Pixel.")
+                    roh.load()
+                    # Ausrichtung aus EXIF anwenden, bevor die Metadaten wegfallen
+                    img = ImageOps.exif_transpose(roh).convert("RGB")
+        except (UnidentifiedImageError, OSError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
             raise BildFehler("Datei ist kein lesbares Bild (JPEG, PNG, WebP).") from exc
         bild_id = str(uuid.uuid4())
         voll = _verkleinern(img, GROESSEN["voll"])
@@ -102,7 +110,8 @@ class Bildspeicher:
                 pass
 
     def vorhandene_ids(self) -> set[str]:
-        return {p.name.split("_")[0] for p in self.ordner.glob("*_voll.jpg")}
+        # Nur Dateien im eigenen Namensschema; fremde Dateien im Ordner lassen den Aufräumjob sonst abbrechen.
+        return {i for p in self.ordner.glob("*_voll.jpg") if re.fullmatch(r"[0-9a-f-]{36}", i := p.name.split("_")[0])}
 
 
 # ------------------------------------------------------------------ Texterkennung

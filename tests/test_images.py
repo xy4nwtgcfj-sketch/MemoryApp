@@ -63,3 +63,25 @@ def test_ohne_tesseract():
 def test_text_bereinigen():
     assert text_bereinigen("•\nHallo   Welt \n-\nZeile") == "Hallo Welt\nZeile"
     assert text_bereinigen("Hallo   Welt\n\n\n\nZeile") == "Hallo Welt\n\nZeile"
+
+
+def test_nur_erlaubte_formate(tmp_path):
+    from PIL import Image as PILImage
+    puffer = io.BytesIO()
+    PILImage.new("RGB", (50, 50), "white").save(puffer, "TIFF")
+    with pytest.raises(BildFehler):
+        Bildspeicher(tmp_path).speichern(puffer.getvalue())
+
+
+def test_zu_viele_pixel(tmp_path):
+    from PIL import Image as PILImage
+    puffer = io.BytesIO()
+    PILImage.new("1", (6000, 6000)).save(puffer, "PNG")  # 36 MP, klein komprimiert
+    with pytest.raises(BildFehler):
+        Bildspeicher(tmp_path).speichern(puffer.getvalue())
+
+
+def test_fremde_dateien_im_ordner(tmp_path):
+    speicher = Bildspeicher(tmp_path)
+    (tmp_path / "urlaub_voll.jpg").write_bytes(b"x")
+    assert speicher.vorhandene_ids() == set()

@@ -313,7 +313,7 @@ def kombi_auswerten(data: dict[str, Any], lessons: list[Lesson]) -> dict[str, An
 def kombinieren(schreiber: "BriefingSchreiber", situation: str, lessons: list[Lesson], effort: str) -> dict[str, Any]:
     data = claude_json(
         schreiber.client, schreiber.model, effort, KOMBI_PROMPT, briefing_nachricht(situation, lessons),
-        kombi_schema(len(lessons)), schreiber.use_fallbacks, max_tokens=16000,
+        kombi_schema(len(lessons)), schreiber.use_fallbacks, max_tokens=16000, timeout=180.0,
     )
     if not isinstance(data, dict):
         raise RuntimeError("Antwort hatte kein gültiges Format.")

@@ -14,6 +14,7 @@ from typing import Any, Literal
 import anthropic
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 
@@ -54,6 +55,7 @@ from .repository import Invalid, NotFound, Repository
 from .search import Filter, Suche, suchbegriffe
 from .structuring import BasisStrukturierer, OllamaStrukturierer, Strukturierer, create_strukturierer, manueller_entwurf
 from .einzelinstanz import Instanzsperre
+from .zugang import SicherheitsMiddleware, zugangstoken
 from .worker import Hintergrund, ModellNichtBereit
 
 log = logging.getLogger("lessons_vault")
@@ -218,7 +220,11 @@ def create_app(
         finally:
             sperre.freigeben()
 
-    app = FastAPI(title="Lessons Vault", version=__version__, lifespan=lifespan)
+    token = settings.token or (zugangstoken(Path(settings.db_path).parent) if settings.token_erzwingen else "")
+    # Keine öffentliche API-Doku im Betrieb
+    app = FastAPI(title="Lessons Vault", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+    app.add_middleware(SicherheitsMiddleware)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.erlaubte_hosts)
     app.state.repo = repo
     app.state.provider = provider
     app.state.strukturierer = strukturierer
@@ -227,11 +233,11 @@ def create_app(
     app.state.speicher = speicher
 
     def auth(request: Request) -> None:
-        if not settings.token:
+        if not token:
             return
         header = request.headers.get("authorization", "")
         supplied = header[7:] if header.lower().startswith("bearer ") else ""
-        if not hmac.compare_digest(supplied.encode(), settings.token.encode()):
+        if not hmac.compare_digest(supplied.encode(), token.encode()):
             raise HTTPException(status_code=401, detail="Token fehlt oder ist falsch")
 
     @app.exception_handler(NotFound)
@@ -539,7 +545,8 @@ def create_app(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         if not pfad.exists():
             raise HTTPException(status_code=404, detail="Bilddatei fehlt")
-        return FileResponse(pfad, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+        # no-store: berufliche Fotos sollen nicht im HTTP-Cache des Handys liegen bleiben
+        return FileResponse(pfad, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
     @app.post("/api/lessons/{lesson_id}/bilder", dependencies=deps)
     def lesson_bilder_anhaengen(lesson_id: str, data: BildLinks) -> list[dict[str, Any]]:
@@ -721,7 +728,9 @@ def create_app(
             raise HTTPException(status_code=502, detail=f"Claude-Fehler {exc.status_code}.") from exc
         except (RuntimeError, json.JSONDecodeError) as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
-        repo.briefing_ki_setzen(briefing_id, ergebnis["zusammenfassung"], ergebnis["checkliste"], f"claude:{schreiber.model}")
+        repo.briefing_ki_setzen(
+            briefing_id, ergebnis["zusammenfassung"], ergebnis["checkliste"], f"claude:{schreiber.model}", nur_modus="eigen",
+        )
         return briefing_antwort(briefing_id)
 
     @app.post("/api/briefing/{briefing_id}/feedback", dependencies=deps)

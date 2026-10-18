@@ -32,6 +32,12 @@ def _load_dotenv(path: Path) -> None:
 class Settings:
     db_path: Path = field(default_factory=lambda: Path(os.environ.get("LV_DB_PATH", "data/lessons.db")))
     token: str = field(default_factory=lambda: os.environ.get("LV_TOKEN", ""))
+    # Ohne LV_TOKEN wird ein Zugangstoken erzeugt und in data/zugangstoken.txt abgelegt (nur Tests schalten das ab).
+    token_erzwingen: bool = field(default_factory=lambda: os.environ.get("LV_TOKEN_ERZWINGEN", "1") != "0")
+    # Erlaubte Host-Header (Schutz gegen DNS-Rebinding); *.ts.net deckt "tailscale serve" ab.
+    erlaubte_hosts: list[str] = field(
+        default_factory=lambda: [h.strip() for h in os.environ.get("LV_HOSTS", "127.0.0.1,localhost,*.ts.net").split(",") if h.strip()]
+    )
     anthropic_api_key: str = field(default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", ""))
     claude_model: str = field(default_factory=lambda: os.environ.get("LV_CLAUDE_MODEL", "claude-opus-5-5"))
     claude_effort: str = field(default_factory=lambda: os.environ.get("LV_CLAUDE_EFFORT", "low"))

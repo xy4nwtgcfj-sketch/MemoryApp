@@ -52,8 +52,11 @@ def claude_json(
     schema: dict[str, Any],
     use_fallbacks: bool = True,
     max_tokens: int = 8000,
+    timeout: float | None = None,
 ) -> dict[str, Any]:
     """Ein Claude-Aufruf mit erzwungenem JSON-Schema. Wirft RuntimeError bei Ablehnung oder Abbruch."""
+    if timeout is not None and hasattr(client, "with_options"):
+        client = client.with_options(timeout=timeout)
     kwargs: dict[str, Any] = dict(
         model=model,
         max_tokens=max_tokens,
@@ -326,5 +329,9 @@ class OllamaStrukturierer(BasisStrukturierer):
 
 
 def create_strukturierer(api_key: str, model: str, effort: str) -> Strukturierer:
-    client = anthropic.Anthropic(api_key=api_key) if api_key else None
+    # Begrenzte Wartezeit: SDK-Standard wären 600 s mit 2 Wiederholungen (bis ~30 min Hängen).
+    client = (
+        anthropic.Anthropic(api_key=api_key, timeout=anthropic.Timeout(90.0, connect=5.0), max_retries=1)
+        if api_key else None
+    )
     return Strukturierer(client, model, effort)

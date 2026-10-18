@@ -393,3 +393,30 @@ def test_briefing_kombiniert(server, page):
     assert fake.calls[-1]["system"] == BRIEFING_PROMPT
     kein_null(page)
     assert page.errors == []
+
+
+def test_anmeldung_mit_token(page, tmp_path):
+    expect = playwright.expect
+    settings = Settings(db_path=tmp_path / "z.db", anthropic_api_key="", ollama_model="", token="geheim-123")
+    app = create_app(settings, Strukturierer(None, "m"), HashingProvider())
+    port = free_port()
+    srv = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    thread = threading.Thread(target=srv.run, daemon=True)
+    thread.start()
+    for _ in range(100):
+        if srv.started:
+            break
+        time.sleep(0.05)
+    try:
+        page.goto(f"http://127.0.0.1:{port}/#/suche")
+        expect(page.get_by_role("heading", name="Zugang")).to_be_visible()
+        page.fill("#zugang-token", "falsch")
+        page.get_by_role("button", name="Anmelden").click()
+        expect(page.get_by_text("Das Token passt nicht")).to_be_visible()
+        page.fill("#zugang-token", "geheim-123")
+        page.get_by_role("button", name="Anmelden").click()
+        expect(page.get_by_role("heading", name="Suchen")).to_be_visible()
+        shot(page, "16-nach-anmeldung")
+    finally:
+        srv.should_exit = True
+        thread.join(timeout=5)

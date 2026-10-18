@@ -370,7 +370,7 @@ class Repository:
         with self.conn:
             self.conn.execute(
                 "UPDATE briefings SET zusammenfassung = ?, ki_checkliste_json = ?, ki_modell = ?, plan_json = ?, abgleich_json = '' "
-                "WHERE id = ?",
+                "WHERE id = ? AND modus = 'kombiniert'",
                 (plan["zusammenfassung"], json.dumps(checkliste, ensure_ascii=False), modell,
                  json.dumps(plan, ensure_ascii=False), briefing_id),
             )
@@ -407,12 +407,16 @@ class Repository:
     def briefing_ki_setzen(
         self, briefing_id: str, zusammenfassung: str, checkliste: list[dict[str, str]], modell: str,
         abgleich: dict[str, Any] | None = None,
+        nur_modus: str | None = None,
     ) -> None:
+        """nur_modus: nur schreiben, wenn das Briefing noch in diesem Modus ist (Schutz vor Wettläufen)."""
+        bedingung, extra = (" AND modus = ?", (nur_modus,)) if nur_modus else ("", ())
         with self.conn:
             self.conn.execute(
-                "UPDATE briefings SET zusammenfassung = ?, ki_checkliste_json = ?, ki_modell = ?, abgleich_json = ? WHERE id = ?",
+                "UPDATE briefings SET zusammenfassung = ?, ki_checkliste_json = ?, ki_modell = ?, abgleich_json = ? "
+                f"WHERE id = ?{bedingung}",
                 (zusammenfassung, json.dumps(checkliste, ensure_ascii=False), modell,
-                 json.dumps(abgleich, ensure_ascii=False) if abgleich is not None else "", briefing_id),
+                 json.dumps(abgleich, ensure_ascii=False) if abgleich is not None else "", briefing_id, *extra),
             )
 
     def briefing_entwurf_setzen(self, briefing_id: str, weg: str, text: str) -> None:

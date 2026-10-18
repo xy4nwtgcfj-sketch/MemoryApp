@@ -49,6 +49,18 @@ function render(...nodes) {
   view.replaceChildren(el("div", {}, nodes));
 }
 
+// Jede Ansicht merkt sich beim Start ihre Route. Ist sie beim Zeichnen nicht mehr aktiv (Nutzer hat
+// weiternavigiert oder die App leitet zur Anmeldung um), zeichnet die verspätete Ansicht nichts mehr.
+let zugangNoetig = false;
+function ansicht() {
+  const meine = location.hash || "#/erfassen";
+  return (...nodes) => {
+    if ((location.hash || "#/erfassen") !== meine) return;
+    if (zugangNoetig && meine !== "#/zugang") return;
+    render(...nodes);
+  };
+}
+
 let toastTimer;
 function toast(content, ms = 4000) {
   toastEl.replaceChildren(content instanceof Node ? content : document.createTextNode(content));
@@ -72,20 +84,35 @@ class ApiError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
 
-async function api(path, { method = "GET", body, raw = false } = {}) {
+async function api(path, { method = "GET", body, raw = false, timeoutMs = 150000 } = {}) {
   const headers = {};
   const token = store.get("lv-token");
   if (token) headers.Authorization = `Bearer ${token}`;
   const isForm = body instanceof FormData;
   if (body !== undefined && !isForm) headers["Content-Type"] = "application/json";
   let res;
+  const abbruch = new AbortController();
+  const timer = setTimeout(() => abbruch.abort(), timeoutMs);
   try {
-    res = await fetch(path, { method, headers, body: body === undefined ? undefined : isForm ? body : JSON.stringify(body) });
-  } catch {
+    res = await fetch(path, { method, headers, signal: abbruch.signal, body: body === undefined ? undefined : isForm ? body : JSON.stringify(body) });
+  } catch (err) {
+    if (err.name === "AbortError") {
+      throw new ApiError(0, "Zeitüberschreitung: Der Server hat nicht rechtzeitig geantwortet. Bitte später erneut versuchen.");
+    }
     throw new ApiError(0, "Server nicht erreichbar. Läuft der Home-PC und ist Tailscale verbunden?");
+  } finally {
+    clearTimeout(timer);
   }
   if (res.status === 401) {
-    throw new ApiError(401, "Token fehlt oder ist falsch. Bitte unter Einstellungen eintragen.");
+    zugangNoetig = true;
+    if (!location.hash.startsWith("#/zugang")) {
+      zugangZiel = location.hash || "#/erfassen";
+      location.hash = "#/zugang";
+    }
+    throw new ApiError(401, "Zugangstoken fehlt oder ist falsch.");
+  }
+  if (res.status === 502 || res.status === 503) {
+    throw new ApiError(res.status, "Die App auf dem PC antwortet nicht. Läuft sie (geplante Aufgabe \u201ELessons Vault\u201C)?");
   }
   if (!res.ok) {
     let detail = res.statusText;
@@ -130,7 +157,7 @@ async function fotosHochladen(files) {
   if (files.length > MAX_FOTOS) toast(`Höchstens ${MAX_FOTOS} Fotos auf einmal, die ersten ${MAX_FOTOS} werden verwendet.`);
   const form = new FormData();
   for (const [i, file] of liste.entries()) form.append("dateien", await verkleinern(file), `foto-${i + 1}.jpg`);
-  return api("/api/bilder", { method: "POST", body: form });
+  return api("/api/bilder", { method: "POST", body: form, timeoutMs: 300000 });
 }
 
 function fotoInput(onFiles) {
@@ -392,6 +419,7 @@ function speechButton(textarea, {
 }
 
 async function viewErfassen() {
+  const render = ansicht();
   const textarea = el("textarea", {
     id: "capture-text",
     class: "capture",
@@ -815,6 +843,7 @@ function whyLine(t) {
 }
 
 async function viewBriefing(id) {
+  const render = ansicht();
   const situation = el("textarea", {
     id: "briefing-text",
     rows: 3,
@@ -841,6 +870,7 @@ async function viewBriefing(id) {
     fill(result, el("p", { class: "muted" }, el("span", { class: "spinner", "aria-hidden": "true" }), " Suche passende Erfahrungen …"));
     try {
       const data = await api("/api/briefing", { method: "POST", body: { situation: text, bereich: briefingState.bereich, modus: briefingState.modus } });
+      if (!(location.hash || "").startsWith("#/briefing")) return; // inzwischen woanders hin navigiert
       history.replaceState(null, "", `#/briefing/${data.id}`);
       showBriefing(result, data);
     } catch (err) {
@@ -868,6 +898,7 @@ async function viewBriefing(id) {
         method: "POST",
         body: { situation: situation.value.trim(), bereich: briefingState.bereich, bild_ids: bilder.map((b) => b.id), entwurf_text: entwurfText },
       });
+      if (!(location.hash || "").startsWith("#/briefing")) return; // inzwischen woanders hin navigiert
       history.replaceState(null, "", `#/briefing/${data.id}`);
       showBriefing(result, data);
     } catch (err) {
@@ -1145,6 +1176,7 @@ function entwurfCard(e) {
 }
 
 async function viewPruefen() {
+  const render = ansicht();
   const [data, status] = await Promise.all([api("/api/entwuerfe"), api("/api/status").catch(() => ({}))]);
   const offen = data.eintraege.filter((e) => e.status === "wartet" || e.status === "in_arbeit").length;
   const bereit = data.eintraege.filter((e) => e.status === "fertig" || e.status === "fehler");
@@ -1172,6 +1204,7 @@ async function viewPruefen() {
 }
 
 async function viewEntwurf(id) {
+  const render = ansicht();
   let e;
   try {
     e = await api(`/api/entwuerfe/${encodeURIComponent(id)}`);
@@ -1236,6 +1269,7 @@ function resultCard(item) {
 }
 
 async function viewSuche() {
+  const render = ansicht();
   const status = await api("/api/status").catch(() => ({}));
   const bereichListe = await bereiche().catch(() => []);
   const results = el("div", { "aria-live": "polite" });
@@ -1328,6 +1362,7 @@ async function viewSuche() {
 
 // ------------------------------------------------------------------- Detail
 async function viewLesson(id) {
+  const render = ansicht();
   render(el("p", { class: "muted" }, "Lade …"));
   let data;
   try {
@@ -1435,6 +1470,7 @@ function fotoSection(lessonId, bilder) {
 }
 
 async function editLesson(l) {
+  const render = ansicht();
   const form = lessonForm(l, { bereichListe: await bereiche() });
   const saveBtn = el("button", {
     type: "button",
@@ -1512,6 +1548,7 @@ function kiSection(status, einst, bereichListe) {
   );
 }
 async function viewEinstellungen() {
+  const render = ansicht();
   const tokenInput = el("input", { type: "password", id: "token", value: store.get("lv-token"), autocomplete: "off" });
   const tokenSection = [
     el("h2", {}, "Zugang"),
@@ -1670,6 +1707,40 @@ async function viewEinstellungen() {
   );
 }
 
+// ------------------------------------------------------------------- Zugang
+let zugangZiel = "#/erfassen";
+
+function viewZugang() {
+  const render = ansicht();
+  const input = el("input", { type: "password", id: "zugang-token", autocomplete: "current-password", value: store.get("lv-token") });
+  const meldung = el("div", { "aria-live": "polite" });
+  const pruefen = async () => {
+    store.set("lv-token", input.value.trim());
+    try {
+      zugangNoetig = false;
+      await api("/api/status");
+      bereicheCache = null;
+      refreshStats();
+      location.hash = zugangZiel.startsWith("#/zugang") ? "#/erfassen" : zugangZiel;
+    } catch (err) {
+      fill(meldung, el("div", { class: "notice warn", role: "alert" }, err.status === 401 ? "Das Token passt nicht. Bitte genau abschreiben." : err.message));
+    }
+  };
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") pruefen(); });
+  render(
+    el("h2", {}, "Zugang"),
+    el("div", { class: "card" },
+      el("p", { style: "margin-top:0" }, "Diese App ist mit einem Zugangstoken geschützt. Du findest es auf dem PC in der Datei ",
+        el("code", {}, "data\\zugangstoken.txt"), " im Ordner der App."),
+      el("p", { class: "muted small" }, "Auf dem iPhone braucht die installierte App das Token einmal extra, auch wenn Safari es schon kennt."),
+      el("label", { for: "zugang-token" }, "Zugangstoken"),
+      input,
+      el("div", { class: "actions" }, el("button", { type: "button", class: "primary", onclick: pruefen }, "Anmelden")),
+      meldung),
+  );
+  input.focus();
+}
+
 // ------------------------------------------------------------------- Router
 const routes = [
   [/^#\/erfassen$/, viewErfassen, "erfassen"],
@@ -1679,6 +1750,7 @@ const routes = [
   [/^#\/entwurf\/([\w-]+)$/, viewEntwurf, "pruefen"],
   [/^#\/suche$/, viewSuche, "suche"],
   [/^#\/einstellungen$/, viewEinstellungen, "einstellungen"],
+  [/^#\/zugang$/, viewZugang, ""],
   [/^#\/lesson\/([\w-]+)$/, viewLesson, "suche"],
 ];
 
