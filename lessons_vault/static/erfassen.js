@@ -5,7 +5,7 @@ import {
   kopf, kuerzen, refreshStats, say, skeleton, statistikSofort, status, statusSofort, store, thumbsRow, toast,
   wochenSchluessel, ersetzenIn,
 } from "./core.js";
-import { abschlussKarte, entwurfKarte, rueckgaengig } from "./entwurf.js";
+import { abschlussKarte, entwurfKarte, rueckgaengig, uebernehmen } from "./entwurf.js";
 
 // ---------------------------------------------------------------- Zustand (überlebt Neustart der App)
 export const capture = Object.assign(
@@ -220,6 +220,11 @@ export async function viewErfassen(params = {}) {
 
   const sichern = async ({ nurMerken = false } = {}) => {
     const text = textarea.value.trim();
+    if (!text && capture.bilder.length) {
+      // Nur ein Foto, keine Stichworte: Die App sucht die Lessons selbst.
+      await fotoVorbereiten({ automatisch: true });
+      return;
+    }
     if (!text) {
       textarea.setAttribute("aria-invalid", "true");
       textarea.setAttribute("aria-describedby", "capture-fehler capture-hint");
@@ -279,7 +284,8 @@ export async function viewErfassen(params = {}) {
       capture.bilder = [...capture.bilder, ...(await fotosHochladen(files))].slice(0, MAX_FOTOS);
       sichernLokal();
       renderThumbs();
-      await fotoVorbereiten();
+      // Ohne getippte Stichworte ist das Foto die Quelle: gleich nach Lessons suchen.
+      await fotoVorbereiten({ automatisch: !textarea.value.trim() });
     } catch (err) {
       fill(fotoPanel, errorNotice(err));
     } finally {
@@ -300,7 +306,7 @@ export async function viewErfassen(params = {}) {
     const startBtn = el("button", { type: "button", class: "primary" });
     const zaehlen = () => {
       const n = boxes.filter((b) => b.checked).length;
-      startBtn.textContent = n === res.kandidaten.length ? `Alle übernehmen (${n})` : `Ausgewählte übernehmen (${n})`;
+      startBtn.textContent = n === res.kandidaten.length ? `Alle speichern (${n})` : `Ausgewählte speichern (${n})`;
       startBtn.setAttribute("aria-disabled", String(n === 0));
     };
     boxes.forEach((b) => b.addEventListener("change", zaehlen));
@@ -309,22 +315,51 @@ export async function viewErfassen(params = {}) {
       const auswahl = res.kandidaten.filter((_, i) => boxes[i].checked);
       if (!auswahl.length || startBtn.getAttribute("aria-disabled") === "true") return;
       startBtn.setAttribute("aria-disabled", "true");
-      fill(fotoPanel, el("p", { class: "loading" }, el("span", { class: "spinner", "aria-hidden": "true" }), `${auswahl.length} Lessons werden angelegt …`));
+      fill(fotoPanel, el("p", { class: "loading" }, el("span", { class: "spinner", "aria-hidden": "true" }),
+        auswahl.length > 1 ? `${auswahl.length} Lessons werden formuliert und gespeichert …` : "Lesson wird formuliert und gespeichert …"));
+      say("Lessons werden erstellt, bitte warten.");
+      const bildIds = capture.bilder.map((b) => b.id);
+      const sek = sekunden();
+      // Jede Auswahl wird sofort strukturiert (parallel) und, wenn nichts dagegen spricht, direkt gespeichert.
+      // Bei Dublette, gesperrtem Inhalt oder fehlender Regel bleibt der Entwurf im Eingang zur Prüfung.
+      const erstellen = async (k) => {
+        const eintrag = await api("/api/notiz?warten=true", {
+          method: "POST", timeoutMs: 180000,
+          body: { text: `${k.titel}: ${k.kern}`, quelle: capture.quelle, bereich: capture.bereich, bild_ids: bildIds, erfassung_sekunden: sek },
+        });
+        const e = eintrag.entwurf;
+        const speicherbar = eintrag.status === "fertig" && e && e.lesson && (e.bereich || capture.bereich) && !e.pruefung && !e.dublette;
+        if (!speicherbar) return { eintrag, grund: e?.dublette ? "ähnliche Lesson vorhanden" : e?.pruefung ? "Datenschutz-Prüfung" : "bitte ergänzen" };
+        if (!e.bereich) e.bereich = capture.bereich;
+        try { return { lesson: await uebernehmen(eintrag) }; } catch (err) { return { eintrag, grund: err.message }; }
+      };
       try {
-        for (const k of auswahl) {
-          await api("/api/notiz", { method: "POST", body: { text: `${k.titel}: ${k.kern}`, quelle: capture.quelle, bereich: capture.bereich, bild_ids: capture.bilder.map((b) => b.id), erfassung_sekunden: sekunden() } });
-        }
+        const ergebnisse = await Promise.all(auswahl.map((k) => erstellen(k).catch((err) => ({ fehler: err.message, titel: k.titel }))));
+        const gespeichert = ergebnisse.filter((r) => r.lesson).map((r) => r.lesson);
+        const offen = ergebnisse.filter((r) => r.eintrag);
+        const fehler = ergebnisse.filter((r) => r.fehler);
         captureLeeren();
+        textarea.value = "";
+        renderThumbs();
+        fill(fotoPanel);
         refreshStats();
-        toast(`${auswahl.length} Lessons liegen im Eingang. Jede mit einem Tipp übernehmen.`);
-        location.hash = "#/eingang";
+        fill(oben, el("div", { class: "card hero", role: "status" },
+          el("p", { class: "overline row", style: "gap:6px;color:var(--success)" }, icon("check", "icon sm"), "Aus dem Foto"),
+          el("p", { class: "lead" }, gespeichert.length === 1 ? "1 Lesson gespeichert" : `${gespeichert.length} Lessons gespeichert`),
+          gespeichert.length ? el("ul", { class: "checklist" }, gespeichert.map((l) => el("li", {}, icon("check", "icon sm"),
+            el("a", { href: `#/lesson/${l.id}` }, anf(l.titel))))) : null,
+          offen.length ? el("p", { class: "small", style: "margin:12px 0 0" }, icon("inbox", "icon sm"), ` ${offen.length} im `, el("a", { href: "#/eingang" }, "Eingang"),
+            ` zur Prüfung (${[...new Set(offen.map((r) => r.grund))].join(", ")}).`) : null,
+          fehler.length ? el("p", { class: "small", style: "margin:12px 0 0;color:var(--danger)" }, `${fehler.length} nicht erstellt: ${fehler[0].fehler}`) : null));
+        window.scrollTo({ top: 0, behavior: "auto" });
+        say(`${gespeichert.length} Lessons gespeichert${offen.length ? `, ${offen.length} im Eingang zur Prüfung` : ""}.`);
       } catch (err) {
         fill(fotoPanel, errorNotice(err));
       }
     });
     fill(fotoPanel, el("div", { class: "card" },
       el("p", { class: "overline" }, `Auf dem Foto gefunden (${res.kandidaten.length})`),
-      el("p", { class: "small muted", style: "margin:0 0 4px" }, "Wähle aus, was eine eigene Lesson werden soll. Claude strukturiert jede, das Foto hängt an jeder. Danach prüfst du sie im Eingang."),
+      el("p", { class: "small muted", style: "margin:0 0 4px" }, "Die App formuliert jede als fertige Lesson und speichert sie, das Foto hängt an jeder. Abwählen, was nicht passt. Du kannst jede Lesson danach noch bearbeiten."),
       el("ul", { class: "checklist" }, res.kandidaten.map((k, i) => el("li", {}, boxes[i],
         el("label", { for: `kand-${i}` }, el("span", { style: "font-weight:600;display:block" }, anf(k.titel)), el("span", { class: "footnote" }, anf(k.kern)))))),
       el("div", { class: "actions" }, startBtn, nurAnhaengen())));
@@ -349,7 +384,7 @@ export async function viewErfassen(params = {}) {
     }
   };
 
-  async function fotoVorbereiten() {
+  async function fotoVorbereiten({ automatisch = false } = {}) {
     if (!capture.bilder.length) return;
     fill(fotoPanel, el("p", { class: "loading" }, el("span", { class: "spinner", "aria-hidden": "true" }), "Foto wird ausgewertet …"));
     let res;
@@ -357,6 +392,11 @@ export async function viewErfassen(params = {}) {
       res = await api("/api/foto/vorbereiten", { method: "POST", body: { bild_ids: capture.bilder.map((b) => b.id), bereich: capture.bereich } });
     } catch (err) {
       return fill(fotoPanel, errorNotice(err));
+    }
+    // Automatisch weiter, solange keine Prüfung nötig ist: Bild-Weg direkt, Text-Weg nur ohne Datenschutz-Hinweise.
+    if (automatisch && res.weg === "bild") return kandidatenSuchen({});
+    if (automatisch && res.weg === "text" && res.text.trim().length >= 3 && !(res.compliance_hinweise || []).length) {
+      return kandidatenSuchen({ text: res.text });
     }
     if (res.weg === "bild") {
       fill(fotoPanel, el("div", { class: "card" },
