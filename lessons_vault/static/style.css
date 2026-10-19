@@ -664,3 +664,37 @@ details.bereich-details[open] > summary { margin-bottom: 8px; }
 .marke-eigen { display: inline-flex; align-items: center; gap: 3px; margin-left: 4px; padding: 0 6px; min-height: 22px; border-radius: 6px;
   background: var(--own-tint); color: var(--own); font-size: .75rem; font-weight: 600; text-decoration: none; vertical-align: 1px; white-space: nowrap; }
 .marke-eigen .icon { width: .75rem; height: .75rem; }
+
+/* ---------------------------------------------------------------- Zähler */
+.ring { display: inline-flex; flex: none; }
+.ring svg { display: block; }
+.ring-bg { fill: none; stroke: var(--surface-2); stroke-width: 3; }
+.ring-fg { fill: none; stroke: var(--own-line); stroke-width: 3; stroke-linecap: round; transition: stroke-dasharray .6s ease-out; }
+.ring.voll .ring-fg { stroke: var(--success); }
+.progress-pill .serie { display: inline-flex; align-items: center; gap: 2px; color: var(--own); font-weight: 600; }
+.progress-pill .serie .icon { color: #e8743b; }
+.progress-pill.puls { animation: puls .6s ease-out; }
+@keyframes puls { 0% { transform: scale(1); } 40% { transform: scale(1.12); } 100% { transform: scale(1); } }
+.plus-eins { position: absolute; right: 10px; top: -4px; font-weight: 700; color: var(--success); pointer-events: none;
+  animation: hoch 1.3s ease-out forwards; }
+@keyframes hoch { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-28px); } }
+
+.card.zaehler { display: flex; align-items: center; gap: 14px; padding: 12px 14px; color: inherit; text-decoration: none; }
+.card.zaehler.erreicht { background: var(--success-tint); border-color: transparent; }
+.zaehler-ring { position: relative; flex: none; }
+.zaehler-zahl { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 1.0625rem;
+  font-weight: 700; font-variant-numeric: tabular-nums; }
+.zaehler-titel { margin: 0; font-weight: 600; }
+.zaehler-serie { margin: 2px 0 0; display: flex; align-items: center; gap: 4px; font-size: .875rem; color: var(--text-2); }
+.zaehler-serie .icon { color: #e8743b; }
+.zaehler-meilenstein { margin-top: 6px; font-size: .8125rem; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.zaehler-meilenstein .progress { margin-top: 4px; height: 4px; }
+.serie-gross { display: inline-flex; align-items: center; gap: 4px; }
+.serie-gross .icon { color: #e8743b; }
+
+.konfetti { position: fixed; inset: 0; pointer-events: none; z-index: 50; overflow: hidden; }
+.konfetti span { position: absolute; top: -12px; width: 8px; height: 12px; border-radius: 2px; opacity: .95;
+  animation: konfetti 1.7s cubic-bezier(.2,.6,.4,1) forwards; }
+@keyframes konfetti { to { transform: translate(var(--drift), 105vh) rotate(var(--dreh)); opacity: .9; } }
+@media (prefers-reduced-motion: reduce) { .progress-pill.puls, .plus-eins { animation: none; } }
+.zaehler-zahl.klein { font-size: .8125rem; }

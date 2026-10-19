@@ -380,7 +380,10 @@ export async function refreshStats() {
     const s = await api("/api/statistik");
     letzteStatistik = s;
     store.setJson("lv-statistik", s);
+    const vorher = sitzungsStand;
+    sitzungsStand = zaehlerStand(s);
     statsAnzeigen(s);
+    if (vorher) feiernWennNoetig(vorher, sitzungsStand);
     return s;
   } catch {
     return letzteStatistik;
@@ -389,16 +392,108 @@ export async function refreshStats() {
 export function statsAnzeigen(s) {
   if (!s) return;
   statsEl.hidden = false;
+  const z = zaehlerStand(s);
   fill(statsEl,
-    el("span", {}, `${s.gesamt} / ${ZIEL_LESSONS} Lessons`),
-    s.woche_aktiv ? el("span", { class: "ok", title: "Diese Woche schon etwas erfasst" }, icon("check", "icon sm")) : null);
-  statsEl.setAttribute("aria-label", `Fortschritt: ${s.gesamt} von ${ZIEL_LESSONS} Lessons${s.woche_aktiv ? ", diese Woche aktiv" : ""}`);
+    ring(z.diese / z.ziel, 20, z.erreicht),
+    el("span", {}, `${z.diese}/${z.ziel}`),
+    z.serie ? el("span", { class: "serie" }, icon("flame", "icon sm"), z.serie) : null);
+  statsEl.title = "Wochenziel und Serie";
+  statsEl.setAttribute("aria-label", `Diese Woche ${z.diese} von ${z.ziel} Einträgen${z.serie ? `, ${z.serie} ${z.serie === 1 ? "Woche" : "Wochen"} in Folge` : ""}, ${z.gesamt} Lessons insgesamt`);
+  zaehlerHoerer.forEach((fn) => { try { fn(s); } catch { /* Ansicht weg */ } });
   const badge = document.getElementById("eingang-count");
   badge.hidden = !s.offene_entwuerfe;
   badge.textContent = s.offene_entwuerfe || "";
   const link = document.querySelector('.tabbar a[data-tab="eingang"]');
   link.setAttribute("aria-label", s.offene_entwuerfe ? `Eingang, ${s.offene_entwuerfe} offen` : "Eingang");
 }
+// ---------------------------------------------------------------- Zähler: Wochenziel, Serie, Meilensteine
+// Wochen statt Tage: Ein freier Tag bricht keine Serie. Gezählt werden neue Lessons und "erneut erlebt" (ohne Import).
+export const MEILENSTEINE = [10, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000];
+let sitzungsStand = null;
+const zaehlerHoerer = new Set();
+export function aufZaehler(fn) { zaehlerHoerer.add(fn); return () => zaehlerHoerer.delete(fn); }
+
+export function wochenziel() {
+  const n = Number(store.get("lv-wochenziel", "5"));
+  return Number.isInteger(n) && n >= 1 && n <= 50 ? n : 5;
+}
+
+export function zaehlerStand(s) {
+  const ziel = wochenziel();
+  const wochen = s?.wochen_zaehler || [];
+  const diese = wochen[0]?.anzahl || 0;
+  let serie = 0;
+  for (let i = 1; i < wochen.length && wochen[i].anzahl >= ziel; i++) serie++;
+  if (diese >= ziel) serie++;
+  const gesamt = s?.gesamt || 0;
+  const naechster = MEILENSTEINE.find((m) => m > gesamt) || (Math.floor(gesamt / 500) + 1) * 500;
+  const vorher = [...MEILENSTEINE].reverse().find((m) => m <= gesamt) || 0;
+  return { ziel, diese, serie, gesamt, naechster, vorher, erreicht: diese >= ziel };
+}
+
+// Fortschrittsring als SVG (nur Zahlen im Markup, daher sicher)
+export function ring(anteil, groesse = 20, voll = false) {
+  const r = 8, u = 2 * Math.PI * r;
+  const wert = Math.max(0, Math.min(1, anteil || 0));
+  const span = el("span", { class: `ring ${voll ? "voll" : ""}`, "aria-hidden": "true" });
+  span.innerHTML = `<svg viewBox="0 0 20 20" width="${groesse}" height="${groesse}"><circle cx="10" cy="10" r="${r}" class="ring-bg"/>` +
+    `<circle cx="10" cy="10" r="${r}" class="ring-fg" stroke-dasharray="${(wert * u).toFixed(2)} ${u.toFixed(2)}" transform="rotate(-90 10 10)"/></svg>`;
+  return span;
+}
+
+export function zaehlerKarte(s) {
+  const z = zaehlerStand(s);
+  const fehlt = Math.max(0, z.ziel - z.diese);
+  const bisMeilenstein = z.naechster - z.gesamt;
+  const anteilMeilenstein = (z.gesamt - z.vorher) / Math.max(1, z.naechster - z.vorher);
+  return el("a", { class: `card zaehler ${z.erreicht ? "erreicht" : ""}`, href: "#/einstellungen", "aria-label": "Fortschritt ansehen" },
+    el("div", { class: "zaehler-ring" }, ring(z.diese / z.ziel, 52, z.erreicht), el("span", { class: `zaehler-zahl ${String(z.diese).length > 2 ? "klein" : ""}` }, String(z.diese))),
+    el("div", { class: "grow" },
+      el("p", { class: "zaehler-titel" }, z.erreicht ? `Wochenziel geschafft · ${z.diese} von ${z.ziel}` : `${z.diese} von ${z.ziel} diese Woche · noch ${fehlt}`),
+      el("p", { class: "zaehler-serie" }, icon("flame", "icon sm"),
+        z.serie ? `${z.serie} ${z.serie === 1 ? "Woche" : "Wochen"} in Folge` : "Erreiche das Wochenziel und starte eine Serie"),
+      el("div", { class: "zaehler-meilenstein" },
+        el("span", {}, `${z.gesamt} Lessons · noch ${bisMeilenstein} bis ${z.naechster}`),
+        el("div", { class: "progress own", "aria-hidden": "true" }, el("span", { style: `width:${Math.round(anteilMeilenstein * 100)}%` })))));
+}
+
+function feiernWennNoetig(vorher, jetzt) {
+  const plus = (jetzt.gesamt - vorher.gesamt) + Math.max(0, (jetzt.diese - vorher.diese) - (jetzt.gesamt - vorher.gesamt));
+  if (plus <= 0) return;
+  // Kleine Bestätigung an der Pille
+  statsEl.classList.remove("puls");
+  void statsEl.offsetWidth;
+  statsEl.classList.add("puls");
+  const blase = el("span", { class: "plus-eins", "aria-hidden": "true" }, `+${plus}`);
+  statsEl.append(blase);
+  setTimeout(() => blase.remove(), 1400);
+  if (jetzt.gesamt >= vorher.naechster) {
+    feiern(`Meilenstein: ${vorher.naechster} Lessons! Dein Erfahrungsschatz wächst.`);
+  } else if (!vorher.erreicht && jetzt.erreicht) {
+    feiern(jetzt.serie > 1 ? `Wochenziel geschafft, ${jetzt.serie} Wochen in Folge!` : "Wochenziel geschafft! Deine Serie läuft.");
+  }
+}
+
+export function feiern(text) {
+  toast(text, { ms: 6000 });
+  say(text);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const farben = ["#d9a441", "#3567a6", "#2f8a55", "#e8b45c", "#8db4e8", "#ff8f87"];
+  const box = el("div", { class: "konfetti", "aria-hidden": "true" });
+  for (let i = 0; i < 36; i++) {
+    const stueck = el("span", {});
+    stueck.style.left = `${Math.random() * 100}%`;
+    stueck.style.background = farben[i % farben.length];
+    stueck.style.animationDelay = `${Math.random() * 0.25}s`;
+    stueck.style.setProperty("--drift", `${(Math.random() - 0.5) * 120}px`);
+    stueck.style.setProperty("--dreh", `${Math.round(Math.random() * 720)}deg`);
+    box.append(stueck);
+  }
+  document.body.append(box);
+  setTimeout(() => box.remove(), 2200);
+}
+
+// Erst jetzt anzeigen: Die Zähler-Variablen oben müssen initialisiert sein.
 statsAnzeigen(letzteStatistik);
 
 // ---------------------------------------------------------------- Bausteine

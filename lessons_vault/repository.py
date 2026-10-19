@@ -638,7 +638,26 @@ class Repository:
             "woche_aktiv": wochen[0] in aktive,
             "aktive_wochen": sum(1 for w in wochen if w in aktive),
             "wochen_betrachtet": 6,
+            # Zähler: Einträge (neue Lessons und "erneut erlebt", ohne Import) je Kalenderwoche, neueste zuerst
+            "wochen_zaehler": self._wochen_zaehler(26),
         }
+
+    def _wochen_zaehler(self, anzahl_wochen: int) -> list[dict[str, Any]]:
+        heute = date.today()
+        montag = heute - timedelta(days=heute.weekday())
+        start = montag - timedelta(weeks=anzahl_wochen - 1)
+        zaehler = {
+            r[0]: r[1] for r in self.conn.execute(
+                "SELECT date(b.datum, '-' || ((CAST(strftime('%w', b.datum) AS INTEGER) + 6) % 7) || ' days') AS woche, COUNT(*) "
+                "FROM bestaetigungen b JOIN lessons l ON l.id = b.lesson_id "
+                "WHERE l.quelle != 'import' AND date(b.datum) >= ? GROUP BY woche",
+                (start.isoformat(),),
+            )
+        }
+        return [
+            {"woche": w, "anzahl": zaehler.get(w, 0)}
+            for w in ((montag - timedelta(weeks=i)).isoformat() for i in range(anzahl_wochen))
+        ]
 
     def hilfreich_zaehlen(self, lesson_id: str) -> int:
         """In wie vielen Briefings war diese Lesson als hilfreich markiert?"""

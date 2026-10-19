@@ -1,6 +1,6 @@
 // Einstellungen, Fortschritt und Zugang.
 import {
-  ZIEL_LESSONS, ansicht, api, bereiche, bereicheVergessen, copyText, el, errorNotice, fill, fokusAufTitel,
+  ZIEL_LESSONS, MEILENSTEINE, ansicht, statsAnzeigen, wochenziel, zaehlerStand, api, bereiche, bereicheVergessen, copyText, el, errorNotice, fill, fokusAufTitel,
   grosserTitel, herunterladen, icon, kopf, refreshStats, say, skeleton, state, status, store, toast,
 } from "./core.js";
 
@@ -42,18 +42,26 @@ export async function viewEinstellungen() {
   };
 
   // ---------------------------------------------------------- Fortschritt
-  const prozent = Math.min(100, (s.gesamt / ZIEL_LESSONS) * 100);
+  const z = zaehlerStand(s);
+  const prozent = Math.round(((z.gesamt - z.vorher) / Math.max(1, z.naechster - z.vorher)) * 100);
+  const zielWahl = el("select", { id: "wochenziel", style: "width:auto;min-width:88px" },
+    [1, 2, 3, 5, 7, 10, 15, 20].map((n) => el("option", { value: String(n), selected: n === wochenziel() ? true : null }, `${n} pro Woche`)));
+  zielWahl.addEventListener("change", () => { store.set("lv-wochenziel", zielWahl.value); statsAnzeigen(s); viewEinstellungen(); say("Wochenziel gespeichert."); });
   const fortschritt = el("section", {},
     el("h2", { style: "margin-top:8px" }, "Fortschritt"),
     el("div", { class: "tiles" },
-      el("div", { class: "tile" }, el("div", { class: "num" }, s.gesamt, el("small", {}, ` / ${ZIEL_LESSONS}`)), el("div", { class: "lbl" }, "Lessons"),
+      el("div", { class: "tile" }, el("div", { class: "num" }, s.gesamt, el("small", {}, ` / ${z.naechster}`)), el("div", { class: "lbl" }, "Lessons bis zum nächsten Meilenstein"),
         el("div", { class: "progress own", "aria-hidden": "true" }, el("span", { style: `width:${prozent}%` }))),
-      el("div", { class: "tile" }, el("div", { class: "num" }, s.woche_aktiv ? el("span", { style: "color:var(--success)" }, icon("check", "icon lg")) : "–"),
-        el("div", { class: "lbl" }, `Diese Woche · ${s.aktive_wochen} von ${s.wochen_betrachtet} Wochen aktiv`)),
+      el("div", { class: "tile" }, el("div", { class: "num" }, el("span", { class: "serie-gross" }, icon("flame", "icon lg"), z.serie)),
+        el("div", { class: "lbl" }, `Wochen in Folge mit Wochenziel · diese Woche ${z.diese}/${z.ziel}`)),
       el("div", { class: "tile" }, el("div", { class: "num" }, s.erfassung_sekunden_schnitt == null ? "–" : `${Math.round(s.erfassung_sekunden_schnitt)} s`),
         el("div", { class: "lbl" }, s.erfassungen_gemessen ? `Ø Erfassung, ${s.erfassungen_unter_30s} von ${s.erfassungen_gemessen} unter 30 s` : "Ø Erfassung, Ziel unter 30 s")),
       el("div", { class: "tile" }, el("div", { class: "num" }, s.briefings ? s.briefings_hilfreich : "–", s.briefings ? el("small", {}, ` / ${s.briefings}`) : null),
         el("div", { class: "lbl" }, s.briefings ? "Briefings mit hilfreicher Lesson" : "Noch kein Briefing"))),
+    el("div", { class: "row card", style: "gap:12px" },
+      el("label", { for: "wochenziel", class: "grow", style: "margin:0" }, "Wochenziel",
+        el("span", { class: "li-sub" }, "Neue Lessons und „erneut erlebt“ zählen. Erreichst du es Woche für Woche, wächst deine Serie.")),
+      zielWahl),
     el("ul", { class: "list" },
       el("li", {}, el("span", { class: "grow" }, "Eigene Erfahrung"), el("span", { class: "footnote" }, s.lessons_eingeschaetzt ? `${s.lessons_persoenlich} von ${s.lessons_eingeschaetzt}` : "–")),
       el("li", {}, el("span", { class: "grow" }, "Neu in den letzten 30 Tagen"), el("span", { class: "footnote" }, s.neu_erfasst_30_tage)),

@@ -1,6 +1,6 @@
 // Entwurfskarte: Was Claude (oder das lokale Modell) aus einer Notiz gemacht hat, prüfen und sichern.
 import {
-  ZIEL_LESSONS, SEVERITY, anf, api, bereiche, bestaetigen, debounce, diktatKnopf, el, errorNotice, fill, hinweisBox,
+  ZIEL_LESSONS, MEILENSTEINE, SEVERITY, anf, api, bereiche, bestaetigen, debounce, diktatKnopf, el, errorNotice, fill, hinweisBox,
   icon, istPruefung, kuerzen, ersetzenIn, ersetzenKnoepfe, refreshStats, say, statistikSofort, thumbsRow, toast,
 } from "./core.js";
 
@@ -329,8 +329,15 @@ export function abschlussKarte(lesson, eintrag, { bestaetigt = false, modus = "c
     verwandt && !bestaetigt ? el("p", { class: "small muted", style: "margin:4px 0 0" }, "Verwandt mit ", el("a", { href: `#/lesson/${verwandt.id}` }, anf(verwandt.titel)),
       verwandt.bestaetigungen > 1 ? ` (${verwandt.bestaetigungen}× erlebt)` : "", ".") : null,
     gesamt !== null ? el("div", {},
-      el("p", { class: "footnote", style: "margin-top:12px" }, `${gesamt + (bestaetigt ? 0 : 1)} von ${ZIEL_LESSONS} Lessons`),
-      el("div", { class: "progress own", "aria-hidden": "true" }, el("span", { style: `width:${Math.min(100, ((gesamt + 1) / ZIEL_LESSONS) * 100)}%` }))) : null,
+      (() => {
+        const jetzt = gesamt + (bestaetigt ? 0 : 1);
+        const ziel = MEILENSTEINE.find((m) => m > jetzt) || (Math.floor(jetzt / 500) + 1) * 500;
+        const ab = [...MEILENSTEINE].reverse().find((m) => m <= jetzt) || 0;
+        return [
+          el("p", { class: "footnote", style: "margin-top:12px" }, `${jetzt} Lessons · noch ${ziel - jetzt} bis ${ziel}`),
+          el("div", { class: "progress own", "aria-hidden": "true" }, el("span", { style: `width:${Math.round(((jetzt - ab) / Math.max(1, ziel - ab)) * 100)}%` })),
+        ];
+      })()) : null,
     el("div", { class: "actions" }, el("a", { class: "button text", href: `#/lesson/${lesson.id}` }, "Ansehen", icon("chevron-right", "icon sm"))));
   if (!bestaetigt && e.rueckfrage && e.rueckfrage_art !== "pflichtfeld") karte.append(schaerfenBlock(lesson, eintrag, modus, karte));
   return karte;

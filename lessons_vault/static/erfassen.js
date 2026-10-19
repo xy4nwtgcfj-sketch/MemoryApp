@@ -1,6 +1,6 @@
 // Erfassen: erst sichern, dann veredeln. Jede Notiz liegt sofort auf dem PC, Claude strukturiert danach.
 import {
-  ZIEL_LESSONS, MAX_FOTOS, anf, ansicht, api, ausgangAdd, bereiche, bereicheSofort, debounce, diktatKnopf, el,
+  ZIEL_LESSONS, MAX_FOTOS, anf, ansicht, aufZaehler, zaehlerKarte, api, ausgangAdd, bereiche, bereicheSofort, debounce, diktatKnopf, el,
   errorNotice, fill, fokusAufTitel, fotoInput, fotosHochladen, grosserTitel, heute, hinweisBox, icon, istOffline,
   kopf, kuerzen, refreshStats, say, skeleton, statistikSofort, status, statusSofort, store, thumbsRow, toast,
   wochenSchluessel, ersetzenIn,
@@ -439,7 +439,12 @@ export async function viewErfassen(params = {}) {
   updateModus();
   renderThumbs();
   // Notizfeld zuerst: Tageskarten (Woche, Wiedersehen …) stehen darunter und verdrängen das Erfassen nicht.
-  const ok = render(grosserTitel("Erfassen"), oben, composer, fotoIn, notizZeile, ergebnis, tagesSlot);
+  // Zähler: kompakt über dem Notizfeld, aktualisiert sich nach jedem Sichern
+  const zaehlerSlot = el("div", { id: "zaehler" });
+  const zeigeZaehler = (s) => { if (s && zaehlerSlot.isConnected !== false) fill(zaehlerSlot, zaehlerKarte(s)); };
+  zeigeZaehler(statistikSofort());
+  const abmelden = aufZaehler((s) => { if (!render.aktiv()) { abmelden(); return; } zeigeZaehler(s); });
+  const ok = render(grosserTitel("Erfassen"), zaehlerSlot, oben, composer, fotoIn, notizZeile, ergebnis, tagesSlot);
   if (!ok) return;
   fokusAufTitel();
 
