@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from . import __version__, db
 from .briefing import BriefingSchreiber, kombinieren, lokale_checkliste, rangliste
-from .compliance import lesson_text_fuer_pruefung, pruefen, sperrliste_treffer
+from .compliance import lesson_text_fuer_pruefung, pruefen, sperrbegriffe_schwaerzen, sperrliste_treffer
 from .config import Settings, load_settings
 from .foto import abgleich_inhalt, abgleichen, kandidaten_finden, kandidaten_inhalt
 from .images import BildFehler, Bildspeicher, Texterkennung
@@ -691,11 +691,13 @@ def create_app(
         """Sagt der Oberfläche, welcher Weg gilt, und liefert den lokal erkannten Text zur Prüfung."""
         vorgabe = anfrage.bereich if anfrage.bereich and repo.bereich_existiert(anfrage.bereich) else ""
         weg = bild_weg(vorgabe)
-        text = ocr_texte(anfrage.bild_ids)
         sperrliste = repo.einstellungen().sperrliste
+        # Sperrbegriffe im erkannten Fototext gleich ersetzen: So bleibt der Ablauf automatisch, ohne dass sie an Claude gehen.
+        text, geschwaerzt = sperrbegriffe_schwaerzen(ocr_texte(anfrage.bild_ids), sperrliste)
         return {
             "weg": weg,
             "text": text,
+            "geschwaerzt": geschwaerzt,
             # Im Zweifel streng prüfen: ohne Bereich wie "Beruf" (Zahlen und Beträge melden)
             "compliance_hinweise": pruefen(text, vorgabe, sperrliste, beruflich=repo.ist_beruflich(vorgabe) if vorgabe else True) if text else [],
             "texterkennung": {"verfuegbar": ocr.verfuegbar, "hinweis": ocr.status()[1]},
@@ -712,8 +714,10 @@ def create_app(
         if weg == "text":
             if len(anfrage.text.strip()) < 3:
                 raise HTTPException(status_code=422, detail="Kein Text zum Auswerten. Text prüfen oder abtippen.")
-            vorabpruefung(f"{anfrage.text}\n{anfrage.notiz}", vorgabe, anfrage.freigabe)
-            inhalt = kandidaten_inhalt([], anfrage.text, anfrage.notiz)
+            # Fototext: Sperrbegriffe serverseitig ersetzen (nie dem Client glauben). Getippte Notizen blockieren weiter.
+            fototext, _ = sperrbegriffe_schwaerzen(anfrage.text, repo.einstellungen().sperrliste)
+            vorabpruefung(f"{fototext}\n{anfrage.notiz}", vorgabe, anfrage.freigabe)
+            inhalt = kandidaten_inhalt([], fototext, anfrage.notiz)
         else:
             vorabpruefung(anfrage.notiz, vorgabe, anfrage.freigabe)
             inhalt = kandidaten_inhalt([speicher.fuer_claude(b) for b in anfrage.bild_ids], "", anfrage.notiz)

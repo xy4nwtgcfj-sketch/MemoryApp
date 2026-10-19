@@ -236,3 +236,17 @@ def test_texterkennung_wird_nachgeholt(env, monkeypatch):
     assert r["ocr_status"] == "aus"
     vor = client.post("/api/foto/vorbereiten", json={"bild_ids": [r["id"]], "bereich": "Beruf"}).json()
     assert "Schichtleiter" in vor["text"]
+
+
+def test_sperrbegriffe_im_fototext_werden_ersetzt(env):
+    """Sperrbegriffe im Fototext werden durch [vertraulich] ersetzt, statt den automatischen Ablauf zu stoppen."""
+    client, claude, _ = env
+    client.put("/api/einstellungen", json={"sperrliste": ["Schichtleiter"]})
+    ids = hochladen(client)
+    r = client.post("/api/foto/kandidaten", json={"bild_ids": ids, "bereich": "Beruf", "text": "Schichtleiter fehlten beim Cutover."})
+    assert r.status_code == 200, r.text
+    gesendet = claude.calls[-1]["messages"][0]["content"]
+    assert "Schichtleiter" not in str(gesendet) and "[vertraulich]" in str(gesendet)
+    # Getippte Notizen mit Sperrbegriff blockieren weiterhin
+    r = client.post("/api/foto/kandidaten", json={"bild_ids": ids, "bereich": "Beruf", "text": "Cutover verzögert.", "notiz": "Schichtleiter"})
+    assert r.status_code == 422

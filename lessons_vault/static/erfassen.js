@@ -393,6 +393,7 @@ export async function viewErfassen(params = {}) {
     } catch (err) {
       return fill(fotoPanel, errorNotice(err));
     }
+    if (res.geschwaerzt?.length) toast("Aus der Sperrliste ersetzt: " + res.geschwaerzt.join(", ") + ". Geht nicht an Claude.", { ms: 6000 });
     // Automatisch weiter, solange keine Prüfung nötig ist: Bild-Weg direkt, Text-Weg nur ohne Datenschutz-Hinweise.
     if (automatisch && res.weg === "bild") return kandidatenSuchen({});
     if (automatisch && res.weg === "text" && res.text.trim().length >= 3 && !(res.compliance_hinweise || []).length) {

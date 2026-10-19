@@ -40,6 +40,18 @@ def _sperrbegriff_regex(begriff: str) -> re.Pattern[str]:
     return re.compile(rf"(?<!\w){re.escape(begriff.strip())}(?!\w)", re.IGNORECASE)
 
 
+def sperrbegriffe_schwaerzen(text: str, sperrliste: list[str] | None, ersatz: str = "[vertraulich]") -> tuple[str, list[str]]:
+    """Ersetzt Sperrbegriffe (ganze Wörter) im Text, z. B. im erkannten Text eines Fotos, bevor er an Claude geht.
+    Liefert den bereinigten Text und die ersetzten Begriffe."""
+    ersetzt = []
+    for begriff in sorted({b.strip() for b in sperrliste or [] if b.strip()}, key=len, reverse=True):
+        neu, n = _sperrbegriff_regex(begriff).subn(ersatz, text)
+        if n:
+            text = neu
+            ersetzt.append(begriff)
+    return text, ersetzt
+
+
 def sperrliste_treffer(text: str, sperrliste: list[str] | None) -> list[str]:
     """Begriffe der Sperrliste, die im Text vorkommen (ganze Wörter, ohne Groß-/Kleinschreibung)."""
     return [b.strip() for b in sperrliste or [] if b.strip() and _sperrbegriff_regex(b).search(text)]
