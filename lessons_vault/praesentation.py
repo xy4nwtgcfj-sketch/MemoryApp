@@ -27,7 +27,7 @@ MARKE = re.compile(r"\s?\[\[E:([\w-]+)\]\]")
 
 
 def text_ohne_marken(text: str) -> str:
-    return MARKE.sub(" (eigene Erfahrung)", text or "").strip()
+    return MARKE.sub(" (own experience)", text or "").strip()
 
 
 def _textfeld(folie, links, oben, breite, hoehe):
@@ -97,7 +97,7 @@ def briefing_pptx(situation: str, plan: dict[str, Any], lessons: dict[str, Any],
     titel_von = {lid: l.titel for lid, l in lessons.items()}
     praes = Presentation()
     praes.slide_width, praes.slide_height = Inches(13.333), Inches(7.5)
-    fuss = "★ aus deiner Erfahrung  ·  übrige Punkte: Claudes Fachwissen, nicht geprüft"
+    fuss = "★ from your own experience  ·  other points: Claude's expertise, not verified"
 
     # 1 Titel
     folie = praes.slides.add_slide(praes.slide_layouts[6])
@@ -109,16 +109,16 @@ def briefing_pptx(situation: str, plan: dict[str, Any], lessons: dict[str, Any],
     _absatz(rahmen, "BRIEFING", groesse=14, farbe=GOLD_LINIE, fett=True, erster=True, abstand=10)
     _absatz(rahmen, situation, groesse=36, farbe=RGBColor(0xFF, 0xFF, 0xFF), fett=True, abstand=16)
     datum = erstellt_am[:10] if erstellt_am else datetime.now().strftime("%Y-%m-%d")
-    _absatz(rahmen, f"Fachwissen und eigene Erfahrung  ·  {datum}", groesse=16, farbe=RGBColor(0xC8, 0xD3, 0xE3))
+    _absatz(rahmen, f"Expertise and own experience  ·  {datum}", groesse=16, farbe=RGBColor(0xC8, 0xD3, 0xE3))
 
     # 2 Worauf es ankommt
-    folie = _kopf(praes, "Worauf es ankommt", "Zusammenfassung")
+    folie = _kopf(praes, "What matters most", "Summary")
     rahmen = _textfeld(folie, Inches(0.6), Inches(1.7), praes.slide_width - Inches(1.2), Inches(4.8))
     _absatz(rahmen, plan.get("zusammenfassung", ""), groesse=22, erster=True, abstand=14)
     eigen = plan.get("punkte_erfahrung", 0)
     gesamt = plan.get("punkte_gesamt", 0)
     if gesamt:
-        _absatz(rahmen, f"{eigen} von {gesamt} Punkten stammen aus deiner Erfahrung.", groesse=14, farbe=GOLD)
+        _absatz(rahmen, f"{eigen} of {gesamt} points come from your own experience.", groesse=14, farbe=GOLD)
     folie.notes_slide.notes_text_frame.text = text_ohne_marken(plan.get("ausarbeitung", ""))
     _fuss(praes, folie, fuss)
 
@@ -128,7 +128,7 @@ def briefing_pptx(situation: str, plan: dict[str, Any], lessons: dict[str, Any],
         teile = [punkte[i:i + PUNKTE_JE_FOLIE] for i in range(0, len(punkte), PUNKTE_JE_FOLIE)] or [[]]
         for nr, teil in enumerate(teile, start=1):
             titel = abschnitt.get("titel", "") + (f" ({nr}/{len(teile)})" if len(teile) > 1 else "")
-            folie = _kopf(praes, titel, "Plan")
+            folie = _kopf(praes, titel, "Plan")  # Abschnittstitel kommen bereits auf Englisch von Claude
             rahmen = _textfeld(folie, Inches(0.6), Inches(1.7), praes.slide_width - Inches(1.2), Inches(5.0))
             _punkte(rahmen, teil, titel_von)
             _fuss(praes, folie, fuss)
@@ -136,7 +136,7 @@ def briefing_pptx(situation: str, plan: dict[str, Any], lessons: dict[str, Any],
     # 4 Besonderheiten
     besonderheiten = [b for b in plan.get("besonderheiten", []) if b.get("lesson_id") in titel_von]
     if besonderheiten:
-        folie = _kopf(praes, "Hier weicht deine Erfahrung vom Üblichen ab", "Eigene Erfahrung")
+        folie = _kopf(praes, "Where your experience differs from common practice", "Own experience")
         rahmen = _textfeld(folie, Inches(0.6), Inches(1.7), praes.slide_width - Inches(1.2), Inches(5.0))
         _punkte(rahmen, [{**b, "quelle": "erfahrung"} for b in besonderheiten], titel_von)
         _fuss(praes, folie, fuss)
@@ -148,7 +148,7 @@ def briefing_pptx(situation: str, plan: dict[str, Any], lessons: dict[str, Any],
         if lid in titel_von and lid not in genutzt:
             genutzt.append(lid)
     if genutzt:
-        folie = _kopf(praes, "Verwendete eigene Lessons", "Quellen")
+        folie = _kopf(praes, "Own lessons used", "Sources")
         rahmen = _textfeld(folie, Inches(0.6), Inches(1.7), praes.slide_width - Inches(1.2), Inches(5.0))
         for i, lid in enumerate(genutzt):
             _absatz(rahmen, f"★  {titel_von[lid]}", groesse=14, erster=(i == 0), abstand=6)

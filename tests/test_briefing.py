@@ -294,4 +294,4 @@ def test_ausarbeitung_marken_und_powerpoint(env):
     assert any("Vorbereitung" in t for t in texte) and any("Schichtleiter in der Hypercare einplanen" in t for t in texte)
     # Der ausführliche Text steht in den Notizen der Zusammenfassungsfolie, ohne interne Marken
     notizen = praes.slides[1].notes_slide.notes_text_frame.text
-    assert "(eigene Erfahrung)" in notizen and "[[E:" not in notizen
+    assert "(own experience)" in notizen and "[[E:" not in notizen
