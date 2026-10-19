@@ -675,6 +675,13 @@ def create_app(
         texte = []
         for i, bild_id in enumerate(bild_ids, start=1):
             b = repo.bild_holen(bild_id)
+            # Beim Hochladen war die Texterkennung aus oder fehlgeschlagen: jetzt nachholen, statt dauerhaft leer zu bleiben.
+            if not b["ocr_text"] and b.get("ocr_status") in ("aus", "fehler") and ocr.verfuegbar:
+                try:
+                    repo.bild_ocr_setzen(bild_id, ocr.erkennen(speicher.pfad(bild_id)), "fertig")
+                except Exception as exc:  # noqa: BLE001 - Erkennung darf die Auswertung nicht abbrechen
+                    log.warning("Texterkennung (nachgeholt) fehlgeschlagen: %s", exc)
+                b = repo.bild_holen(bild_id)
             if b["ocr_text"]:
                 texte.append(b["ocr_text"] if len(bild_ids) == 1 else f"[Foto {i}]\n{b['ocr_text']}")
         return "\n\n".join(texte)

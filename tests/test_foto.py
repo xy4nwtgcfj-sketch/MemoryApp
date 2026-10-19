@@ -224,3 +224,15 @@ def test_bild_braucht_token(tmp_path, monkeypatch):
     bid = client.post("/api/bilder", files=[("dateien", ("f.jpg", folie_jpeg(), "image/jpeg"))], headers=h).json()[0]["id"]
     assert client.get(f"/api/bilder/{bid}").status_code == 401
     assert client.get(f"/api/bilder/{bid}", headers=h).status_code == 200
+
+
+@braucht_ocr
+def test_texterkennung_wird_nachgeholt(env, monkeypatch):
+    """Foto kam hoch, als Tesseract fehlte (Status "aus"): Beim Auswerten wird der Text nachträglich erkannt."""
+    client, *_ = env
+    with monkeypatch.context() as m:
+        m.setattr(Texterkennung, "verfuegbar", property(lambda self: False))
+        r = client.post("/api/bilder", files=[("dateien", ("f.jpg", folie_jpeg(), "image/jpeg"))]).json()[0]
+    assert r["ocr_status"] == "aus"
+    vor = client.post("/api/foto/vorbereiten", json={"bild_ids": [r["id"]], "bereich": "Beruf"}).json()
+    assert "Schichtleiter" in vor["text"]
