@@ -15,7 +15,7 @@ from .models import Bereich, Einstellungen, Entwurf, EntwurfEintrag, Lesson, Les
 
 LESSON_COLUMNS = (
     "id, titel, situation, ereignis, lesson, massnahme, bereich, tags, schweregrad, status, "
-    "bestaetigungen, erstellt_am, geaendert_am, quelle, embedding_modell, erfassung_sekunden, spezifisch"
+    "bestaetigungen, erstellt_am, geaendert_am, quelle, embedding_modell, erfassung_sekunden, spezifisch, art"
 )
 
 
@@ -131,12 +131,13 @@ class Repository:
         try:
             with self.conn:
                 self.conn.execute(
-                    f"INSERT INTO lessons({LESSON_COLUMNS}, embedding) VALUES ({', '.join('?' * 18)})",
+                    f"INSERT INTO lessons({LESSON_COLUMNS}, embedding) VALUES ({', '.join('?' * 19)})",
                     (
                         lesson_id, data.titel, data.situation, data.ereignis, data.lesson, data.massnahme,
                         data.bereich, json.dumps(data.tags, ensure_ascii=False), data.schweregrad, status,
                         bestaetigungen, erstellt, geaendert, data.quelle, embedding_modell, sekunden,
                         None if data.spezifisch is None else int(data.spezifisch),
+                        data.art,
                         vector_to_blob(embedding),
                     ),
                 )

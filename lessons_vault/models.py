@@ -8,6 +8,11 @@ from pydantic import BaseModel, Field, field_validator
 
 Status = Literal["neu", "bestätigt", "überholt"]
 Quelle = Literal["text", "sprache", "import"]
+# Eintragsart: erfahrung = Ereignis mit Regel; wissen = Fakten und Zusammenhänge; vorgehen = Ablauf oder
+# Checkliste; entscheidung = was entschieden wurde und warum. Die Felder bedeuten je Art etwas anderes
+# (situation = Kontext, ereignis = Inhalt, lesson = Kernaussage, massnahme = Anwendung).
+Art = Literal["erfahrung", "wissen", "vorgehen", "entscheidung"]
+ARTEN: tuple[str, ...] = ("erfahrung", "wissen", "vorgehen", "entscheidung")
 
 
 def _clean_tags(tags: list[str]) -> list[str]:
@@ -30,6 +35,7 @@ class LessonBase(BaseModel):
     schweregrad: int = Field(ge=1, le=5)
     # True = persönliche Erfahrung, False = eher Allgemeinwissen, None = nicht eingeschätzt
     spezifisch: bool | None = None
+    art: Art = "erfahrung"
 
     @field_validator("titel", "situation", "ereignis", "lesson", "massnahme", "bereich")
     @classmethod
@@ -71,6 +77,7 @@ class LessonUpdate(BaseModel):
     schweregrad: int | None = Field(default=None, ge=1, le=5)
     status: Status | None = None
     spezifisch: bool | None = None
+    art: Art | None = None
 
     @field_validator("tags")
     @classmethod
@@ -148,6 +155,7 @@ class Entwurf(BaseModel):
     bereich: str = ""
     tags: list[str] = Field(default_factory=list)
     schweregrad: int = 3
+    art: Art = "erfahrung"
     quelle: Quelle = "text"
     rueckfrage: str = ""
     # "pflichtfeld": Pflichtangabe fehlt; "spezifitaet": Frage nach dem persönlichen Teil

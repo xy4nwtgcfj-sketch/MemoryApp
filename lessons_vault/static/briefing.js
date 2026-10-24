@@ -38,8 +38,8 @@ function ausarbeitungKnoten(text, titelVon) {
       if (!stueck) continue;
       const marke = stueck.match(/^\[\[E:([\w-]+)\]\]$/);
       if (marke) {
-        const titel = titelVon[marke[1]]?.titel || "eigene Lesson";
-        teile.push(el("a", { class: "marke-eigen", href: "#/lesson/" + marke[1], title: anf(titel), "aria-label": "Aus deiner Erfahrung: " + anf(titel) }, icon("user", "icon sm"), "Erfahrung"));
+        const titel = titelVon[marke[1]]?.titel || "eigener Eintrag";
+        teile.push(el("a", { class: "marke-eigen", href: "#/lesson/" + marke[1], title: anf(titel), "aria-label": "Aus deinen Einträgen: " + anf(titel) }, icon("user", "icon sm"), "Eigenes"));
       } else if (/^\*\*[^*]+\*\*$/.test(stueck)) {
         teile.push(el("strong", {}, stueck.slice(2, -2)));
       } else {
@@ -243,7 +243,7 @@ async function showVerlauf(container) {
         el("a", { class: "li grow", href: `#/briefing/${b.id}`, style: "box-shadow:none" },
           b.entwurf_weg ? icon("camera") : icon("clipboard-list"),
           el("span", { class: "grow" }, anf(kuerzen(b.situation, 90)),
-            el("span", { class: "li-sub" }, formatDate(b.erstellt_am), ` · ${b.anzahl} Lessons`, b.hilfreich ? ` · ${b.hilfreich} hilfreich` : "", b.bereich ? ` · ${b.bereich}` : "")),
+            el("span", { class: "li-sub" }, formatDate(b.erstellt_am), ` · ${b.anzahl} Einträge`, b.hilfreich ? ` · ${b.hilfreich} hilfreich` : "", b.bereich ? ` · ${b.bereich}` : "")),
           icon("chevron-right", "icon sm chev"))))));
   } catch { /* Verlauf ist optional */ }
 }
@@ -260,7 +260,7 @@ function showBriefing(container, data) {
   if (!data.treffer.length && !(istPlan && (data.ki_moeglich || data.plan))) {
     fill(container,
       data.bilder?.length ? el("div", { class: "card" }, el("p", { class: "overline" }, "Geprüfter Entwurf"), thumbsRow(data.bilder)) : null,
-      leer({ symbol: "lightbulb", titel: "Dazu hast du noch keine Erfahrungen gespeichert", text: "Probier andere Stichworte oder ohne Bereich. Oder halte jetzt fest, was du darüber weißt." }),
+      leer({ symbol: "lightbulb", titel: "Dazu hast du noch nichts gespeichert", text: "Probier andere Stichworte oder ohne Bereich. Oder halte jetzt fest, was du darüber weißt." }),
       lueckenKarte(data));
     return;
   }
@@ -328,7 +328,7 @@ function showBriefing(container, data) {
 
   const renderEigene = (besonderheiten = []) => {
     fill(eigeneSlot,
-      data.treffer.length ? el("h2", { class: "row", style: "gap:8px" }, icon("user"), "Aus deiner Erfahrung") : null,
+      data.treffer.length ? el("h2", { class: "row", style: "gap:8px" }, icon("user"), "Aus deinen Einträgen") : null,
       besonderheiten.length ? el("div", { class: "card own" },
         el("p", { class: "overline", style: "color:var(--own)" }, "Hier weichst du vom Üblichen ab"),
         el("ul", { class: "checklist" }, besonderheiten.map((b) => el("li", {},
@@ -340,7 +340,7 @@ function showBriefing(container, data) {
   // Planpunkt aus eigener Erfahrung: antippen zeigt die Regel, "Passt nicht" zählt als Feedback.
   const quellenKnopf = (lid) => {
     const l = titelVon[lid];
-    if (!l) return el("span", { class: "src eigen" }, icon("user"), "Deine Erfahrung");
+    if (!l) return el("span", { class: "src eigen" }, icon("user"), "Dein Eintrag");
     const detail = el("div", { class: "src-detail", hidden: true },
       el("p", { style: "margin:0" }, anf(l.lesson)),
       el("div", { class: "row", style: "margin-top:6px;gap:4px" },
@@ -378,14 +378,14 @@ function showBriefing(container, data) {
     const ausarbeitung = plan.ausarbeitung
       ? el("div", { class: "card ausarbeitung" },
         el("div", { class: "legend footnote", style: "margin:0 0 8px" },
-          el("span", { class: "src eigen", style: "margin:0" }, icon("user"), "Markiert: aus deiner Erfahrung"),
+          el("span", { class: "src eigen", style: "margin:0" }, icon("user"), "Markiert: aus deinen Einträgen"),
           el("span", { class: "src", style: "margin:0" }, icon("sparkles"), "Übriges: Claudes Fachwissen, nicht geprüft")),
         ausarbeitungKnoten(plan.ausarbeitung, titelVon))
       : null;
     const checkliste = el(ausarbeitung ? "details" : "div", { class: "card" },
         ausarbeitung ? el("summary", {}, "Als Checkliste abhaken (" + alle.length + " Punkte)") : null,
         el("div", { class: "legend footnote" },
-          el("span", { class: "src eigen", style: "margin:0" }, icon("user"), `${plan.punkte_erfahrung} aus deiner Erfahrung`),
+          el("span", { class: "src eigen", style: "margin:0" }, icon("user"), `${plan.punkte_erfahrung} aus deinen Einträgen`),
           el("span", { class: "src", style: "margin:0" }, icon("sparkles"), `${alle.length - plan.punkte_erfahrung} aus Claudes Fachwissen, nicht geprüft`)),
         plan.abschnitte.map((a) => [
           el("h3", { class: "overline plan-section" }, a.titel),
@@ -426,7 +426,7 @@ function showBriefing(container, data) {
 
   const loadSummary = async (neu = false, freigabe = false) => {
     fill(summaryCard, el("p", { class: "overline" }, titelText), el("p", { class: "waiting" }, el("span", { class: "spinner", "aria-hidden": "true" }),
-      istEntwurf ? "Claude gleicht den Entwurf mit deinen Lessons ab …" : istPlan ? "Claude erstellt den Plan aus Fachwissen und deinen Erfahrungen …" : "Claude fasst deine Erfahrungen zusammen …"));
+      istEntwurf ? "Claude gleicht den Entwurf mit deinem Wissen ab …" : istPlan ? "Claude erstellt den Plan aus Fachwissen und deinen Erfahrungen …" : "Claude fasst deine Erfahrungen zusammen …"));
     say("Claude arbeitet, bitte warten.");
     try {
       const params = new URLSearchParams();
@@ -452,28 +452,28 @@ function showBriefing(container, data) {
   const showSummary = (res) => {
     fill(summaryCard,
       el("p", { class: "overline" }, titelText),
-      el("p", { class: "lead" }, anf(res.zusammenfassung) || "Claude sah keinen klaren Bezug zu dieser Situation. Die Lessons unten sind trotzdem die besten Treffer."),
+      el("p", { class: "lead" }, anf(res.zusammenfassung) || "Claude sah keinen klaren Bezug zu dieser Situation. Die Einträge unten sind trotzdem die besten Treffer."),
       res.ki_hinweis ? el("p", { class: "footnote" }, res.ki_hinweis) : null);
     if (res.plan) { renderEigene(res.plan.besonderheiten || []); renderPlan(res.plan); return; }
     renderEigene();
     if (istEntwurf) {
-      renderChecklist(res.ki_checkliste || [], res.ki_checkliste?.length ? "Was im Entwurf fehlt, laut deinen Lessons (Claude)" : "Claude hat keine Lücken gefunden.");
+      renderChecklist(res.ki_checkliste || [], res.ki_checkliste?.length ? "Was im Entwurf fehlt, laut deinem Wissen (Claude)" : "Claude hat keine Lücken gefunden.");
       const ok = res.abgleich?.beruecksichtigt || [];
       fill(beruecksichtigtSlot, ok.length ? el("details", { class: "card" },
         el("summary", {}, `Schon berücksichtigt (${ok.length})`),
         el("ul", { class: "checklist" }, ok.map((p) => el("li", {}, icon("check"), el("span", {}, anf(p.punkt),
           titelVon[p.lesson_id] ? el("span", { class: "src eigen" }, icon("user"), anf(titelVon[p.lesson_id].titel)) : null))))) : null);
     } else if (res.ki_checkliste?.length) {
-      renderChecklist(res.ki_checkliste, "Auf die Situation zugeschnitten (Claude, aus deinen Lessons)");
+      renderChecklist(res.ki_checkliste, "Auf die Situation zugeschnitten (Claude, aus deinen Einträgen)");
     }
   };
 
   renderEigene();
-  renderChecklist(data.checkliste, "Aus den Maßnahmen deiner Lessons");
+  renderChecklist(data.checkliste, "Aus der Anwendung deiner Einträge");
 
   const fuss = el("p", { class: "footnote row", style: "gap:8px;margin-top:24px;align-items:flex-start" }, icon("info", "icon sm"),
     el("span", { class: "grow" }, data.ki_moeglich
-      ? `An Claude gesendet: deine Situation${data.an_claude ? ` und ${data.an_claude} Lesson${data.an_claude > 1 ? "s" : ""} (Titel, Regel, Situation, Ereignis, Nächstes Mal)` : ""}${data.bilder?.length && data.entwurf_weg === "bild" ? " sowie die Fotos" : data.entwurf_weg === "text" ? " sowie der geprüfte Text des Fotos" : ""}.`
+      ? `An Claude gesendet: deine Situation${data.an_claude ? ` und ${data.an_claude} ${data.an_claude > 1 ? "Einträge" : "Eintrag"} (Titel, Kernaussage, Kontext, Inhalt, Anwendung)` : ""}${data.bilder?.length && data.entwurf_weg === "bild" ? " sowie die Fotos" : data.entwurf_weg === "text" ? " sowie der geprüfte Text des Fotos" : ""}.`
       : "Nichts an Claude gesendet."));
   const neuFormulieren = data.ki_moeglich ? el("button", { type: "button", class: "text", onclick: () => loadSummary(true) }, icon("refresh", "icon sm"), "Neu formulieren") : null;
 

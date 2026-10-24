@@ -33,10 +33,14 @@ class Filter:
     von: str | None = None
     bis: str | None = None
     ohne_ueberholt: bool = False
+    art: str | None = None
 
     def sql(self, alias: str = "") -> tuple[str, list]:
         p = f"{alias}." if alias else ""
         clauses, params = [], []
+        if self.art:
+            clauses.append(f"{p}art = ?")
+            params.append(self.art)
         if self.bereich:
             clauses.append(f"{p}bereich = ?")
             params.append(self.bereich)

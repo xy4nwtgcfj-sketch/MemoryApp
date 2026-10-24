@@ -1,6 +1,6 @@
 # Lessons Vault
 
-Ein zweites Gedächtnis für Erfahrungen. Lessons in unter 30 Sekunden erfassen (Text oder Sprache),
+Ein zweites Gedächtnis für Wissen und Erfahrungen. Einträge in unter 30 Sekunden erfassen (Text, Sprache oder Foto),
 eine KI strukturiert sie, und du findest sie wieder, wenn eine ähnliche Situation bevorsteht.
 
 Stand: Phase 1 "Erfassen und Finden", 1.1 "Lokale KI", 1.2 "Manuelles Briefing", 1.3 "Fotos", 1.4 "Härtung"
@@ -8,6 +8,12 @@ und 1.5 "Design und Bedienung" (siehe `.planning/ROADMAP.md`). Kalender-Briefing
 Mustererkennung folgen nach der Abnahme von Phase 1 (drei Wochen echte Nutzung, mindestens 10 neue Lessons).
 
 ## Funktionen
+
+- **Vier Eintragsarten**, Claude ordnet automatisch zu, du kannst es im Formular ändern:
+  *Erfahrung* (Ereignis mit Regel), *Wissen* (Fakten, Zusammenhänge, Faustregeln, auch aus Quellen),
+  *Vorgehen* (Ablauf, Checkliste, Methode), *Entscheidung* (was entschieden wurde und warum).
+  Die Felder sind für alle gleich, ihre Beschriftung folgt der Art (Situation/Kontext, Was ist passiert?/Inhalt,
+  Regel/Kernaussage, Nächstes Mal/Anwendung). Suche filtert nach Art; Briefings nutzen alle Arten.
 
 - **Erfassen: erst sichern, dann veredeln.** Stichworte tippen oder diktieren, optional einen Bereich
   antippen, **Sichern**. Die Notiz liegt sofort auf dem PC, erst danach wird strukturiert:

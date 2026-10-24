@@ -609,12 +609,13 @@ def create_app(
         modus: str = Query("hybrid", pattern="^(hybrid|volltext|semantisch)$"),
         bereich: str | None = None,
         status: str | None = Query(None, pattern="^(neu|bestätigt|überholt)$"),
+        art: str | None = Query(None, pattern="^(erfahrung|wissen|vorgehen|entscheidung)$"),
         schweregrad_min: int | None = Query(None, ge=1, le=5),
         von: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}"),
         bis: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}"),
         limit: int = Query(30, ge=1, le=200),
     ) -> list[dict[str, Any]]:
-        filt = Filter(bereich=bereich or None, status=status or None, schweregrad_min=schweregrad_min, von=von, bis=bis)
+        filt = Filter(bereich=bereich or None, status=status or None, schweregrad_min=schweregrad_min, von=von, bis=bis, art=art or None)
         try:
             treffer = suche.suchen(q, modus, filt, limit)  # type: ignore[arg-type]
         except EmbeddingFehler as exc:

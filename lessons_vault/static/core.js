@@ -14,6 +14,28 @@ export const SEVERITY = {
 };
 export const ZIEL_LESSONS = 60;
 
+// Eintragsarten: Die Datenfelder sind für alle gleich, ihre Bedeutung und Beschriftung hängt von der Art ab.
+export const ART = {
+  erfahrung: { label: "Erfahrung", icon: "lightbulb", kontext: "Situation", inhalt: "Was ist passiert?", kern: "Regel",
+    anwendung: "Nächstes Mal", gewicht: "Schwere", bestaetigen: "Erneut erlebt", bestaetigt: "erlebt",
+    kernHinweis: "Ein Satz als Regel, z. B. „Vor X immer Y prüfen.“" },
+  wissen: { label: "Wissen", icon: "book-open", kontext: "Wann gilt das?", inhalt: "Inhalt", kern: "Kernaussage",
+    anwendung: "Anwendung", gewicht: "Wichtigkeit", bestaetigen: "Erneut bestätigt", bestaetigt: "bestätigt",
+    kernHinweis: "Die wichtigste Aussage in einem Satz." },
+  vorgehen: { label: "Vorgehen", icon: "list-checks", kontext: "Wann anwenden?", inhalt: "Schritte", kern: "Kernaussage",
+    anwendung: "Worauf achten?", gewicht: "Wichtigkeit", bestaetigen: "Erneut angewendet", bestaetigt: "angewendet",
+    kernHinweis: "Wofür das Vorgehen gut ist, in einem Satz." },
+  entscheidung: { label: "Entscheidung", icon: "scale", kontext: "Ausgangslage und Optionen", inhalt: "Begründung", kern: "Entscheidung",
+    anwendung: "Nächster Schritt", gewicht: "Tragweite", bestaetigen: "Erneut so entschieden", bestaetigt: "bestätigt",
+    kernHinweis: "Was entschieden wurde, in einem Satz." },
+};
+export const ARTEN = Object.keys(ART);
+export function artInfo(art) { return ART[art] || ART.erfahrung; }
+export function artBadge(art, { klein = false } = {}) {
+  const a = artInfo(art);
+  return el("span", { class: `badge art ${klein ? "" : ""}`, title: a.label }, icon(a.icon), a.label);
+}
+
 export const store = {
   get(key, fallback = "") {
     try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
@@ -234,7 +256,7 @@ export class ApiError extends Error {
   }
 }
 
-const FELDNAMEN = { text: "Text", titel: "Titel", situation: "Situation", ereignis: "Was ist passiert?", lesson: "Regel", bereich: "Bereich", antwort: "Antwort" };
+const FELDNAMEN = { text: "Text", titel: "Titel", situation: "Kontext", ereignis: "Inhalt", lesson: "Kernaussage", bereich: "Bereich", antwort: "Antwort" };
 function pydanticText(d) {
   const feld = FELDNAMEN[d.loc?.slice(-1)[0]] || "Eingabe";
   if (d.type === "string_too_short") return `${feld} fehlt.`;
@@ -453,7 +475,7 @@ export function zaehlerKarte(s) {
       el("p", { class: "zaehler-serie" }, icon("flame", "icon sm"),
         z.serie ? `${z.serie} ${z.serie === 1 ? "Woche" : "Wochen"} in Folge` : "Erreiche das Wochenziel und starte eine Serie"),
       el("div", { class: "zaehler-meilenstein" },
-        el("span", {}, `${z.gesamt} Lessons · noch ${bisMeilenstein} bis ${z.naechster}`),
+        el("span", {}, `${z.gesamt} Einträge · noch ${bisMeilenstein} bis ${z.naechster}`),
         el("div", { class: "progress own", "aria-hidden": "true" }, el("span", { style: `width:${Math.round(anteilMeilenstein * 100)}%` })))));
 }
 
@@ -468,7 +490,7 @@ function feiernWennNoetig(vorher, jetzt) {
   statsEl.append(blase);
   setTimeout(() => blase.remove(), 1400);
   if (jetzt.gesamt >= vorher.naechster) {
-    feiern(`Meilenstein: ${vorher.naechster} Lessons! Dein Erfahrungsschatz wächst.`);
+    feiern(`Meilenstein: ${vorher.naechster} Einträge! Dein Wissensschatz wächst.`);
   } else if (!vorher.erreicht && jetzt.erreicht) {
     feiern(jetzt.serie > 1 ? `Wochenziel geschafft, ${jetzt.serie} Wochen in Folge!` : "Wochenziel geschafft! Deine Serie läuft.");
   }
@@ -521,9 +543,10 @@ export function leer({ symbol = "inbox", titel, text = "", aktionen = [] }) {
     aktionen.length ? el("div", { class: "actions" }, aktionen) : null);
 }
 
-export function sevPunkte(n) {
-  return el("span", { class: "sev", title: `Schwere ${n} von 5`, "aria-label": `Schwere ${n} von 5` },
-    el("span", { class: "sev-label", "aria-hidden": "true" }, "Schwere"), el("span", { "aria-hidden": "true" }, "●".repeat(n) + "○".repeat(5 - n)));
+export function sevPunkte(n, art = "erfahrung") {
+  const label = artInfo(art).gewicht;
+  return el("span", { class: "sev", title: `${label} ${n} von 5`, "aria-label": `${label} ${n} von 5` },
+    el("span", { class: "sev-label", "aria-hidden": "true" }, label), el("span", { "aria-hidden": "true" }, "●".repeat(n) + "○".repeat(5 - n)));
 }
 
 export function quelleText(q) {
@@ -533,9 +556,10 @@ export function quelleText(q) {
 // Eine Meta-Zeile statt vieler Badges: Bereich · Schwere · erlebt · Datum
 export function metaZeile(l, { datum = true, bereich = true } = {}) {
   const teile = [
+    artBadge(l.art),
     bereich ? el("span", {}, l.bereich) : null,
-    sevPunkte(l.schweregrad),
-    l.bestaetigungen > 1 ? el("span", {}, `${l.bestaetigungen}× erlebt`) : null,
+    sevPunkte(l.schweregrad, l.art),
+    l.bestaetigungen > 1 ? el("span", {}, `${l.bestaetigungen}× ${artInfo(l.art).bestaetigt}`) : null,
     datum ? el("span", {}, formatDate(l.erstellt_am, true)) : null,
   ].filter(Boolean);
   return el("p", { class: "meta" },
@@ -788,7 +812,7 @@ export function hinweisKompakt(hinweise) {
   return el("details", { class: "hinweis-kompakt" },
     el("summary", {}, icon("shield", "icon sm"), `Datenschutz: ${hinweise.length} Hinweis${hinweise.length > 1 ? "e" : ""}`),
     el("ul", {}, hinweise.map((h) => el("li", {}, anf(h)))),
-    el("p", {}, "Nur relevant, wenn diese Lesson an Claude geht. Über „Bearbeiten“ kannst du Zahlen und Namen abstrahieren."));
+    el("p", {}, "Nur relevant, wenn dieser Eintrag an Claude geht. Über „Bearbeiten“ kannst du Zahlen und Namen abstrahieren."));
 }
 
 export function hinweisBox(hinweise, { titel = "Datenschutz-Hinweis: bitte abstrahieren", anwenden = null } = {}) {

@@ -1,17 +1,19 @@
 // Entwurfskarte: Was Claude (oder das lokale Modell) aus einer Notiz gemacht hat, prüfen und sichern.
 import {
-  ZIEL_LESSONS, MEILENSTEINE, SEVERITY, anf, api, bereiche, bestaetigen, debounce, diktatKnopf, el, errorNotice, fill, hinweisBox,
+  ZIEL_LESSONS, MEILENSTEINE, SEVERITY, ART, ARTEN, artInfo, anf, api, bereiche, bestaetigen, debounce, diktatKnopf, el, errorNotice, fill, hinweisBox,
   icon, istPruefung, kuerzen, ersetzenIn, ersetzenKnoepfe, refreshStats, say, statistikSofort, thumbsRow, toast,
 } from "./core.js";
 
 // ---------------------------------------------------------------- Formular
 let formZaehler = 0;
 
-/** Lesson-Formular. kompakt: Regel und Bereich oben, Rest unter "Details". */
+/** Eintrags-Formular. kompakt: Kernaussage und Bereich oben, Rest unter "Details". Beschriftung folgt der Art. */
 export function lessonForm(data, { bereichListe, onChange, kompakt = false, kiAusgefuellt = false } = {}) {
   const p = `f${++formZaehler}`;
   const fields = {};
   const fehler = {};
+  const labels = {};
+  let art = ARTEN.includes(data.art) ? data.art : "erfahrung";
   const changed = () => onChange && onChange(read());
 
   const feld = (name, label, { multiline = false, opt = "", rows = 2, max, pflicht = false, klasse = "" } = {}) => {
@@ -23,7 +25,8 @@ export function lessonForm(data, { bereichListe, onChange, kompakt = false, kiAu
     control.value = data[name] ?? "";
     fields[name] = control;
     fehler[name] = el("p", { class: "feld-fehler", id: fehlerId });
-    return [el("label", { for: id }, label, opt ? el("span", { class: "opt" }, ` ${opt}`) : null), control, pflicht ? fehler[name] : null];
+    labels[name] = el("label", { for: id }, label, opt ? el("span", { class: "opt" }, ` ${opt}`) : null);
+    return [labels[name], control, pflicht ? fehler[name] : null];
   };
 
   const aktive = bereichListe.filter((b) => b.aktiv || b.name === data.bereich);
@@ -47,6 +50,7 @@ export function lessonForm(data, { bereichListe, onChange, kompakt = false, kiAu
 
   function read() {
     return {
+      art,
       titel: fields.titel.value.trim(),
       situation: fields.situation.value.trim(),
       ereignis: fields.ereignis.value.trim(),
@@ -63,7 +67,7 @@ export function lessonForm(data, { bereichListe, onChange, kompakt = false, kiAu
   function pruefen() {
     const data = read();
     const fehlend = [];
-    for (const [name, text] of [["lesson", "Bitte die Regel in einem Satz notieren."], ["bereich", "Bitte einen Bereich wählen."]]) {
+    for (const [name, text] of [["lesson", `Bitte ${artInfo(art).kern === "Regel" ? "die Regel" : "die Kernaussage"} in einem Satz notieren.`], ["bereich", "Bitte einen Bereich wählen."]]) {
       const leer = !data[name];
       fields[name].setAttribute("aria-invalid", leer ? "true" : "false");
       fehler[name].textContent = leer ? text : "";
@@ -79,29 +83,43 @@ export function lessonForm(data, { bereichListe, onChange, kompakt = false, kiAu
     changed();
   }
 
-  const regelFeld = feld("lesson", "Regel", { multiline: true, rows: 2, pflicht: true, klasse: "regel" });
+  const regelFeld = feld("lesson", artInfo(art).kern, { multiline: true, rows: 2, pflicht: true, klasse: "regel" });
   const bereichFeld = [el("label", { for: `${p}-bereich` }, "Bereich"), bereichSelect, fehler.bereich];
-  const schwereFeld = [el("label", { for: `${p}-schweregrad` }, "Schwere"), sevSelect];
+  labels.schweregrad = el("label", { for: `${p}-schweregrad` }, artInfo(art).gewicht);
+  const schwereFeld = [labels.schweregrad, sevSelect];
+  // Art wählen: beschriftet die Felder um, die Inhalte bleiben
+  const artSeg = el("div", { class: "segmented art-seg", role: "group", "aria-label": "Art des Eintrags" }, ARTEN.map((a) => el("button", {
+    type: "button", "aria-pressed": String(a === art),
+    onclick: () => { art = a; beschriften(); artSeg.querySelectorAll("button").forEach((b, i) => b.setAttribute("aria-pressed", String(ARTEN[i] === a))); changed(); },
+  }, icon(ART[a].icon, "icon sm"), ART[a].label)));
+  function beschriften() {
+    const a = artInfo(art);
+    const setz = (name, text) => { if (labels[name]) labels[name].firstChild.textContent = text; };
+    setz("lesson", a.kern); setz("situation", a.kontext); setz("ereignis", a.inhalt); setz("massnahme", a.anwendung); setz("schweregrad", a.gewicht);
+    fields.lesson.placeholder = a.kernHinweis;
+  }
   const persoenlich = el("label", { class: "row", for: `${p}-spezifisch`, style: "margin-top:16px;gap:12px" },
     el("span", { class: "grow" }, "Eigene Erfahrung", el("span", { class: "li-sub" }, "Selbst erlebt, nicht nur gelesen")), spezifisch);
   const details = [
-    feld("titel", "Titel", { opt: "(max. 80 Zeichen, sonst aus der Regel)", max: 80 }),
-    feld("situation", "Situation", { multiline: true, rows: 2 }),
-    feld("ereignis", "Was ist passiert?", { multiline: true, rows: 3 }),
-    feld("massnahme", "Nächstes Mal", { multiline: true, opt: "(optional, ein konkreter Schritt)" }),
+    feld("titel", "Titel", { opt: "(max. 80 Zeichen, sonst aus der Kernaussage)", max: 80 }),
+    feld("situation", artInfo(art).kontext, { multiline: true, rows: 2 }),
+    feld("ereignis", artInfo(art).inhalt, { multiline: true, rows: 4 }),
+    feld("massnahme", artInfo(art).anwendung, { multiline: true, opt: "(optional, ein konkreter Schritt)" }),
     el("label", { for: `${p}-tags` }, "Stichworte", el("span", { class: "opt" }, " (mit Komma getrennt, helfen beim Wiederfinden)")),
     tags,
   ];
 
+  beschriften();
   const node = kompakt
     ? el("div", {},
+      artSeg,
       regelFeld,
       el("div", { class: "grid2" }, el("div", {}, bereichFeld), el("div", {}, schwereFeld)),
       persoenlich,
       el("details", { class: "plain", style: "margin-top:8px" },
         el("summary", {}, kiAusgefuellt ? "Details, von Claude ausgefüllt" : "Details"),
         details))
-    : el("div", {}, regelFeld, details, el("div", { class: "grid2" }, el("div", {}, bereichFeld), el("div", {}, schwereFeld)), persoenlich);
+    : el("div", {}, artSeg, regelFeld, details, el("div", { class: "grid2" }, el("div", {}, bereichFeld), el("div", {}, schwereFeld)), persoenlich);
   return { node, read, pruefen, ersetzen, fields };
 }
 
@@ -125,6 +143,7 @@ export function bereitZumUebernehmen(eintrag) {
 export async function uebernehmen(eintrag) {
   const e = eintrag.entwurf;
   const body = lessonBody({
+    art: ARTEN.includes(e.art) ? e.art : "erfahrung",
     titel: e.titel, situation: e.situation, ereignis: e.ereignis, lesson: e.lesson, massnahme: e.massnahme,
     bereich: e.bereich, schweregrad: e.schweregrad || 3, tags: e.tags || [],
     spezifisch: e.spezifitaet === "allgemein" ? false : true,
@@ -323,7 +342,7 @@ export function abschlussKarte(lesson, eintrag, { bestaetigt = false, modus = "c
     el("p", { class: "overline row", style: "gap:6px;color:var(--success)" }, icon("check", "icon sm"), bestaetigt ? "Als erneut erlebt gezählt" : "Gesichert"),
     el("p", { class: `quote ${lesson.spezifisch ? "own" : ""}` }, anf(lesson.lesson)),
     bestaetigt
-      ? el("p", { class: "footnote" }, `Jetzt ${lesson.bestaetigungen}× erlebt.`)
+      ? el("p", { class: "footnote" }, `Jetzt ${lesson.bestaetigungen}× ${artInfo(lesson.art).bestaetigt}.`)
       : el("p", { class: "small muted", style: "margin:12px 0 0" }, "Taucht wieder auf bei: ",
         stichworte.length ? stichworte.join(", ") : lesson.bereich, "."),
     verwandt && !bestaetigt ? el("p", { class: "small muted", style: "margin:4px 0 0" }, "Verwandt mit ", el("a", { href: `#/lesson/${verwandt.id}` }, anf(verwandt.titel)),

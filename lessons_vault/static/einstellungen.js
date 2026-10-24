@@ -50,22 +50,22 @@ export async function viewEinstellungen() {
   const fortschritt = el("section", {},
     el("h2", { style: "margin-top:8px" }, "Fortschritt"),
     el("div", { class: "tiles" },
-      el("div", { class: "tile" }, el("div", { class: "num" }, s.gesamt, el("small", {}, ` / ${z.naechster}`)), el("div", { class: "lbl" }, "Lessons bis zum nächsten Meilenstein"),
+      el("div", { class: "tile" }, el("div", { class: "num" }, s.gesamt, el("small", {}, ` / ${z.naechster}`)), el("div", { class: "lbl" }, "Einträge bis zum nächsten Meilenstein"),
         el("div", { class: "progress own", "aria-hidden": "true" }, el("span", { style: `width:${prozent}%` }))),
       el("div", { class: "tile" }, el("div", { class: "num" }, el("span", { class: "serie-gross" }, icon("flame", "icon lg"), z.serie)),
         el("div", { class: "lbl" }, `Wochen in Folge mit Wochenziel · diese Woche ${z.diese}/${z.ziel}`)),
       el("div", { class: "tile" }, el("div", { class: "num" }, s.erfassung_sekunden_schnitt == null ? "–" : `${Math.round(s.erfassung_sekunden_schnitt)} s`),
         el("div", { class: "lbl" }, s.erfassungen_gemessen ? `Ø Erfassung, ${s.erfassungen_unter_30s} von ${s.erfassungen_gemessen} unter 30 s` : "Ø Erfassung, Ziel unter 30 s")),
       el("div", { class: "tile" }, el("div", { class: "num" }, s.briefings ? s.briefings_hilfreich : "–", s.briefings ? el("small", {}, ` / ${s.briefings}`) : null),
-        el("div", { class: "lbl" }, s.briefings ? "Briefings mit hilfreicher Lesson" : "Noch kein Briefing"))),
+        el("div", { class: "lbl" }, s.briefings ? "Briefings mit hilfreichem Eintrag" : "Noch kein Briefing"))),
     el("div", { class: "row card", style: "gap:12px" },
       el("label", { for: "wochenziel", class: "grow", style: "margin:0" }, "Wochenziel",
-        el("span", { class: "li-sub" }, "Neue Lessons und „erneut erlebt“ zählen. Erreichst du es Woche für Woche, wächst deine Serie.")),
+        el("span", { class: "li-sub" }, "Neue Einträge und Bestätigungen zählen. Erreichst du es Woche für Woche, wächst deine Serie.")),
       zielWahl),
     el("ul", { class: "list" },
       el("li", {}, el("span", { class: "grow" }, "Eigene Erfahrung"), el("span", { class: "footnote" }, s.lessons_eingeschaetzt ? `${s.lessons_persoenlich} von ${s.lessons_eingeschaetzt}` : "–")),
       el("li", {}, el("span", { class: "grow" }, "Neu in den letzten 30 Tagen"), el("span", { class: "footnote" }, s.neu_erfasst_30_tage)),
-      el("li", {}, el("span", { class: "grow" }, "Ohne „Nächstes Mal“"), el("span", { class: "footnote" }, s.ohne_massnahme)),
+      el("li", {}, el("span", { class: "grow" }, "Ohne Anwendung"), el("span", { class: "footnote" }, s.ohne_massnahme)),
       Object.keys(s.bremsen || {}).length ? el("li", {}, el("span", { class: "grow" }, "Was dich bremst"), el("span", { class: "footnote" }, Object.entries(s.bremsen).map(([k, v]) => `${k} (${v})`).join(", "))) : null));
 
   // ---------------------------------------------------------- Bereiche und Datenschutz
@@ -221,7 +221,7 @@ export async function viewEinstellungen() {
       el("li", { style: "padding:0" }, el("a", { class: "li grow", href: "#/ernte", style: "box-shadow:none" }, icon("sprout"), el("span", { class: "grow" }, "Startbestand mit Fragen anlegen"), icon("chevron-right", "icon sm chev"))),
       el("li", {}, icon("upload"), el("span", { class: "grow" }, "Importieren", el("span", { class: "li-sub" }, "Startbestand oder Backup als JSON (Vorlage: startbestand/vorlage.json)")),
         el("button", { type: "button", class: "text", onclick: () => fileInput.click() }, "Datei wählen"), fileInput),
-      el("li", {}, icon("download"), el("span", { class: "grow" }, "Exportieren", el("span", { class: "li-sub" }, "Alle Lessons als JSON")),
+      el("li", {}, icon("download"), el("span", { class: "grow" }, "Exportieren", el("span", { class: "li-sub" }, "Alle Einträge als JSON")),
         el("button", {
           type: "button", class: "text",
           onclick: async () => {
@@ -267,7 +267,7 @@ export async function viewEinstellungen() {
         onclick: async (e) => {
           const b = e.currentTarget;
           b.setAttribute("aria-disabled", "true");
-          try { const r = await api("/api/reindex", { method: "POST" }); toast(`${r.neu_indexiert} Lessons neu indexiert.`); }
+          try { const r = await api("/api/reindex", { method: "POST" }); toast(`${r.neu_indexiert} Einträge neu indexiert.`); }
           catch (err) { toast(err.message, { fehler: true }); }
           finally { b.removeAttribute("aria-disabled"); }
         },

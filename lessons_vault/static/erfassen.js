@@ -51,7 +51,7 @@ export async function viewErfassen(params = {}) {
   const textarea = el("textarea", {
     id: textId,
     class: "capture",
-    placeholder: "Drei Stichworte reichen.\nz. B. „Bankgespräch, Gehaltsnachweise vergessen, zweiter Termin“",
+    placeholder: "Erfahrung, Wissen, Vorgehen oder Entscheidung. Drei Stichworte reichen.\nz. B. „Bankgespräch, Gehaltsnachweise vergessen, zweiter Termin“ oder „Wave-Schnitt: kritische Läger nach hinten, keine Peak Seasons“",
     "aria-describedby": "capture-hint",
     enterkeyhint: "enter",
     oninput: () => { startTimer(); capture.text = textarea.value; textarea.removeAttribute("aria-invalid"); fill(textFehler); sichernLokal(); },
@@ -105,7 +105,7 @@ export async function viewErfassen(params = {}) {
   };
 
   const composer = el("div", { id: "composer" },
-    el("label", { for: textId, style: "margin-top:0" }, "Was hast du gelernt?"),
+    el("label", { for: textId, style: "margin-top:0" }, "Was willst du festhalten?"),
     el("div", { class: "composer" }, textarea, el("div", { class: "tools" }, mic, fotoBtn)),
     textFehler,
     el("p", { class: "hint", id: "capture-hint" }, "Kurz ist gut. Du kannst später ergänzen."),
@@ -221,7 +221,7 @@ export async function viewErfassen(params = {}) {
   const sichern = async ({ nurMerken = false } = {}) => {
     const text = textarea.value.trim();
     if (!text && capture.bilder.length) {
-      // Nur ein Foto, keine Stichworte: Die App sucht die Lessons selbst.
+      // Nur ein Foto, keine Stichworte: Die App sucht die Einträge selbst.
       await fotoVorbereiten({ automatisch: true });
       return;
     }
@@ -298,8 +298,8 @@ export async function viewErfassen(params = {}) {
 
   const kandidatenAnzeigen = (res) => {
     if (!res.kandidaten.length) {
-      fill(fotoPanel, el("div", { class: "notice info" }, icon("info"), el("div", {}, el("strong", {}, "Keine Erfahrungen auf dem Foto gefunden."),
-        res.hinweis || "Das Foto enthält eher Sachinformationen. Es bleibt angehängt, wenn du die Lesson selbst beschreibst.")));
+      fill(fotoPanel, el("div", { class: "notice info" }, icon("info"), el("div", {}, el("strong", {}, "Nichts zum Festhalten auf dem Foto gefunden."),
+        res.hinweis || "Das Foto enthält eher Organisatorisches. Es bleibt angehängt, wenn du den Eintrag selbst beschreibst.")));
       return;
     }
     const boxes = res.kandidaten.map((k, i) => el("input", { type: "checkbox", id: `kand-${i}`, checked: true }));
@@ -316,8 +316,8 @@ export async function viewErfassen(params = {}) {
       if (!auswahl.length || startBtn.getAttribute("aria-disabled") === "true") return;
       startBtn.setAttribute("aria-disabled", "true");
       fill(fotoPanel, el("p", { class: "loading" }, el("span", { class: "spinner", "aria-hidden": "true" }),
-        auswahl.length > 1 ? `${auswahl.length} Lessons werden formuliert und gespeichert …` : "Lesson wird formuliert und gespeichert …"));
-      say("Lessons werden erstellt, bitte warten.");
+        auswahl.length > 1 ? `${auswahl.length} Einträge werden formuliert und gespeichert …` : "Eintrag wird formuliert und gespeichert …"));
+      say("Einträge werden erstellt, bitte warten.");
       const bildIds = capture.bilder.map((b) => b.id);
       const sek = sekunden();
       // Jede Auswahl wird sofort strukturiert (parallel) und, wenn nichts dagegen spricht, direkt gespeichert.
@@ -329,7 +329,7 @@ export async function viewErfassen(params = {}) {
         });
         const e = eintrag.entwurf;
         const speicherbar = eintrag.status === "fertig" && e && e.lesson && (e.bereich || capture.bereich) && !e.pruefung && !e.dublette;
-        if (!speicherbar) return { eintrag, grund: e?.dublette ? "ähnliche Lesson vorhanden" : e?.pruefung ? "Datenschutz-Prüfung" : "bitte ergänzen" };
+        if (!speicherbar) return { eintrag, grund: e?.dublette ? "ähnlicher Eintrag vorhanden" : e?.pruefung ? "Datenschutz-Prüfung" : "bitte ergänzen" };
         if (!e.bereich) e.bereich = capture.bereich;
         try { return { lesson: await uebernehmen(eintrag) }; } catch (err) { return { eintrag, grund: err.message }; }
       };
@@ -345,30 +345,30 @@ export async function viewErfassen(params = {}) {
         refreshStats();
         fill(oben, el("div", { class: "card hero", role: "status" },
           el("p", { class: "overline row", style: "gap:6px;color:var(--success)" }, icon("check", "icon sm"), "Aus dem Foto"),
-          el("p", { class: "lead" }, gespeichert.length === 1 ? "1 Lesson gespeichert" : `${gespeichert.length} Lessons gespeichert`),
+          el("p", { class: "lead" }, gespeichert.length === 1 ? "1 Eintrag gespeichert" : `${gespeichert.length} Einträge gespeichert`),
           gespeichert.length ? el("ul", { class: "checklist" }, gespeichert.map((l) => el("li", {}, icon("check", "icon sm"),
             el("a", { href: `#/lesson/${l.id}` }, anf(l.titel))))) : null,
           offen.length ? el("p", { class: "small", style: "margin:12px 0 0" }, icon("inbox", "icon sm"), ` ${offen.length} im `, el("a", { href: "#/eingang" }, "Eingang"),
             ` zur Prüfung (${[...new Set(offen.map((r) => r.grund))].join(", ")}).`) : null,
           fehler.length ? el("p", { class: "small", style: "margin:12px 0 0;color:var(--danger)" }, `${fehler.length} nicht erstellt: ${fehler[0].fehler}`) : null));
         window.scrollTo({ top: 0, behavior: "auto" });
-        say(`${gespeichert.length} Lessons gespeichert${offen.length ? `, ${offen.length} im Eingang zur Prüfung` : ""}.`);
+        say(`${gespeichert.length} Einträge gespeichert${offen.length ? `, ${offen.length} im Eingang zur Prüfung` : ""}.`);
       } catch (err) {
         fill(fotoPanel, errorNotice(err));
       }
     });
     fill(fotoPanel, el("div", { class: "card" },
       el("p", { class: "overline" }, `Auf dem Foto gefunden (${res.kandidaten.length})`),
-      el("p", { class: "small muted", style: "margin:0 0 4px" }, "Die App formuliert jede als fertige Lesson und speichert sie, das Foto hängt an jeder. Abwählen, was nicht passt. Du kannst jede Lesson danach noch bearbeiten."),
+      el("p", { class: "small muted", style: "margin:0 0 4px" }, "Die App formuliert jeden als fertigen Eintrag (Erfahrung, Wissen, Vorgehen oder Entscheidung) und speichert ihn, das Foto hängt an jedem. Abwählen, was nicht passt. Du kannst jeden Eintrag danach noch bearbeiten."),
       el("ul", { class: "checklist" }, res.kandidaten.map((k, i) => el("li", {}, boxes[i],
         el("label", { for: `kand-${i}` }, el("span", { style: "font-weight:600;display:block" }, anf(k.titel)), el("span", { class: "footnote" }, anf(k.kern)))))),
       el("div", { class: "actions" }, startBtn, nurAnhaengen())));
-    say(`${res.kandidaten.length} mögliche Lessons auf dem Foto gefunden.`);
+    say(`${res.kandidaten.length} mögliche Einträge auf dem Foto gefunden.`);
   };
 
   const kandidatenSuchen = async (body) => {
-    fill(fotoPanel, el("p", { class: "loading" }, el("span", { class: "spinner", "aria-hidden": "true" }), "Claude sucht Erfahrungen auf dem Foto …"));
-    say("Claude sucht Erfahrungen auf dem Foto.");
+    fill(fotoPanel, el("p", { class: "loading" }, el("span", { class: "spinner", "aria-hidden": "true" }), "Claude liest das Foto aus …"));
+    say("Claude liest das Foto aus.");
     try {
       kandidatenAnzeigen(await api("/api/foto/kandidaten", { method: "POST", body: { bild_ids: capture.bilder.map((b) => b.id), bereich: capture.bereich, notiz: textarea.value.trim(), ...body } }));
     } catch (err) {
@@ -401,9 +401,9 @@ export async function viewErfassen(params = {}) {
     }
     if (res.weg === "bild") {
       fill(fotoPanel, el("div", { class: "card" },
-        el("p", { class: "overline" }, "Lessons aus dem Foto"),
+        el("p", { class: "overline" }, "Einträge aus dem Foto"),
         el("p", { class: "small muted", style: "margin:0" }, "Privater Bereich: Claude sieht das Foto selbst. Deine Stichworte oben gehen als Notiz mit."),
-        el("div", { class: "actions" }, el("button", { type: "button", class: "primary", onclick: () => kandidatenSuchen({}) }, icon("sparkles"), "Lessons finden"), nurAnhaengen())));
+        el("div", { class: "actions" }, el("button", { type: "button", class: "primary", onclick: () => kandidatenSuchen({}) }, icon("sparkles"), "Einträge finden"), nurAnhaengen())));
     } else if (res.weg === "text") {
       const area = el("textarea", { rows: 8, id: "ocr-text" });
       area.value = res.text;
@@ -422,7 +422,7 @@ export async function viewErfassen(params = {}) {
           type: "button",
           class: "primary",
           onclick: () => (area.value.trim().length < 3 ? (area.focus(), say("Kein Text zum Auswerten.")) : kandidatenSuchen({ text: area.value })),
-        }, icon("sparkles"), "Lessons finden"), nurAnhaengen())));
+        }, icon("sparkles"), "Einträge finden"), nurAnhaengen())));
     } else {
       fill(fotoPanel, el("div", { class: "card" },
         el("p", { class: "overline row", style: "gap:6px" }, icon("lock", "icon sm"), "Bleibt auf deinem PC"),
@@ -496,7 +496,7 @@ function ernteKarte(s) {
   karte = el("div", { class: "card tinted" }, kopfzeile,
     s.gesamt === 0
       ? [el("p", { class: "lead" }, "Deine Erfahrung, im richtigen Moment wieder da."),
-        el("p", { class: "small muted", style: "margin:8px 0 0" }, "Starte mit deinen ersten 20 Lessons: Die App stellt dir Fragen, du antwortest in Stichworten, Claude strukturiert. Etwa 10 Minuten.")]
+        el("p", { class: "small muted", style: "margin:8px 0 0" }, "Starte mit deinen ersten 20 Einträgen: Die App stellt dir Fragen, du antwortest in Stichworten, Claude strukturiert. Etwa 10 Minuten.")]
       : [el("p", { class: "lead" }, `Noch ${20 - bestand} bis zu deinen ersten 20.`),
         el("div", { class: "progress own", "aria-hidden": "true" }, el("span", { style: `width:${(bestand / 20) * 100}%` }))],
     el("div", { class: "actions" }, el("a", { class: "button primary", href: "#/ernte" }, icon("sprout"), s.gesamt === 0 ? "Startbestand anlegen" : "Weiter")));
@@ -704,7 +704,7 @@ export async function viewErnte(params = {}) {
   zeigeFortschritt();
   frage();
   if (!render(grosserTitel("Startbestand"),
-    el("p", { class: "muted", style: "margin-top:-8px" }, "Eine Frage nach der anderen. Antworte in Stichworten, Claude macht daraus Lessons. Du prüfst sie danach im Eingang."),
+    el("p", { class: "muted", style: "margin-top:-8px" }, "Eine Frage nach der anderen. Antworte in Stichworten, Claude macht daraus Einträge. Du prüfst sie danach im Eingang."),
     fortschritt,
     aktive.length > 1 ? el("div", { style: "margin:16px 0" }, chips) : null,
     inhalt)) return;

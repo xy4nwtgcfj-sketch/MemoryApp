@@ -20,7 +20,7 @@ function zeile(e, { onUebernehmen }) {
     : e.entwurf?.pruefung ? "Namen prüfen, bevor es an Claude geht"
       : e.entwurf?.dublette ? "Kennst du vielleicht schon"
         : (e.entwurf?.compliance_hinweise || []).length ? "Datenschutz-Hinweis"
-          : !e.entwurf?.lesson ? "Regel fehlt" : !e.entwurf?.bereich ? "Bereich fehlt" : "";
+          : !e.entwurf?.lesson ? "Kernaussage fehlt" : !e.entwurf?.bereich ? "Bereich fehlt" : "";
   const uebernehmenBtn = ok ? el("button", { type: "button", class: "primary", style: "flex:none", "aria-label": `„${kuerzen(e.entwurf.lesson, 60)}“ übernehmen`, onclick: (ev) => onUebernehmen(e, ev.currentTarget) }, icon("check"), "Übernehmen") : null;
   return el("li", { class: "li li-col", "data-id": e.id },
     el("a", { href: `#/entwurf/${e.id}`, style: "color:inherit;text-decoration:none;display:block" },
@@ -81,7 +81,7 @@ export async function viewEingang() {
       const sofort = bereit.filter(bereitZumUebernehmen);
       if (!data.eintraege.length) {
         fill(liste, leer({ symbol: "inbox", titel: "Alles erledigt", text: "Notizen vom iPhone-Kurzbefehl, aus dem Startbestand oder mit „Später“ gesicherte Entwürfe landen hier.",
-          aktionen: [el("a", { class: "button", href: "#/erfassen" }, icon("square-pen"), "Neue Lesson")] }));
+          aktionen: [el("a", { class: "button", href: "#/erfassen" }, icon("square-pen"), "Neuer Eintrag")] }));
       } else {
         fill(liste,
           bereit.length ? el("div", { class: "row", style: "margin-bottom:8px" },
@@ -91,7 +91,7 @@ export async function viewEingang() {
               let n = 0;
               for (const e of sofort) { try { await uebernehmen(e); n += 1; } catch { /* einzeln prüfen */ } }
               refreshStats();
-              toast(`${n} Lessons übernommen.`);
+              toast(`${n} Einträge übernommen.`);
               laden(true);
             } }, `Alle ${sofort.length} übernehmen`) : null) : null,
           bereit.length ? el("ul", { class: "list" }, bereit.map((e) => zeile(e, { onUebernehmen: uebernehmenEins }))) : null,

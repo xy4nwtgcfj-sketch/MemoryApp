@@ -1,7 +1,7 @@
 {
   "format": "lessons-vault",
   "version": 1,
-  "_hinweis": "Vorlage für den Startbestand. Die drei Einträge sind BEISPIELE für Form und Abstraktionsgrad, keine echten Erfahrungen. Ersetze sie durch deine eigenen 20 bis 30 Lessons und importiere die Datei unter Einstellungen > Import. Pflicht: titel (max. 80 Zeichen), situation, ereignis, lesson, bereich, schweregrad (1-5). Optional: massnahme, tags, bestaetigungen (wie oft erlebt), erstellt_am (YYYY-MM-DD, wann ungefähr erlebt).",
+  "_hinweis": "Vorlage für den Startbestand. Die drei Einträge sind BEISPIELE für Form und Abstraktionsgrad, keine echten Erfahrungen. Ersetze sie durch deine eigenen 20 bis 30 Lessons und importiere die Datei unter Einstellungen > Import. Pflicht: titel (max. 80 Zeichen), situation, ereignis, lesson, bereich, schweregrad (1-5). Optional: art (erfahrung, wissen, vorgehen, entscheidung; Standard erfahrung), massnahme, tags, bestaetigungen (wie oft erlebt), erstellt_am (YYYY-MM-DD, wann ungefähr erlebt).",
   "lessons": [
     {
       "titel": "BEISPIEL: Cutover-Plan früh mit dem Lagerbetrieb abstimmen",

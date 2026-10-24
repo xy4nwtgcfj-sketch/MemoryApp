@@ -2,12 +2,12 @@
 import {
   anf, aktionsblatt, ansicht, api, bereiche, bereicheSofort, el, errorNotice, eingabe, fill, fokusAufTitel, formatDate,
   fotoInput, fotosHochladen, grosserTitel, hinweisKompakt, icon, kopf, leer, lessonKarte, metaZeile, quelleText,
-  refreshStats, say, skeleton, thumbsRow, toast, bestaetigen,
+  refreshStats, say, skeleton, thumbsRow, toast, bestaetigen, ART, ARTEN, artInfo,
 } from "./core.js";
 import { lessonForm, loeschenBestaetigen } from "./entwurf.js";
 
-const searchState = { q: "", modus: "hybrid", bereich: "", status: "", schweregrad_min: "", von: "", bis: "" };
-const FILTER = ["bereich", "status", "schweregrad_min", "von", "bis", "modus"];
+const searchState = { q: "", modus: "hybrid", art: "", bereich: "", status: "", schweregrad_min: "", von: "", bis: "" };
+const FILTER = ["art", "bereich", "status", "schweregrad_min", "von", "bis", "modus"];
 
 export async function viewSuche(params = {}) {
   const render = ansicht();
@@ -47,10 +47,10 @@ export async function viewSuche(params = {}) {
         drafts.eintraege.length ? el("a", { class: "card result row", href: "#/eingang", style: "gap:12px" }, icon("inbox"),
           el("span", { class: "grow" }, `${drafts.eintraege.length} passende Notiz${drafts.eintraege.length > 1 ? "en" : ""} im Eingang`), icon("chevron-right", "icon sm")) : null,
         items.length
-          ? el("p", { class: "overline", style: "margin-top:16px" }, searchState.q ? `${items.length} Treffer` : "Neueste Lessons")
+          ? el("p", { class: "overline", style: "margin-top:16px" }, searchState.q ? `${items.length} Treffer` : "Neueste Einträge")
           : searchState.q
             ? leer({ symbol: "search", titel: "Nichts gefunden", text: "Probier ein anderes Stichwort oder entferne Filter." })
-            : leer({ symbol: "sprout", titel: "Noch keine Lessons", text: "Leg den Startbestand an oder erfasse deine erste Lesson.",
+            : leer({ symbol: "sprout", titel: "Noch keine Einträge", text: "Leg den Startbestand an oder erfasse deinen ersten Eintrag.",
               aktionen: [el("a", { class: "button primary", href: "#/ernte" }, "Startbestand anlegen"), el("a", { class: "button", href: "#/erfassen" }, "Erfassen")] }),
         items.map((item) => lessonKarte(item.lesson)));
     } catch (err) {
@@ -82,17 +82,17 @@ export async function viewSuche(params = {}) {
   }, tx)));
   fill(filterPanel,
     el("div", { class: "grid2" },
+      select("art", "Art", [["", "Alle"], ...ARTEN.map((a) => [a, ART[a].label])]),
       select("bereich", "Bereich", [["", "Alle"], ...bereichListe.map((b) => [b.name, b.name])]),
       select("status", "Status", [["", "Alle"], ["neu", "neu"], ["bestätigt", "bestätigt"], ["überholt", "überholt"]]),
-      select("schweregrad_min", "Schwere ab", [["", "Alle"], ...[2, 3, 4, 5].map((n) => [String(n), `${n} und mehr`])]),
-      el("div"),
+      select("schweregrad_min", "Gewicht ab", [["", "Alle"], ...[2, 3, 4, 5].map((n) => [String(n), `${n} und mehr`])]),
       datum("von", "Erfasst ab"),
       datum("bis", "Erfasst bis")),
     el("details", { class: "plain", style: "margin-top:12px" }, el("summary", {}, "Erweitert: Suchart"),
       el("p", { class: "footnote", style: "margin:0 0 8px" }, "Standard ist beides: genaue Wörter und ähnliche Bedeutung."), seg),
     el("div", { class: "actions" }, el("button", {
       type: "button", class: "text",
-      onclick: () => { Object.assign(searchState, { bereich: "", status: "", schweregrad_min: "", von: "", bis: "", modus: "hybrid" }); viewSuche(); },
+      onclick: () => { Object.assign(searchState, { art: "", bereich: "", status: "", schweregrad_min: "", von: "", bis: "", modus: "hybrid" }); viewSuche(); },
     }, "Filter zurücksetzen")));
 
   if (!render(grosserTitel("Suchen"),
@@ -108,26 +108,27 @@ export async function viewSuche(params = {}) {
 export async function viewLesson(id) {
   const render = ansicht();
   const zurueck = { text: "Zurück", href: "#/suche" };
-  kopf("Lesson", zurueck);
+  kopf("Eintrag", zurueck);
   render(skeleton());
   let data;
   try {
     data = await api(`/api/lessons/${encodeURIComponent(id)}`);
   } catch (err) {
-    render(grosserTitel("Lesson"), errorNotice(err), el("a", { href: "#/suche" }, "Zur Suche"));
+    render(grosserTitel("Eintrag"), errorNotice(err), el("a", { href: "#/suche" }, "Zur Suche"));
     return;
   }
   const l = data.lesson;
   kopf(l.titel, zurueck);
   const compliance = hinweisKompakt(data.compliance_hinweise);
 
-  const erneut = el("button", { type: "button", class: "primary block" }, icon("refresh"), "Erneut erlebt");
+  const a = artInfo(l.art);
+  const erneut = el("button", { type: "button", class: "primary block" }, icon("refresh"), a.bestaetigen);
   erneut.addEventListener("click", async () => {
-    const notiz = await eingabe({ titel: "Erneut erlebt", text: "Das zählt die Lesson als bestätigt. Was war diesmal?", label: "Kurze Notiz", ok: "Zählen" });
+    const notiz = await eingabe({ titel: a.bestaetigen, text: "Das zählt den Eintrag als bestätigt. Was war diesmal?", label: "Kurze Notiz", ok: "Zählen" });
     if (notiz === null) return;
     try {
       const updated = await api(`/api/lessons/${l.id}/bestaetigen`, { method: "POST", body: { notiz } });
-      toast(`Gezählt: jetzt ${updated.bestaetigungen}× erlebt.`);
+      toast(`Gezählt: jetzt ${updated.bestaetigungen}× ${a.bestaetigt}.`);
       refreshStats();
       viewLesson(l.id);
     } catch (err) { toast(err.message, { fehler: true }); }
@@ -166,15 +167,15 @@ export async function viewLesson(id) {
     metaZeile(l),
     data.hilfreich ? el("p", { class: "helped" }, icon("thumbs-up", "icon sm"), `${data.hilfreich}× im Briefing geholfen`) : null,
     el("dl", { class: "fields" },
-      feld("Nächstes Mal", l.massnahme || "Noch offen. Was würdest du beim nächsten Mal konkret anders machen?"),
-      feld("Situation", l.situation),
-      feld("Was ist passiert?", l.ereignis),
+      feld(a.anwendung, l.massnahme || (l.art === "erfahrung" ? "Noch offen. Was würdest du beim nächsten Mal konkret anders machen?" : "")),
+      feld(a.kontext, l.situation),
+      feld(a.inhalt, l.ereignis),
       feld("Stichworte", l.tags.join(", "))),
     compliance,
     el("div", { class: "actions", style: "margin-top:24px" }, erneut),
     fotoSection(l, data.bilder || []),
-    el("h2", {}, "Erlebt"),
-    el("ul", { class: "timeline" }, data.protokoll.map((p) => el("li", {}, el("span", { class: "footnote" }, formatDate(p.datum)), p.notiz && p.notiz !== "erstmals erlebt" ? el("span", {}, ` · ${anf(p.notiz)}`) : el("span", {}, p.notiz === "erstmals erlebt" ? " · erstmals erlebt" : "")))),
+    el("h2", {}, "Verlauf"),
+    el("ul", { class: "timeline" }, data.protokoll.map((p) => el("li", {}, el("span", { class: "footnote" }, formatDate(p.datum)), p.notiz && p.notiz !== "erstmals erlebt" ? el("span", {}, ` · ${anf(p.notiz)}`) : el("span", {}, p.notiz === "erstmals erlebt" ? (l.art === "erfahrung" ? " · erstmals erlebt" : " · erfasst") : "")))),
     el("p", { class: "footnote", style: "margin-top:24px" }, `Erfasst am ${formatDate(l.erstellt_am)}`, quelleText(l.quelle) ? ` ${quelleText(l.quelle)}` : "",
       l.geaendert_am !== l.erstellt_am ? `, zuletzt geändert am ${formatDate(l.geaendert_am)}` : "", "."),
   );
@@ -201,17 +202,17 @@ function fotoSection(l, bilder) {
     bilder.length ? thumbsRow(bilder, {
       titel: l.titel,
       onRemove: async (b) => {
-        if (!(await bestaetigen({ titel: "Foto entfernen?", text: "Das Foto wird von dieser Lesson gelöst.", ok: "Entfernen", gefahr: true }))) return;
+        if (!(await bestaetigen({ titel: "Foto entfernen?", text: "Das Foto wird von diesem Eintrag gelöst.", ok: "Entfernen", gefahr: true }))) return;
         try { await api(`/api/lessons/${l.id}/bilder/${b.id}`, { method: "DELETE" }); viewLesson(l.id); }
         catch (err) { toast(err.message, { fehler: true }); }
       },
-    }) : el("p", { class: "footnote", style: "margin-top:0" }, "Zum Beispiel die Folie oder das Whiteboard, aus dem die Lesson stammt."),
+    }) : el("p", { class: "footnote", style: "margin-top:0" }, "Zum Beispiel die Folie oder das Whiteboard, aus dem der Eintrag stammt."),
     btn, input);
 }
 
 export async function editLesson(id) {
   const render = ansicht();
-  kopf("Bearbeiten", { text: "Lesson", href: `#/lesson/${id}` });
+  kopf("Bearbeiten", { text: "Eintrag", href: `#/lesson/${id}` });
   let l;
   try {
     l = (await api(`/api/lessons/${encodeURIComponent(id)}`)).lesson;

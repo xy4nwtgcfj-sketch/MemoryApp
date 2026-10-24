@@ -97,7 +97,7 @@ def briefing_pptx(situation: str, plan: dict[str, Any], lessons: dict[str, Any],
     titel_von = {lid: l.titel for lid, l in lessons.items()}
     praes = Presentation()
     praes.slide_width, praes.slide_height = Inches(13.333), Inches(7.5)
-    fuss = "★ from your own experience  ·  other points: Claude's expertise, not verified"
+    fuss = "★ from your own knowledge base  ·  other points: Claude's expertise, not verified"
 
     # 1 Titel
     folie = praes.slides.add_slide(praes.slide_layouts[6])
@@ -118,7 +118,7 @@ def briefing_pptx(situation: str, plan: dict[str, Any], lessons: dict[str, Any],
     eigen = plan.get("punkte_erfahrung", 0)
     gesamt = plan.get("punkte_gesamt", 0)
     if gesamt:
-        _absatz(rahmen, f"{eigen} of {gesamt} points come from your own experience.", groesse=14, farbe=GOLD)
+        _absatz(rahmen, f"{eigen} of {gesamt} points come from your own knowledge base.", groesse=14, farbe=GOLD)
     folie.notes_slide.notes_text_frame.text = text_ohne_marken(plan.get("ausarbeitung", ""))
     _fuss(praes, folie, fuss)
 
@@ -148,7 +148,7 @@ def briefing_pptx(situation: str, plan: dict[str, Any], lessons: dict[str, Any],
         if lid in titel_von and lid not in genutzt:
             genutzt.append(lid)
     if genutzt:
-        folie = _kopf(praes, "Own lessons used", "Sources")
+        folie = _kopf(praes, "Own entries used", "Sources")
         rahmen = _textfeld(folie, Inches(0.6), Inches(1.7), praes.slide_width - Inches(1.2), Inches(5.0))
         for i, lid in enumerate(genutzt):
             _absatz(rahmen, f"★  {titel_von[lid]}", groesse=14, erster=(i == 0), abstand=6)

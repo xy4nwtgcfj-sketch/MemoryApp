@@ -181,6 +181,12 @@ MIGRATIONS: list[str] = [
         erstellt_am TEXT NOT NULL
     );
     """,
+    # Eintragsart: Erfahrung (Ereignis -> Regel), Wissen, Vorgehen, Entscheidung. Bestand bleibt Erfahrung.
+    """
+    ALTER TABLE lessons ADD COLUMN art TEXT NOT NULL DEFAULT 'erfahrung'
+        CHECK (art IN ('erfahrung', 'wissen', 'vorgehen', 'entscheidung'));
+    CREATE INDEX idx_lessons_art ON lessons(art);
+    """,
 ]
 
 

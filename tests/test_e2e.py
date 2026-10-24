@@ -288,7 +288,7 @@ def test_briefing_kombiniert(server, page):
     expect(page.get_by_role("heading", name="Vor dem Go-live")).to_be_visible()
     expect(page.locator("button.src.eigen")).to_have_count(1)
     page.get_by_text("Als Checkliste abhaken").click()  # Checkliste liegt eingeklappt unter der Ausarbeitung
-    expect(page.get_by_text("1 aus deiner Erfahrung")).to_be_visible()
+    expect(page.get_by_text("1 aus deinen Einträgen")).to_be_visible()
     expect(page.get_by_text(re.compile("^An Claude gesendet: deine Situation"))).to_be_visible()
     # Eingabe ist eingeklappt, Kopieren steht oben
     expect(page.locator("#briefing-text")).to_be_hidden()
@@ -307,7 +307,7 @@ def test_briefing_kombiniert(server, page):
     kein_null(page)
 
     page.locator("#modus-schalter").click()
-    expect(page.get_by_text("Auf die Situation zugeschnitten (Claude, aus deinen Lessons)")).to_be_visible()
+    expect(page.get_by_text("Auf die Situation zugeschnitten (Claude, aus deinen Einträgen)")).to_be_visible()
     assert fake.calls[-1]["system"] == BRIEFING_PROMPT
     assert page.evaluate("localStorage.getItem('lv-briefing-modus')") == "eigen"
     kein_null(page)
@@ -346,7 +346,7 @@ def test_briefing(server, page):
     expect(page.get_by_text("Fordere die Unterlagenliste der Bank vorab an")).to_be_visible()
 
     page.goto(f"{base}/#/einstellungen")
-    expect(page.locator(".tile", has_text="Briefings mit hilfreicher Lesson")).to_contain_text("1")
+    expect(page.locator(".tile", has_text="Briefings mit hilfreichem Eintrag")).to_contain_text("1")
     assert page.errors == []
 
 
@@ -411,7 +411,7 @@ def test_lessons_aus_foto(server, page, tmp_path):
     page.get_by_role("button", name="Ausgewählte speichern (1)").click()
     # Fertige Lesson direkt gespeichert, kein Umweg über den Eingang
     karte = page.locator(".card.hero", has_text="Aus dem Foto")
-    expect(karte).to_contain_text("1 Lesson gespeichert", timeout=20000)
+    expect(karte).to_contain_text("1 Eintrag gespeichert", timeout=20000)
     shot(page, "12b-gespeichert")
     karte.locator("a").first.click()
     expect(page.get_by_role("heading", name="Fotos (1)")).to_be_visible()
@@ -437,7 +437,7 @@ def test_plan_gegenchecken(server, page, tmp_path):
     expect(page.get_by_text("Erkannter Text des Entwurfs")).to_be_visible(timeout=15000)
     page.get_by_role("button", name="Gegenchecken", exact=True).click()
     expect(page.get_by_text("Im Plan fehlt die schriftliche Personalfreigabe")).to_be_visible()
-    expect(page.get_by_text("Was im Entwurf fehlt, laut deinen Lessons (Claude)")).to_be_visible()
+    expect(page.get_by_text("Was im Entwurf fehlt, laut deinem Wissen (Claude)")).to_be_visible()
     expect(page.get_by_text("Schon berücksichtigt (1)")).to_be_visible()
     call = fake.calls[-1]
     assert call["system"] == ABGLEICH_PROMPT and isinstance(call["messages"][0]["content"], str)
