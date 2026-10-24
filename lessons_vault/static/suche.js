@@ -2,12 +2,12 @@
 import {
   anf, aktionsblatt, ansicht, api, bereiche, bereicheSofort, el, errorNotice, eingabe, fill, fokusAufTitel, formatDate,
   fotoInput, fotosHochladen, grosserTitel, hinweisKompakt, icon, kopf, leer, lessonKarte, metaZeile, quelleText,
-  refreshStats, say, skeleton, thumbsRow, toast, bestaetigen, ART, ARTEN, artInfo,
+  refreshStats, say, skeleton, thumbsRow, toast, bestaetigen, ART, ARTEN, PHASEN, artInfo, statistikSofort,
 } from "./core.js";
 import { lessonForm, loeschenBestaetigen } from "./entwurf.js";
 
-const searchState = { q: "", modus: "hybrid", art: "", bereich: "", status: "", schweregrad_min: "", von: "", bis: "" };
-const FILTER = ["art", "bereich", "status", "schweregrad_min", "von", "bis", "modus"];
+const searchState = { q: "", modus: "hybrid", art: "", phase: "", bereich: "", status: "", schweregrad_min: "", von: "", bis: "" };
+const FILTER = ["art", "phase", "bereich", "status", "schweregrad_min", "von", "bis", "modus"];
 
 export async function viewSuche(params = {}) {
   const render = ansicht();
@@ -83,6 +83,7 @@ export async function viewSuche(params = {}) {
   fill(filterPanel,
     el("div", { class: "grid2" },
       select("art", "Art", [["", "Alle"], ...ARTEN.map((a) => [a, ART[a].label])]),
+      select("phase", "Projektphase", [["", "Alle"], ...Object.entries(PHASEN)]),
       select("bereich", "Bereich", [["", "Alle"], ...bereichListe.map((b) => [b.name, b.name])]),
       select("status", "Status", [["", "Alle"], ["neu", "neu"], ["bestätigt", "bestätigt"], ["überholt", "überholt"]]),
       select("schweregrad_min", "Gewicht ab", [["", "Alle"], ...[2, 3, 4, 5].map((n) => [String(n), `${n} und mehr`])]),
@@ -92,13 +93,22 @@ export async function viewSuche(params = {}) {
       el("p", { class: "footnote", style: "margin:0 0 8px" }, "Standard ist beides: genaue Wörter und ähnliche Bedeutung."), seg),
     el("div", { class: "actions" }, el("button", {
       type: "button", class: "text",
-      onclick: () => { Object.assign(searchState, { art: "", bereich: "", status: "", schweregrad_min: "", von: "", bis: "", modus: "hybrid" }); viewSuche(); },
+      onclick: () => { Object.assign(searchState, { art: "", phase: "", bereich: "", status: "", schweregrad_min: "", von: "", bis: "", modus: "hybrid" }); viewSuche(); },
     }, "Filter zurücksetzen")));
 
+  // Projektphasen als Schnellfilter: zeigt, wie sich das berufliche Wissen über die Phasen verteilt
+  const proPhase = statistikSofort()?.pro_phase || {};
+  const phasenChips = el("div", { class: "chips phasen", role: "group", "aria-label": "Projektphase" });
+  const renderPhasen = () => fill(phasenChips, Object.entries(PHASEN).map(([v, tx]) => el("button", {
+    type: "button", class: `chip phase-${v}`, "aria-pressed": String(searchState.phase === v),
+    onclick: () => { searchState.phase = searchState.phase === v ? "" : v; renderPhasen(); updateFilterBtn(); const sel = document.getElementById("s-phase"); if (sel) sel.value = searchState.phase; run(); },
+  }, tx, el("small", {}, String(proPhase[v] || 0)))));
+  renderPhasen();
   if (!render(grosserTitel("Suchen"),
     el("div", { class: "row" },
       el("div", { class: "grow", style: "position:relative" }, el("label", { for: "q", class: "sr-only" }, "Suchbegriff"), q),
       filterBtn),
+    Object.keys(proPhase).length ? phasenChips : null,
     filterPanel, anzahl, results)) return;
   fokusAufTitel();
   run();

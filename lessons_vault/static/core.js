@@ -30,6 +30,12 @@ export const ART = {
     kernHinweis: "Was entschieden wurde, in einem Satz." },
 };
 export const ARTEN = Object.keys(ART);
+
+// Projektphasen beruflicher Einträge (leer = phasenübergreifend)
+export const PHASEN = { sales: "Sales", concept: "Concept", build: "Build", test: "Test", cutover: "Cutover", hypercare: "Hypercare" };
+export function phaseBadge(phase) {
+  return PHASEN[phase] ? el("span", { class: `badge phase phase-${phase}` }, PHASEN[phase]) : null;
+}
 export function artInfo(art) { return ART[art] || ART.erfahrung; }
 export function artBadge(art, { klein = false } = {}) {
   const a = artInfo(art);
@@ -397,7 +403,7 @@ let letzteStatistik = store.json("lv-statistik", null);
 export function statistikSofort() { return letzteStatistik; }
 
 const statsEl = document.getElementById("stats");
-export async function refreshStats() {
+export async function refreshStats({ anlass = "" } = {}) {
   try {
     const s = await api("/api/statistik");
     letzteStatistik = s;
@@ -405,7 +411,7 @@ export async function refreshStats() {
     const vorher = sitzungsStand;
     sitzungsStand = zaehlerStand(s);
     statsAnzeigen(s);
-    if (vorher) feiernWennNoetig(vorher, sitzungsStand);
+    if (vorher) feiernWennNoetig(vorher, sitzungsStand, anlass);
     return s;
   } catch {
     return letzteStatistik;
@@ -416,11 +422,12 @@ export function statsAnzeigen(s) {
   statsEl.hidden = false;
   const z = zaehlerStand(s);
   fill(statsEl,
-    ring(z.diese / z.ziel, 20, z.erreicht),
-    el("span", {}, `${z.diese}/${z.ziel}`),
+    ring(z.punkte.anteil, 20, false),
+    el("span", { class: "lvl" }, `Lv ${z.punkte.level}`),
+    el("span", { class: `woche ${z.erreicht ? "ok" : ""}` }, `${z.diese}/${z.ziel}`),
     z.serie ? el("span", { class: "serie" }, icon("flame", "icon sm"), z.serie) : null);
-  statsEl.title = "Wochenziel und Serie";
-  statsEl.setAttribute("aria-label", `Diese Woche ${z.diese} von ${z.ziel} Einträgen${z.serie ? `, ${z.serie} ${z.serie === 1 ? "Woche" : "Wochen"} in Folge` : ""}, ${z.gesamt} Lessons insgesamt`);
+  statsEl.title = "Level, Wochenziel und Serie";
+  statsEl.setAttribute("aria-label", `Level ${z.punkte.level} ${z.punkte.name}, ${z.punkte.xp} Punkte. Diese Woche ${z.diese} von ${z.ziel} Einträgen${z.serie ? `, ${z.serie} ${z.serie === 1 ? "Woche" : "Wochen"} in Folge` : ""}, ${z.gesamt} Einträge insgesamt`);
   zaehlerHoerer.forEach((fn) => { try { fn(s); } catch { /* Ansicht weg */ } });
   const badge = document.getElementById("eingang-count");
   badge.hidden = !s.offene_entwuerfe;
@@ -428,9 +435,15 @@ export function statsAnzeigen(s) {
   const link = document.querySelector('.tabbar a[data-tab="eingang"]');
   link.setAttribute("aria-label", s.offene_entwuerfe ? `Eingang, ${s.offene_entwuerfe} offen` : "Eingang");
 }
-// ---------------------------------------------------------------- Zähler: Wochenziel, Serie, Meilensteine
-// Wochen statt Tage: Ein freier Tag bricht keine Serie. Gezählt werden neue Lessons und "erneut erlebt" (ohne Import).
+// ---------------------------------------------------------------- Belohnungen: Punkte, Level, Wochenziel, Serie, Wirkung
+// Wochen statt Tage: Ein freier Tag bricht keine Serie. Punkte gibt es für Input (Einträge, Bestätigungen)
+// und für Wirkung (Briefings, Planpunkte aus eigenen Einträgen, "hilfreich"-Rückmeldungen).
 export const MEILENSTEINE = [10, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000];
+export const LEVEL = [
+  [0, "Anfänger"], [100, "Sammler"], [300, "Kenner"], [600, "Praktiker"], [1000, "Experte"],
+  [1500, "Meister"], [2200, "Mentor"], [3000, "Großmeister"], [4000, "Legende"], [5500, "Orakel"],
+];
+export const PUNKTE = { eintrag: 10, importiert: 3, bestaetigung: 5, briefing: 15, planpunkt: 5, hilfreich: 20 };
 let sitzungsStand = null;
 const zaehlerHoerer = new Set();
 export function aufZaehler(fn) { zaehlerHoerer.add(fn); return () => zaehlerHoerer.delete(fn); }
@@ -438,6 +451,21 @@ export function aufZaehler(fn) { zaehlerHoerer.add(fn); return () => zaehlerHoer
 export function wochenziel() {
   const n = Number(store.get("lv-wochenziel", "5"));
   return Number.isInteger(n) && n >= 1 && n <= 50 ? n : 5;
+}
+
+export function punkteStand(s) {
+  const importiert = s?.importiert || 0;
+  const eigene = Math.max(0, (s?.gesamt || 0) - importiert);
+  const wirkungPunkte = (s?.briefings || 0) * PUNKTE.briefing + (s?.plan_punkte_erfahrung || 0) * PUNKTE.planpunkt
+    + (s?.feedback_hilfreich_gesamt || 0) * PUNKTE.hilfreich;
+  const xp = eigene * PUNKTE.eintrag + importiert * PUNKTE.importiert + (s?.bestaetigungen_erneut || 0) * PUNKTE.bestaetigung + wirkungPunkte;
+  let i = 0;
+  while (i + 1 < LEVEL.length && xp >= LEVEL[i + 1][0]) i++;
+  const ab = LEVEL[i][0];
+  const bis = i + 1 < LEVEL.length ? LEVEL[i + 1][0] : ab + 1500 * (1 + Math.floor((xp - ab) / 1500));
+  const naechsterName = i + 1 < LEVEL.length ? LEVEL[i + 1][1] : `${LEVEL[LEVEL.length - 1][1]} +${Math.floor((xp - ab) / 1500) + 1}`;
+  return { xp, level: i + 1, name: LEVEL[i][1], ab, bis, naechsterName, anteil: (xp - ab) / Math.max(1, bis - ab), wirkungPunkte,
+    briefings: s?.briefings || 0, planpunkte: s?.plan_punkte_erfahrung || 0, hilfreich: s?.feedback_hilfreich_gesamt || 0 };
 }
 
 export function zaehlerStand(s) {
@@ -450,7 +478,7 @@ export function zaehlerStand(s) {
   const gesamt = s?.gesamt || 0;
   const naechster = MEILENSTEINE.find((m) => m > gesamt) || (Math.floor(gesamt / 500) + 1) * 500;
   const vorher = [...MEILENSTEINE].reverse().find((m) => m <= gesamt) || 0;
-  return { ziel, diese, serie, gesamt, naechster, vorher, erreicht: diese >= ziel };
+  return { ziel, diese, serie, gesamt, naechster, vorher, erreicht: diese >= ziel, punkte: punkteStand(s) };
 }
 
 // Fortschrittsring als SVG (nur Zahlen im Markup, daher sicher)
@@ -463,46 +491,76 @@ export function ring(anteil, groesse = 20, voll = false) {
   return span;
 }
 
+const nf = new Intl.NumberFormat("de-DE");
+
 export function zaehlerKarte(s) {
   const z = zaehlerStand(s);
+  const pk = z.punkte;
   const fehlt = Math.max(0, z.ziel - z.diese);
   const bisMeilenstein = z.naechster - z.gesamt;
-  const anteilMeilenstein = (z.gesamt - z.vorher) / Math.max(1, z.naechster - z.vorher);
   return el("a", { class: `card zaehler ${z.erreicht ? "erreicht" : ""}`, href: "#/einstellungen", "aria-label": "Fortschritt ansehen" },
-    el("div", { class: "zaehler-ring" }, ring(z.diese / z.ziel, 52, z.erreicht), el("span", { class: `zaehler-zahl ${String(z.diese).length > 2 ? "klein" : ""}` }, String(z.diese))),
-    el("div", { class: "grow" },
-      el("p", { class: "zaehler-titel" }, z.erreicht ? `Wochenziel geschafft · ${z.diese} von ${z.ziel}` : `${z.diese} von ${z.ziel} diese Woche · noch ${fehlt}`),
-      el("p", { class: "zaehler-serie" }, icon("flame", "icon sm"),
-        z.serie ? `${z.serie} ${z.serie === 1 ? "Woche" : "Wochen"} in Folge` : "Erreiche das Wochenziel und starte eine Serie"),
-      el("div", { class: "zaehler-meilenstein" },
-        el("span", {}, `${z.gesamt} Einträge · noch ${bisMeilenstein} bis ${z.naechster}`),
-        el("div", { class: "progress own", "aria-hidden": "true" }, el("span", { style: `width:${Math.round(anteilMeilenstein * 100)}%` })))));
+    el("div", { class: "zaehler-kopf" },
+      el("span", { class: "level-badge" }, el("b", {}, `Level ${pk.level}`), ` · ${pk.name}`),
+      el("span", { class: "xp" }, `${nf.format(pk.xp)} Punkte`)),
+    el("div", { class: "progress xp-bar", "aria-hidden": "true" }, el("span", { style: `width:${Math.round(pk.anteil * 100)}%` })),
+    el("p", { class: "zaehler-sub" }, `Noch ${nf.format(pk.bis - pk.xp)} Punkte bis Level ${pk.level + 1} · ${pk.naechsterName}`),
+    el("div", { class: "zaehler-zeile" },
+      el("div", { class: "zaehler-ring" }, ring(z.diese / z.ziel, 44, z.erreicht), el("span", { class: `zaehler-zahl ${String(z.diese).length > 2 ? "klein" : ""}` }, String(z.diese))),
+      el("div", { class: "grow" },
+        el("p", { class: "zaehler-titel" }, z.erreicht ? `Wochenziel geschafft · ${z.diese} von ${z.ziel}` : `Wochenziel ${z.diese} von ${z.ziel} · noch ${fehlt}`),
+        el("p", { class: "zaehler-serie" }, icon("flame", "icon sm"),
+          z.serie ? `${z.serie} ${z.serie === 1 ? "Woche" : "Wochen"} in Folge` : "Erreiche das Wochenziel und starte eine Serie"))),
+    el("div", { class: "zaehler-wirkung" },
+      el("span", {}, icon("clipboard-list", "icon sm"), `${pk.briefings} Briefings`),
+      el("span", {}, icon("user", "icon sm"), `${pk.planpunkte}× dein Wissen im Plan`),
+      el("span", {}, icon("thumbs-up", "icon sm"), `${pk.hilfreich}× geholfen`)),
+    el("p", { class: "zaehler-meilenstein" }, `${z.gesamt} Einträge · noch ${bisMeilenstein} bis ${z.naechster}`));
 }
 
-function feiernWennNoetig(vorher, jetzt) {
-  const plus = (jetzt.gesamt - vorher.gesamt) + Math.max(0, (jetzt.diese - vorher.diese) - (jetzt.gesamt - vorher.gesamt));
+function feiernWennNoetig(vorher, jetzt, anlass = "") {
+  const plus = jetzt.punkte.xp - vorher.punkte.xp;
   if (plus <= 0) return;
-  // Kleine Bestätigung an der Pille
   statsEl.classList.remove("puls");
   void statsEl.offsetWidth;
   statsEl.classList.add("puls");
-  const blase = el("span", { class: "plus-eins", "aria-hidden": "true" }, `+${plus}`);
-  statsEl.append(blase);
-  setTimeout(() => blase.remove(), 1400);
-  if (jetzt.gesamt >= vorher.naechster) {
-    feiern(`Meilenstein: ${vorher.naechster} Einträge! Dein Wissensschatz wächst.`);
-  } else if (!vorher.erreicht && jetzt.erreicht) {
-    feiern(jetzt.serie > 1 ? `Wochenziel geschafft, ${jetzt.serie} Wochen in Folge!` : "Wochenziel geschafft! Deine Serie läuft.");
+  const levelUp = jetzt.punkte.level > vorher.punkte.level;
+  const meilenstein = jetzt.gesamt >= vorher.naechster && jetzt.gesamt > vorher.gesamt;
+  const wochenziel = !vorher.erreicht && jetzt.erreicht;
+  if (levelUp) {
+    belohnung(`Level ${jetzt.punkte.level}: ${jetzt.punkte.name}!`, `+${plus} Punkte · ${nf.format(jetzt.punkte.xp)} insgesamt`, { gross: true });
+  } else if (meilenstein) {
+    belohnung(`Meilenstein: ${vorher.naechster} Einträge!`, `+${plus} Punkte · Dein Wissensschatz wächst.`, { gross: true });
+  } else if (wochenziel) {
+    belohnung(jetzt.serie > 1 ? `Wochenziel geschafft, ${jetzt.serie} Wochen in Folge!` : "Wochenziel geschafft! Deine Serie läuft.", `+${plus} Punkte`, { gross: true });
+  } else {
+    const rest = Math.max(0, jetzt.ziel - jetzt.diese);
+    belohnung(`+${plus} Punkte`, anlass || (rest ? `Noch ${rest} bis zum Wochenziel · Level ${jetzt.punkte.level} ${jetzt.punkte.name}` : `Wochenziel steht · Level ${jetzt.punkte.level} ${jetzt.punkte.name}`));
   }
 }
 
-export function feiern(text) {
-  toast(text, { ms: 6000 });
-  say(text);
+// Belohnungsbanner oben, immer mit kleinem Konfetti; gross = längere Anzeige und volles Konfetti
+let belohnungTimer = null;
+export function belohnung(titel, text = "", { gross = false } = {}) {
+  say(`${titel} ${text}`);
+  document.querySelector(".belohnung")?.remove();
+  const box = el("div", { class: `belohnung ${gross ? "gross" : ""}`, role: "status" },
+    el("span", { class: "belohnung-icon" }, icon(gross ? "sparkles" : "check")),
+    el("div", { class: "grow" }, el("p", { class: "belohnung-titel" }, titel), text ? el("p", { class: "belohnung-text" }, text) : null),
+    el("button", { type: "button", class: "icon-btn", "aria-label": "Schließen", onclick: () => box.remove() }, icon("x", "icon sm")));
+  document.body.append(box);
+  requestAnimationFrame(() => box.classList.add("an"));
+  clearTimeout(belohnungTimer);
+  belohnungTimer = setTimeout(() => { box.classList.remove("an"); setTimeout(() => box.remove(), 300); }, gross ? 7000 : 3500);
+  konfetti(gross ? 60 : 14);
+}
+
+export function feiern(text) { belohnung(text, "", { gross: true }); }
+
+function konfetti(anzahl) {
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const farben = ["#d9a441", "#3567a6", "#2f8a55", "#e8b45c", "#8db4e8", "#ff8f87"];
   const box = el("div", { class: "konfetti", "aria-hidden": "true" });
-  for (let i = 0; i < 36; i++) {
+  for (let i = 0; i < anzahl; i++) {
     const stueck = el("span", {});
     stueck.style.left = `${Math.random() * 100}%`;
     stueck.style.background = farben[i % farben.length];
@@ -557,6 +615,7 @@ export function quelleText(q) {
 export function metaZeile(l, { datum = true, bereich = true } = {}) {
   const teile = [
     artBadge(l.art),
+    phaseBadge(l.phase),
     bereich ? el("span", {}, l.bereich) : null,
     sevPunkte(l.schweregrad, l.art),
     l.bestaetigungen > 1 ? el("span", {}, `${l.bestaetigungen}× ${artInfo(l.art).bestaetigt}`) : null,

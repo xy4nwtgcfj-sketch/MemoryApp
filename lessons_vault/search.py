@@ -34,6 +34,7 @@ class Filter:
     bis: str | None = None
     ohne_ueberholt: bool = False
     art: str | None = None
+    phase: str | None = None
 
     def sql(self, alias: str = "") -> tuple[str, list]:
         p = f"{alias}." if alias else ""
@@ -41,6 +42,9 @@ class Filter:
         if self.art:
             clauses.append(f"{p}art = ?")
             params.append(self.art)
+        if self.phase:
+            clauses.append(f"{p}phase = ?")
+            params.append(self.phase)
         if self.bereich:
             clauses.append(f"{p}bereich = ?")
             params.append(self.bereich)

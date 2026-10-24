@@ -1,6 +1,6 @@
 // Entwurfskarte: Was Claude (oder das lokale Modell) aus einer Notiz gemacht hat, prüfen und sichern.
 import {
-  ZIEL_LESSONS, MEILENSTEINE, SEVERITY, ART, ARTEN, artInfo, anf, api, bereiche, bestaetigen, debounce, diktatKnopf, el, errorNotice, fill, hinweisBox,
+  ZIEL_LESSONS, MEILENSTEINE, SEVERITY, ART, ARTEN, PHASEN, artInfo, anf, api, bereiche, bestaetigen, debounce, diktatKnopf, el, errorNotice, fill, hinweisBox,
   icon, istPruefung, kuerzen, ersetzenIn, ersetzenKnoepfe, refreshStats, say, statistikSofort, thumbsRow, toast,
 } from "./core.js";
 
@@ -35,6 +35,14 @@ export function lessonForm(data, { bereichListe, onChange, kompakt = false, kiAu
     aktive.map((b) => el("option", { value: b.name, selected: b.name === data.bereich }, b.name)));
   fields.bereich = bereichSelect;
   fehler.bereich = el("p", { class: "feld-fehler", id: `${p}-bereich-fehler` });
+  // Projektphase nur für berufliche Bereiche
+  const beruflich = new Set(bereichListe.filter((b) => b.beruflich).map((b) => b.name));
+  const phaseSelect = el("select", { id: `${p}-phase`, name: "phase", onchange: changed },
+    el("option", { value: "", selected: !data.phase }, "Alle Phasen"),
+    Object.entries(PHASEN).map(([v, tx]) => el("option", { value: v, selected: data.phase === v }, tx)));
+  fields.phase = phaseSelect;
+  const phaseWrap = el("div", { hidden: !beruflich.has(data.bereich) }, el("label", { for: `${p}-phase` }, "Projektphase"), phaseSelect);
+  bereichSelect.addEventListener("change", () => { phaseWrap.hidden = !beruflich.has(bereichSelect.value); });
 
   const sevSelect = el("select", { id: `${p}-schweregrad`, name: "schweregrad", onchange: changed },
     [1, 2, 3, 4, 5].map((n) => el("option", { value: n, selected: Number(data.schweregrad || 3) === n }, `${n} · ${SEVERITY[n]}`)));
@@ -57,6 +65,7 @@ export function lessonForm(data, { bereichListe, onChange, kompakt = false, kiAu
       lesson: fields.lesson.value.trim(),
       massnahme: fields.massnahme.value.trim(),
       bereich: fields.bereich.value,
+      phase: beruflich.has(fields.bereich.value) ? fields.phase.value : "",
       schweregrad: Number(fields.schweregrad.value),
       tags: fields.tags.value.split(",").map((t) => t.trim()).filter(Boolean),
       spezifisch: spezifisch.checked,
@@ -115,11 +124,12 @@ export function lessonForm(data, { bereichListe, onChange, kompakt = false, kiAu
       artSeg,
       regelFeld,
       el("div", { class: "grid2" }, el("div", {}, bereichFeld), el("div", {}, schwereFeld)),
+      phaseWrap,
       persoenlich,
       el("details", { class: "plain", style: "margin-top:8px" },
         el("summary", {}, kiAusgefuellt ? "Details, von Claude ausgefüllt" : "Details"),
         details))
-    : el("div", {}, artSeg, regelFeld, details, el("div", { class: "grid2" }, el("div", {}, bereichFeld), el("div", {}, schwereFeld)), persoenlich);
+    : el("div", {}, artSeg, regelFeld, details, el("div", { class: "grid2" }, el("div", {}, bereichFeld), el("div", {}, schwereFeld)), phaseWrap, persoenlich);
   return { node, read, pruefen, ersetzen, fields };
 }
 
@@ -144,6 +154,7 @@ export async function uebernehmen(eintrag) {
   const e = eintrag.entwurf;
   const body = lessonBody({
     art: ARTEN.includes(e.art) ? e.art : "erfahrung",
+    phase: e.phase || "",
     titel: e.titel, situation: e.situation, ereignis: e.ereignis, lesson: e.lesson, massnahme: e.massnahme,
     bereich: e.bereich, schweregrad: e.schweregrad || 3, tags: e.tags || [],
     spezifisch: e.spezifitaet === "allgemein" ? false : true,

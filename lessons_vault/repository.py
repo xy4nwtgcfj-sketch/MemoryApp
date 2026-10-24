@@ -15,7 +15,7 @@ from .models import Bereich, Einstellungen, Entwurf, EntwurfEintrag, Lesson, Les
 
 LESSON_COLUMNS = (
     "id, titel, situation, ereignis, lesson, massnahme, bereich, tags, schweregrad, status, "
-    "bestaetigungen, erstellt_am, geaendert_am, quelle, embedding_modell, erfassung_sekunden, spezifisch, art"
+    "bestaetigungen, erstellt_am, geaendert_am, quelle, embedding_modell, erfassung_sekunden, spezifisch, art, phase"
 )
 
 
@@ -131,13 +131,14 @@ class Repository:
         try:
             with self.conn:
                 self.conn.execute(
-                    f"INSERT INTO lessons({LESSON_COLUMNS}, embedding) VALUES ({', '.join('?' * 19)})",
+                    f"INSERT INTO lessons({LESSON_COLUMNS}, embedding) VALUES ({', '.join('?' * 20)})",
                     (
                         lesson_id, data.titel, data.situation, data.ereignis, data.lesson, data.massnahme,
                         data.bereich, json.dumps(data.tags, ensure_ascii=False), data.schweregrad, status,
                         bestaetigungen, erstellt, geaendert, data.quelle, embedding_modell, sekunden,
                         None if data.spezifisch is None else int(data.spezifisch),
                         data.art,
+                        data.phase,
                         vector_to_blob(embedding),
                     ),
                 )
@@ -641,6 +642,10 @@ class Repository:
             "wochen_betrachtet": 6,
             # Zähler: Einträge (neue Lessons und "erneut erlebt", ohne Import) je Kalenderwoche, neueste zuerst
             "wochen_zaehler": self._wochen_zaehler(26),
+            # Grundlage für Punkte und Level in der App
+            "bestaetigungen_erneut": q("SELECT COUNT(*) FROM bestaetigungen WHERE notiz != 'erstmals erlebt'").fetchone()[0],
+            "feedback_hilfreich_gesamt": q("SELECT COUNT(*) FROM briefing_feedback WHERE bewertung = 'hilfreich'").fetchone()[0],
+            "pro_phase": {r[0]: r[1] for r in q("SELECT phase, COUNT(*) FROM lessons WHERE phase != '' GROUP BY phase")},
         }
 
     def _wochen_zaehler(self, anzahl_wochen: int) -> list[dict[str, Any]]:

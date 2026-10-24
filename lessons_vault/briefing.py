@@ -160,6 +160,7 @@ def briefing_nachricht(situation: str, lessons: list[Lesson]) -> str:
                 {
                     "nr": i,
                     "art": l.art,
+                    "phase": l.phase or None,
                     "titel": l.titel,
                     "kern": l.lesson,
                     "kontext": l.situation,

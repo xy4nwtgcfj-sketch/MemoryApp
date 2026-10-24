@@ -13,6 +13,9 @@ Quelle = Literal["text", "sprache", "import"]
 # (situation = Kontext, ereignis = Inhalt, lesson = Kernaussage, massnahme = Anwendung).
 Art = Literal["erfahrung", "wissen", "vorgehen", "entscheidung"]
 ARTEN: tuple[str, ...] = ("erfahrung", "wissen", "vorgehen", "entscheidung")
+# Projektphase, nur für berufliche Bereiche; "" = phasenübergreifend
+Phase = Literal["", "sales", "concept", "build", "test", "cutover", "hypercare"]
+PHASEN: tuple[str, ...] = ("sales", "concept", "build", "test", "cutover", "hypercare")
 
 
 def _clean_tags(tags: list[str]) -> list[str]:
@@ -36,6 +39,7 @@ class LessonBase(BaseModel):
     # True = persönliche Erfahrung, False = eher Allgemeinwissen, None = nicht eingeschätzt
     spezifisch: bool | None = None
     art: Art = "erfahrung"
+    phase: Phase = ""
 
     @field_validator("titel", "situation", "ereignis", "lesson", "massnahme", "bereich")
     @classmethod
@@ -78,6 +82,7 @@ class LessonUpdate(BaseModel):
     status: Status | None = None
     spezifisch: bool | None = None
     art: Art | None = None
+    phase: Phase | None = None
 
     @field_validator("tags")
     @classmethod
@@ -156,6 +161,7 @@ class Entwurf(BaseModel):
     tags: list[str] = Field(default_factory=list)
     schweregrad: int = 3
     art: Art = "erfahrung"
+    phase: Phase = ""
     quelle: Quelle = "text"
     rueckfrage: str = ""
     # "pflichtfeld": Pflichtangabe fehlt; "spezifitaet": Frage nach dem persönlichen Teil

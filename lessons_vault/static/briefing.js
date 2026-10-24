@@ -161,6 +161,7 @@ export async function viewBriefing(id, params = {}) {
       store.setJson("lv-offen", { id: data.id, situation: text, t: Date.now() });
       einklappen(text);
       showBriefing(result, data);
+      refreshStats({ anlass: `Briefing erstellt · ${data.treffer.length} eigene Einträge gefunden` });
     } catch (err) {
       fill(result, errorNotice(err, { erneut: go }));
     } finally {
@@ -310,6 +311,7 @@ function showBriefing(container, data) {
         Object.assign(feedback, res);
         sync();
         say(neu === "hilfreich" ? "Als hilfreich markiert." : neu ? "Als unpassend markiert." : "Markierung entfernt.");
+        if (neu === "hilfreich") refreshStats({ anlass: "Dein Eintrag hat dir geholfen. Genau dafür sammelst du." });
       } catch (err) { toast(err.message, { fehler: true }); }
     };
     up.addEventListener("click", () => send("hilfreich"));
@@ -454,7 +456,12 @@ function showBriefing(container, data) {
       el("p", { class: "overline" }, titelText),
       el("p", { class: "lead" }, anf(res.zusammenfassung) || "Claude sah keinen klaren Bezug zu dieser Situation. Die Einträge unten sind trotzdem die besten Treffer."),
       res.ki_hinweis ? el("p", { class: "footnote" }, res.ki_hinweis) : null);
-    if (res.plan) { renderEigene(res.plan.besonderheiten || []); renderPlan(res.plan); return; }
+    if (res.plan) {
+      renderEigene(res.plan.besonderheiten || []);
+      renderPlan(res.plan);
+      if (res.plan.punkte_erfahrung) refreshStats({ anlass: `Dein Wissen hat gewirkt: ${res.plan.punkte_erfahrung} von ${res.plan.punkte_gesamt} Planpunkten kommen aus deinen Einträgen` });
+      return;
+    }
     renderEigene();
     if (istEntwurf) {
       renderChecklist(res.ki_checkliste || [], res.ki_checkliste?.length ? "Was im Entwurf fehlt, laut deinem Wissen (Claude)" : "Claude hat keine Lücken gefunden.");

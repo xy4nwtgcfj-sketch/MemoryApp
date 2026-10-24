@@ -187,6 +187,12 @@ MIGRATIONS: list[str] = [
         CHECK (art IN ('erfahrung', 'wissen', 'vorgehen', 'entscheidung'));
     CREATE INDEX idx_lessons_art ON lessons(art);
     """,
+    # Projektphase für berufliche Einträge (leer = phasenübergreifend)
+    """
+    ALTER TABLE lessons ADD COLUMN phase TEXT NOT NULL DEFAULT ''
+        CHECK (phase IN ('', 'sales', 'concept', 'build', 'test', 'cutover', 'hypercare'));
+    CREATE INDEX idx_lessons_phase ON lessons(phase);
+    """,
 ]
 
 

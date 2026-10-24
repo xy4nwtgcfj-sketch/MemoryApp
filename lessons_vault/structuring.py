@@ -9,7 +9,7 @@ from typing import Any
 import anthropic
 import httpx
 
-from .models import ARTEN, Bereich, DublettenKandidat, Entwurf, Quelle
+from .models import ARTEN, PHASEN, Bereich, DublettenKandidat, Entwurf, Quelle
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +41,12 @@ Du machst daraus einen Eintrag mit diesen Feldern:
 - massnahme: wie man es anwendet: ein konkreter Checklisten-Punkt, Prüfschritt oder nächster Schritt. Leer lassen,
   wenn sich keiner sinnvoll ableiten lässt.
 - bereich: einer der vorgegebenen Bereiche.
+- phase: nur für Bereiche, die als beruflich markiert sind, die Projektphase, zu der der Eintrag gehört:
+  "sales" (Angebot, Pitch, RFP, Vertrag, Verhandlung mit dem Kunden), "concept" (Workshops, Design, Template,
+  Scope, Blueprint), "build" (Konfiguration, Entwicklung, Build Factory), "test" (FUT, SIT, UAT, Testplanung,
+  Defects), "cutover" (Go-live-Vorbereitung, Cutover-Wochenende, Migration, Go/No-Go), "hypercare" (Betrieb
+  nach Go-live, Stabilisierung, Übergabe). Gilt der Eintrag für alle Phasen (Stakeholder, Führung,
+  Ressourcen, Karriere) oder ist der Bereich nicht beruflich, leerer String.
 - tags: 2 bis 5 kurze Schlagworte auf Englisch, die bei einer späteren Suche helfen.
 - schweregrad: 1 bis 5, wie wichtig der Eintrag ist. erfahrung: Wie teuer war es, das nicht zu wissen? wissen und
   vorgehen: Wie oft braucht man das, und wie teuer ist es, es nicht parat zu haben? entscheidung: Tragweite.
@@ -130,6 +136,7 @@ def build_schema(bereiche: list[str]) -> dict[str, Any]:
             "lesson": text,
             "massnahme": text,
             "bereich": {"type": "string", "enum": bereiche},
+            "phase": {"type": "string", "enum": ["", *PHASEN]},
             "tags": {"type": "array", "items": {"type": "string"}},
             "schweregrad": {"type": "integer", "enum": [1, 2, 3, 4, 5]},
             "compliance_hinweise": {"type": "array", "items": {"type": "string"}},
@@ -142,7 +149,7 @@ def build_schema(bereiche: list[str]) -> dict[str, Any]:
             "rueckfrage": text,
         },
         "required": [
-            "art", "titel", "situation", "ereignis", "lesson", "massnahme", "bereich", "tags",
+            "art", "titel", "situation", "ereignis", "lesson", "massnahme", "bereich", "phase", "tags",
             "schweregrad", "rueckfrage", "rueckfrage_art", "spezifitaet", "spezifitaet_hinweis",
             "compliance_hinweise", "dublette_von", "dublette_begruendung",
         ],
@@ -157,7 +164,7 @@ def build_user_message(
     rueckfrage: str,
     antwort: str,
 ) -> str:
-    bereich_info = "\n".join(f"- {b.name}: {b.beispiele}" for b in bereiche)
+    bereich_info = "\n".join(f"- {b.name}{' (beruflich, phase angeben)' if b.beruflich else ''}: {b.beispiele}" for b in bereiche)
     parts = [f"Verfügbare Bereiche:\n{bereich_info}", f"<eingabe>\n{text.strip()}\n</eingabe>"]
     if rueckfrage and antwort:
         parts.append(
@@ -271,8 +278,13 @@ class BasisStrukturierer:
         eintrag_art = str(data.get("art", "")).strip()
         if eintrag_art not in ARTEN:
             eintrag_art = "erfahrung"
+        phase = str(data.get("phase", "")).strip()
+        beruflich = {b.name for b in bereiche if b.beruflich}
+        if phase not in PHASEN or data.get("bereich") not in beruflich:
+            phase = ""
         entwurf = Entwurf(
             art=eintrag_art,
+            phase=phase,
             titel=titel,
             situation=str(data.get("situation", "")).strip(),
             ereignis=str(data.get("ereignis", "")).strip(),

@@ -50,6 +50,8 @@ export async function viewEinstellungen() {
   const fortschritt = el("section", {},
     el("h2", { style: "margin-top:8px" }, "Fortschritt"),
     el("div", { class: "tiles" },
+      el("div", { class: "tile" }, el("div", { class: "num" }, `Lv ${z.punkte.level}`, el("small", {}, ` · ${z.punkte.name}`)), el("div", { class: "lbl" }, `${z.punkte.xp} Punkte · noch ${z.punkte.bis - z.punkte.xp} bis Level ${z.punkte.level + 1}`),
+        el("div", { class: "progress own", "aria-hidden": "true" }, el("span", { style: `width:${Math.round(z.punkte.anteil * 100)}%` }))),
       el("div", { class: "tile" }, el("div", { class: "num" }, s.gesamt, el("small", {}, ` / ${z.naechster}`)), el("div", { class: "lbl" }, "Einträge bis zum nächsten Meilenstein"),
         el("div", { class: "progress own", "aria-hidden": "true" }, el("span", { style: `width:${prozent}%` }))),
       el("div", { class: "tile" }, el("div", { class: "num" }, el("span", { class: "serie-gross" }, icon("flame", "icon lg"), z.serie)),

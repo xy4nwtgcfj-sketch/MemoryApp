@@ -218,7 +218,7 @@ def test_ablauf(server, page):
     # Einstellungen: Fortschritt
     page.goto(f"{base}/#/einstellungen")
     expect(page.get_by_role("heading", name="Fortschritt")).to_be_visible()
-    expect(page.locator(".tile .num").first).to_contain_text("4")
+    expect(page.locator(".tile .num").nth(1)).to_contain_text("4")
     shot(page, "05-einstellungen")
 
     # Pflichtfelder: Regel fehlt -> Hinweis am Feld, Fokus dort
