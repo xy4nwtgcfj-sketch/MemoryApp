@@ -95,6 +95,10 @@ class BriefingAnfrage(BaseModel):
     modus: Literal["kombiniert", "eigen"] = "kombiniert"
 
 
+# Texte je Embedding-Aufruf: Lange Wissenseinträge und wenig RAM auf dem Host lassen 64 Texte in den Timeout laufen.
+EMBED_BATCH = 16
+
+
 class FeedbackIn(BaseModel):
     lesson_id: str
     bewertung: Literal["hilfreich", "nicht_relevant", ""]
@@ -1053,8 +1057,8 @@ def create_app(
         texte = [lesson_text(g.titel, g.situation, g.ereignis, g.lesson, g.massnahme, g.tags) for g in gueltige]
         vektoren: list[Any] = [None] * len(gueltige)
         try:
-            for start in range(0, len(texte), 64):
-                vektoren[start : start + 64] = provider.embed(texte[start : start + 64], "document")
+            for start in range(0, len(texte), EMBED_BATCH):
+                vektoren[start : start + EMBED_BATCH] = provider.embed(texte[start : start + EMBED_BATCH], "document")
         except EmbeddingFehler as exc:
             fehler.append(f"Embeddings fehlgeschlagen ({exc}). Lessons ohne Embedding importiert, bitte neu indexieren.")
         for item, vector in zip(gueltige, vektoren):
@@ -1069,8 +1073,8 @@ def create_app(
     def reindex() -> dict[str, Any]:
         lessons = repo.alle()
         anzahl = 0
-        for start in range(0, len(lessons), 64):
-            batch = lessons[start : start + 64]
+        for start in range(0, len(lessons), EMBED_BATCH):
+            batch = lessons[start : start + EMBED_BATCH]
             texte = [lesson_text(l.titel, l.situation, l.ereignis, l.lesson, l.massnahme, l.tags) for l in batch]
             try:
                 vektoren = provider.embed(texte, "document")
