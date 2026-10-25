@@ -2,12 +2,12 @@
 import { ausgangSenden, errorNotice, refreshStats, state, store, view } from "./core.js";
 import { viewBriefing } from "./briefing.js";
 import { viewEingang, viewEntwurf } from "./eingang.js";
-import { viewEinstellungen, viewZugang } from "./einstellungen.js";
+import { themaAnwenden, viewEinstellungen, viewFortschritt, viewZugang } from "./einstellungen.js";
 import { viewErfassen, viewErnte } from "./erfassen.js";
 import { editLesson, viewLesson, viewSuche } from "./suche.js";
 
-const thema = store.get("lv-theme", "");
-if (thema) document.documentElement.dataset.theme = thema;
+// Erscheinungsbild: Dunkel ist Standard ("" oder altes "dark"), "light" und "system" wählbar
+themaAnwenden(store.get("lv-theme", ""));
 if (!store.get("lv-erste-nutzung")) store.set("lv-erste-nutzung", String(Date.now()));
 
 const routes = [
@@ -15,13 +15,15 @@ const routes = [
   [/^#\/ernte$/, (p) => viewErnte(p), "erfassen"],
   [/^#\/briefing$/, (p) => viewBriefing(null, p), "briefing"],
   [/^#\/briefing\/([\w-]+)$/, (p, id) => viewBriefing(id, p), "briefing"],
-  [/^#\/eingang$/, () => viewEingang(), "eingang"],
-  [/^#\/pruefen$/, () => { location.replace("#/eingang"); }, "eingang"],
-  [/^#\/entwurf\/([\w-]+)$/, (p, id) => viewEntwurf(id), "eingang"],
+  [/^#\/eingang$/, () => viewEingang(), "mehr"],
+  [/^#\/pruefen$/, () => { location.replace("#/eingang"); }, "mehr"],
+  [/^#\/entwurf\/([\w-]+)$/, (p, id) => viewEntwurf(id), "mehr"],
   [/^#\/suche$/, (p) => viewSuche(p), "suche"],
   [/^#\/lesson\/([\w-]+)$/, (p, id) => viewLesson(id), "suche"],
   [/^#\/lesson\/([\w-]+)\/bearbeiten$/, (p, id) => editLesson(id), "suche"],
-  [/^#\/einstellungen$/, () => viewEinstellungen(), "einstellungen"],
+  [/^#\/fortschritt$/, () => viewFortschritt(), "mehr"],
+  [/^#\/einstellungen$/, () => viewEinstellungen(""), "mehr"],
+  [/^#\/einstellungen\/([a-z]+)$/, (p, teil) => viewEinstellungen(teil), "mehr"],
   [/^#\/zugang$/, (p) => viewZugang(p), ""],
 ];
 

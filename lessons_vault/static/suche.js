@@ -16,6 +16,8 @@ export async function viewSuche(params = {}) {
   const results = el("div", { id: "treffer" });
   const anzahl = el("p", { class: "sr-only", role: "status" });
   const q = el("input", { type: "search", id: "q", value: searchState.q, placeholder: "Stichwort oder Frage", enterkeyhint: "search", autocomplete: "off" });
+  const leeren = el("button", { type: "button", class: "leeren", "aria-label": "Eingabe löschen", hidden: !searchState.q,
+    onclick: () => { q.value = ""; searchState.q = ""; leeren.hidden = true; q.focus(); run(); } }, icon("x", "icon sm"));
   const aktiveFilter = () => FILTER.filter((k) => (k === "modus" ? searchState.modus !== "hybrid" : searchState[k])).length;
   const filterBtn = el("button", { type: "button", class: "text", "aria-expanded": "false", "aria-controls": "filter-panel" });
   const filterPanel = el("div", { id: "filter-panel", class: "card", hidden: true });
@@ -58,7 +60,7 @@ export async function viewSuche(params = {}) {
     }
   };
   let t;
-  q.addEventListener("input", () => { searchState.q = q.value; clearTimeout(t); t = setTimeout(run, 300); });
+  q.addEventListener("input", () => { searchState.q = q.value; leeren.hidden = !q.value; clearTimeout(t); t = setTimeout(run, 300); });
   q.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); q.blur(); } });
 
   const bereichListe = bereicheSofort();
@@ -106,7 +108,7 @@ export async function viewSuche(params = {}) {
   renderPhasen();
   if (!render(grosserTitel("Suchen"),
     el("div", { class: "row" },
-      el("div", { class: "grow", style: "position:relative" }, el("label", { for: "q", class: "sr-only" }, "Suchbegriff"), q),
+      el("div", { class: "suchfeld grow" }, icon("search"), el("label", { for: "q", class: "sr-only" }, "Suchbegriff"), q, leeren),
       filterBtn),
     Object.keys(proPhase).length ? phasenChips : null,
     filterPanel, anzahl, results)) return;
@@ -174,7 +176,7 @@ export async function viewLesson(id) {
       el("a", { class: "button icon-btn", href: `#/lesson/${l.id}/bearbeiten`, "aria-label": "Bearbeiten", style: "margin-top:4px" }, icon("pencil")),
       el("span", { style: "margin-top:4px" }, mehr)),
     el("p", { class: `quote ${l.spezifisch ? "own" : ""}` }, anf(l.lesson)),
-    metaZeile(l),
+    metaZeile(l, { voll: true }),
     data.hilfreich ? el("p", { class: "helped" }, icon("thumbs-up", "icon sm"), `${data.hilfreich}× im Briefing geholfen`) : null,
     el("dl", { class: "fields" },
       feld(a.anwendung, l.massnahme || (l.art === "erfahrung" ? "Noch offen. Was würdest du beim nächsten Mal konkret anders machen?" : "")),

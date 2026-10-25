@@ -49,7 +49,7 @@ Mustererkennung folgen nach der Abnahme von Phase 1 (drei Wochen echte Nutzung, 
     "Stimmte" oder "Anders". Bestätigte Punkte aus deinen Einträgen zählen als erneut erlebt; Abweichungen,
     bewährtes Fachwissen und dein Fazit werden als neue Einträge strukturiert (Eingang). Das schließt den Kreis
     und bringt 25 Punkte.
-  - **PowerPoint mit Marke:** Jeder Bereich hat in den Einstellungen eine Folien-Marke (Name, Untertitel,
+  - **PowerPoint mit Marke:** Jeder Bereich hat unter Mehr → Bereiche eine Folien-Marke (Name, Untertitel,
     Haupt- und Akzentfarbe, Schrift, Logo-Upload). Voreingestellt: Beruf = Deloitte (Schwarz, Grün, Open Sans),
     Immobilien = van Newboert Immobilien. Das Logo liegt als PNG unter `data\marken\` und bleibt auf dem PC.
 - **Fotos:**
@@ -64,9 +64,17 @@ Mustererkennung folgen nach der Abnahme von Phase 1 (drei Wochen echte Nutzung, 
   eine Lesson "bestätigt".
 - **Suche:** genaue Wörter (findet Wortteile: "Bank" findet "Finanzierungsbankgespräch") und ähnliche
   Bedeutung kombiniert, mit Filtern. Passende Notizen im Eingang werden mit angezeigt.
-- **Rhythmus ohne Druck:** Kopfzeile "23 / 60 · Woche ✓", freitags ein Wochenrückblick mit Leitfragen,
-  einmal am Tag "Erinnerst du dich?" mit einer älteren Lesson (Gilt noch, Schärfen, Überholt). Keine Serien,
-  keine Punkte: gezählt wird, in wie vielen der letzten 6 Wochen du aktiv warst.
+- **Rhythmus ohne Druck:** Eine Zeile Wochenziel unter dem Notizfeld, freitags ein Wochenrückblick mit
+  Leitfragen, einmal am Tag "Erinnerst du dich?" mit einer älteren Lesson (Gilt noch, Schärfen, Überholt).
+  Punkte, Level und Serie stehen auf der Seite **Fortschritt** (Pille oben rechts oder unter Mehr).
+- **Oberfläche (Design 2.0 „Obsidian“, seit 0.9.0):** Dunkel ist Standard, Hell oder System wählbar
+  (Mehr → Erscheinungsbild). Eine Aktionsfarbe (Limette), Gold bleibt deine Erfahrung, Violett Claude.
+  Vier Tabs: Erfassen, Briefing, Suchen, Mehr. Der **Eingang** erscheint als Zeile auf der Startseite und
+  unter Mehr, der Zähler in der Leiste zeigt offene Notizen. **Mehr** bündelt Fortschritt, Eingang,
+  offene Rückschauen, Bereiche und Datenschutz, Sperrliste, Erinnerungen, Bestand und Erweitert als
+  Unterseiten. Briefings mit Claude-Fachwissen haben vier Abschnitte (Überblick, Ausarbeitung mit blinden
+  Flecken, Einträge, Rückschau) statt einer Endlosseite. Karten zeigen nur Art als Farbpunkt,
+  Phase, Bereich und Datum; Gewicht und "eigene Erfahrung" stehen in der Detailansicht.
 
 ## iPhone: Kurzbefehl "Lesson merken"
 
@@ -85,7 +93,7 @@ Sperrbildschirm oder Rückseite antippen. Die Notiz landet strukturiert im Einga
 5. Name "Lesson merken". Unter Einstellungen > Bedienungshilfen > Tippen > Auf Rückseite tippen oder auf
    der Action-Taste ablegen.
 
-In der App unter Einstellungen > Erinnerungen stehen dieselben Schritte mit Knöpfen zum Kopieren von
+In der App unter Mehr > Erinnerungen und Kurzbefehl stehen dieselben Schritte mit Knöpfen zum Kopieren von
 Adresse und Header-Wert. Dort gibt es auch den **Wochenrückblick** (freitags 16:30, 10 Minuten) als
 Kalenderserie. Eine persönliche Automation in Kurzbefehle (Uhrzeit, z. B. täglich 17:30) kann den
 Kurzbefehl zusätzlich anstoßen. Für Notizen aus beruflichen Bereichen gilt: Das Diktat läuft über Apple.
@@ -162,7 +170,7 @@ Für Fotos im Bereich Beruf erkennt die App den Text lokal, damit das Foto selbs
 3. Standardpfad `C:\Program Files\Tesseract-OCR` beibehalten, dann findet die App Tesseract automatisch.
    Sonst den Pfad zu `tesseract.exe` als `LV_TESSERACT_CMD` in `.env` eintragen.
 
-Unter Einstellungen → KI-Strukturierung steht, ob die Texterkennung bereit ist. Handschrift erkennt
+Unter Mehr → Erweitert steht, ob die Texterkennung bereit ist. Handschrift erkennt
 Tesseract schlecht; für handschriftliche Notizen die Kernpunkte besser abtippen.
 
 ### 7. Autostart und tägliches Backup
@@ -204,7 +212,7 @@ Die App startet erst nach der Anmeldung. Für Neustarts ohne dich: automatische 
 - **Wiederherstellen:** `Stop-ScheduledTask -TaskName "Lessons Vault"`, die gewünschte `lessons-<zeit>.db`
   nach `data\lessons.db` kopieren (vorher `data\lessons.db-wal` und `-shm` löschen), Fotos aus
   `backups\bilder\` nach `data\bilder\` kopieren, `Start-ScheduledTask -TaskName "Lessons Vault"`.
-- Der JSON-Export unter Einstellungen enthält nur Lessons und Bereiche, keine Fotos und Briefings.
+- Der JSON-Export unter Mehr → Bestand enthält nur Lessons und Bereiche, keine Fotos und Briefings.
   Er ist gut zum Weitergeben oder Archivieren, ersetzt aber kein Backup.
 
 ### Aktualisieren
@@ -221,7 +229,7 @@ Die App auf dem Handy lädt die neue Version beim nächsten Öffnen.
 
 ## Datenschutz-Stufen und KI
 
-Unter Einstellungen → Bereiche und Datenschutz legst du pro Bereich eine Stufe fest:
+Unter Mehr → Bereiche und Datenschutz legst du pro Bereich eine Stufe fest:
 
 - **Nur lokal:** geht **nie** an Claude, auch nicht als Vergleichskandidat für die Dublettenprüfung anderer
   Bereiche. Ein lokales Modell strukturiert, ohne Modell füllst du selbst aus. Notizen, die einmal lokal
@@ -265,8 +273,7 @@ vorhandene semantische Embeddings.
 
 `startbestand/vorlage.json` enthält drei als BEISPIEL markierte Lessons, die Form und Abstraktionsgrad
 zeigen. Ersetze sie durch deine 20 bis 30 eigenen Lessons und importiere die Datei unter
-Einstellungen → Bestand → Importieren. Ohne PC geht es direkt am iPhone: Einstellungen → Bestand →
-"Startbestand mit Fragen anlegen". Pflicht: `titel` (max. 80 Zeichen), `situation`, `ereignis`, `lesson`
+Mehr → Bestand → Importieren. Ohne PC geht es direkt am iPhone: Mehr → Startbestand mit Fragen. Pflicht: `titel` (max. 80 Zeichen), `situation`, `ereignis`, `lesson`
 (ein Satz als Regel), `bereich`, `schweregrad` (1–5). Optional: `massnahme`, `tags`, `bestaetigungen`,
 `erstellt_am` (`YYYY-MM-DD`).
 
@@ -294,7 +301,7 @@ Einstellungen → Bestand → Importieren. Ohne PC geht es direkt am iPhone: Ein
   - *Berufliche Bereiche und ohne Bereichswahl:* Das Foto bleibt auf dem PC. Der Text wird lokal erkannt,
     du prüfst und kürzt ihn, und nur dieser Text (plus deine Notiz, ebenfalls geprüft) geht an Claude.
     Für berufliche Bereiche lässt sich das nicht auf "Claude sieht das Foto" umstellen.
-  - *Private Bereiche:* Claude sieht das Foto selbst (umstellbar unter Einstellungen).
+  - *Private Bereiche:* Claude sieht das Foto selbst (umstellbar unter Mehr → Bereiche).
   - *Bereiche auf "lokal":* Weder Foto noch Text gehen an Claude.
   - Fotos, die nie an einer Lesson oder einem Briefing hingen, werden nach 2 Tagen gelöscht.
   - **Hinweis:** Fotos von Kundenfolien auf dem privaten PC zu speichern, gehört ausdrücklich in deinen

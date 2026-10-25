@@ -221,11 +221,17 @@ def test_ablauf(server, page):
     expect(page.locator(".meta").first).to_contain_text("bestätigt")
     shot(page, "04-detail")
 
-    # Einstellungen: Fortschritt
-    page.goto(f"{base}/#/einstellungen")
+    # Fortschritt: eigene Seite hinter der Pille oben rechts
+    expect(page.locator("#stats")).to_have_attribute("href", "#/fortschritt")
+    page.goto(f"{base}/#/fortschritt")
     expect(page.get_by_role("heading", name="Fortschritt")).to_be_visible()
     expect(page.locator(".tile .num").nth(1)).to_contain_text("4")
-    shot(page, "05-einstellungen")
+    shot(page, "05-fortschritt")
+    # "Mehr" bündelt Eingang, Bereiche, Sperrliste, Bestand und Erweitert als Unterseiten
+    page.goto(f"{base}/#/einstellungen")
+    expect(page.get_by_role("heading", name="Mehr")).to_be_visible()
+    expect(page.get_by_role("link", name=re.compile("^Sperrliste"))).to_be_visible()
+    shot(page, "05b-mehr")
 
     # Pflichtfelder: Regel fehlt -> Hinweis am Feld, Fokus dort
     frisch(page, base)
@@ -267,7 +273,7 @@ def test_lokaler_ablauf(server, page):
     expect(page.locator("#toast")).to_contain_text("Übernommen")
     expect(zeile).to_have_count(0)
 
-    page.goto(f"{base}/#/einstellungen")
+    page.goto(f"{base}/#/einstellungen/bereiche")
     # Bereichsdetails sind eingeklappt; Beruf ist der erste Bereich
     page.locator("details.bereich-details").first.locator("> summary").click()
     gruppe = page.get_by_role("group", name="Datenschutz-Stufe Beruf")
@@ -291,6 +297,10 @@ def test_briefing_kombiniert(server, page):
     page.get_by_role("button", name="Briefing erstellen").click()
     expect(page.get_by_text("Hypercare braucht klare Eskalationswege")).to_be_visible()
     expect(page.get_by_text("Hier weichst du vom Üblichen ab")).to_be_visible()
+    # Vier Abschnitte statt einer Endlosseite: Überblick zuerst, die Ausarbeitung per Segment
+    expect(page.locator(".kennzahlen .tile").first).to_contain_text(re.compile("eigene[r]? Eintr"))
+    expect(page.get_by_role("heading", name="Vor dem Go-live")).to_be_hidden()
+    page.get_by_role("button", name="Ausarbeitung", exact=True).click()
     expect(page.get_by_role("heading", name="Vor dem Go-live")).to_be_visible()
     expect(page.locator("button.src.eigen")).to_have_count(1)
     page.get_by_text("Als Checkliste abhaken").click()  # Checkliste liegt eingeklappt unter der Ausarbeitung
@@ -316,9 +326,10 @@ def test_briefing_kombiniert(server, page):
     expect(page.get_by_text("Ticket inflow below a threshold")).to_be_visible()
     shot(page, "15-briefing-kombiniert")
     page.get_by_role("button", name="Als Wissen übernehmen").click()
-    expect(page.get_by_text("Lücke geschlossen")).to_be_visible()
+    expect(page.get_by_text("Lücke geschlossen", exact=True)).to_be_visible()
     expect(page.locator(".belohnung")).to_contain_text("Lücke geschlossen")
-    # Rückschau: Planpunkte mit der Wirklichkeit abgleichen
+    # Rückschau: eigener Abschnitt, Planpunkte mit der Wirklichkeit abgleichen
+    page.get_by_role("button", name="Rückschau", exact=True).click()
     page.get_by_text("Wie lief es? Plan mit der Wirklichkeit abgleichen").click()
     punkte = page.locator(".rs-punkt")
     expect(punkte).to_have_count(3)
@@ -371,7 +382,7 @@ def test_briefing(server, page):
     eintrag.click()
     expect(page.get_by_text("Fordere die Unterlagenliste der Bank vorab an")).to_be_visible()
 
-    page.goto(f"{base}/#/einstellungen")
+    page.goto(f"{base}/#/fortschritt")
     expect(page.locator(".tile", has_text="Briefings mit hilfreichem Eintrag")).to_contain_text("1")
     assert page.errors == []
 

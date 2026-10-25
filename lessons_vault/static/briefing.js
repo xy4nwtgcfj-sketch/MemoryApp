@@ -294,9 +294,34 @@ function showBriefing(container, data, params = {}) {
 
   const summaryCard = el("div", { class: "card hero" });
   const eigeneSlot = el("div");
+  const besonderheitenSlot = el("div");
+  const kennzahlenSlot = el("div");
   const planSlot = el("div");
   const beruecksichtigtSlot = el("div");
   const titelText = istEntwurf ? "Abgleich mit deinen Erfahrungen" : "Worauf es ankommt";
+
+  // Mit Claude-Fachwissen ist das Briefing lang. Vier Abschnitte statt einer Endlosseite:
+  // Überblick, Ausarbeitung (mit blinden Flecken), Deine Einträge, Rückschau.
+  const abschnitte = { ueberblick: el("div"), ausarbeitung: el("div"), eigene: el("div"), rueckschau: el("div") };
+  const segKnoepfe = {};
+  let aktiverAbschnitt = params.rueckschau === "1" ? "rueckschau" : "ueberblick";
+  const zeigeAbschnitt = (k, scrollen = false) => {
+    aktiverAbschnitt = k;
+    for (const [key, node] of Object.entries(abschnitte)) node.hidden = key !== k;
+    for (const [key, b] of Object.entries(segKnoepfe)) b.setAttribute("aria-pressed", String(key === k));
+    if (scrollen) {
+      const oben = segmente.getBoundingClientRect().top + window.scrollY - 60;
+      if (window.scrollY > oben) window.scrollTo({ top: oben, behavior: "auto" });
+    }
+  };
+  const segmente = el("div", { class: "segmented segmente", role: "group", "aria-label": "Abschnitte des Briefings" },
+    [["ueberblick", "Überblick"], ["ausarbeitung", "Ausarbeitung"], ["eigene", "Einträge"], ["rueckschau", "Rückschau"]].map(([k, t]) => {
+      const b = el("button", { type: "button", "aria-pressed": String(k === aktiverAbschnitt), onclick: () => zeigeAbschnitt(k, true) }, t,
+        k === "eigene" && data.treffer.length ? el("small", {}, String(data.treffer.length)) : null,
+        k === "rueckschau" && data.rueckschau ? icon("check", "icon sm") : null);
+      segKnoepfe[k] = b;
+      return b;
+    }));
 
   // Eigene Lessons als Karten mit Feedback (Daumen hoch/runter)
   const lessonKarte = (t) => {
@@ -335,12 +360,15 @@ function showBriefing(container, data, params = {}) {
   };
 
   const renderEigene = (besonderheiten = []) => {
+    const abweichungen = besonderheiten.length ? el("div", { class: "card own" },
+      el("p", { class: "overline", style: "color:var(--own)" }, "Hier weichst du vom Üblichen ab"),
+      el("ul", { class: "checklist" }, besonderheiten.map((b) => el("li", {},
+        el("span", {}, anf(b.punkt), titelVon[b.lesson_id] ? el("a", { class: "src eigen", href: `#/lesson/${b.lesson_id}` }, icon("user"), anf(titelVon[b.lesson_id].titel)) : null))))) : null;
+    // Im Plan stehen die Abweichungen im Überblick, sonst über den eigenen Karten
+    fill(besonderheitenSlot, istPlan ? abweichungen : null);
     fill(eigeneSlot,
-      data.treffer.length ? el("h2", { class: "row", style: "gap:8px" }, icon("user"), "Aus deinen Einträgen") : null,
-      besonderheiten.length ? el("div", { class: "card own" },
-        el("p", { class: "overline", style: "color:var(--own)" }, "Hier weichst du vom Üblichen ab"),
-        el("ul", { class: "checklist" }, besonderheiten.map((b) => el("li", {},
-          el("span", {}, anf(b.punkt), titelVon[b.lesson_id] ? el("a", { class: "src eigen", href: `#/lesson/${b.lesson_id}` }, icon("user"), anf(titelVon[b.lesson_id].titel)) : null))))) : null,
+      data.treffer.length && !istPlan ? el("h2", { class: "row", style: "gap:8px" }, icon("user"), "Aus deinen Einträgen") : null,
+      istPlan ? null : abweichungen,
       stark.map(lessonKarte),
       data.treffer.length ? el("p", { class: "footnote" }, "Markiere, was geholfen hat. Das verbessert künftige Briefings.") : null);
   };
@@ -407,13 +435,17 @@ function showBriefing(container, data, params = {}) {
           })),
         ]));
     fill(planSlot,
-      el("div", { class: "row", style: "margin:32px 0 12px;gap:8px" },
+      el("div", { class: "row", style: "margin:4px 0 12px;gap:8px" },
         el("h2", { class: "row grow", style: "gap:8px;margin:0" }, icon("clipboard-list"), ausarbeitung ? "Ausarbeitung" : "Plan"),
         pptxBtn),
       ausarbeitung,
       checkliste);
+    fill(kennzahlenSlot, el("div", { class: "kennzahlen" },
+      el("div", { class: "tile" }, el("p", { class: "num gold" }, String(data.treffer.length)), el("p", { class: "lbl" }, data.treffer.length === 1 ? "eigener Eintrag" : "eigene Einträge")),
+      el("div", { class: "tile" }, el("p", { class: "num" }, String(alle.length)), el("p", { class: "lbl" }, "Punkte im Plan")),
+      el("div", { class: "tile" }, el("p", { class: "num violett" }, String((plan.luecken || []).length)), el("p", { class: "lbl" }, "blinde Flecken"))));
     fill(lueckenSlot, lueckenAbschnitt(data, plan, titelVon));
-    fill(rueckschauSlot, rueckschauKarte(data, plan, params.rueckschau === "1"));
+    fill(rueckschauSlot, rueckschauKarte(data, plan, params.rueckschau === "1") || el("p", { class: "footnote" }, "Für dieses Briefing gibt es keine Planpunkte zum Abgleichen."));
     // Die offene Frage auf der Startseite führt später zur Rückschau dieses Plans
     const offen = store.json("lv-offen", null);
     if (offen && offen.id === data.id && !offen.plan) store.setJson("lv-offen", { ...offen, plan: true });
@@ -495,22 +527,39 @@ function showBriefing(container, data, params = {}) {
       : "Nichts an Claude gesendet."));
   const neuFormulieren = data.ki_moeglich ? el("button", { type: "button", class: "text", onclick: () => loadSummary(true) }, icon("refresh", "icon sm"), "Neu formulieren") : null;
 
-  fill(container, el("div", {},
-    data.bilder?.length ? el("div", { class: "card" }, el("p", { class: "overline" }, "Geprüfter Entwurf"), thumbsRow(data.bilder)) : null,
-    kopfZeile,
-    !data.treffer.length ? el("div", { class: "notice info" }, icon("info"), el("div", {}, el("strong", {}, "Dazu hast du noch keine eigenen Erfahrungen."), "Der Plan ist reines Fachwissen von Claude.")) : null,
-    data.ki_moeglich || data.zusammenfassung ? summaryCard : (data.ki_hinweis ? el("p", { class: "footnote" }, data.ki_hinweis) : null),
-    // Mit Claude-Fachwissen steht die kuratierte Antwort vorn, die eigenen Lessons dienen als Beleg darunter.
-    istPlan ? planSlot : eigeneSlot,
-    istPlan ? lueckenSlot : null,
-    istPlan ? eigeneSlot : planSlot,
-    beruecksichtigtSlot,
-    istPlan ? rueckschauSlot : null,
-    (!data.treffer.length || (data.plan && !data.plan.punkte_erfahrung)) && !istEntwurf ? lueckenKarte(data) : null,
-    weitere.length ? el("details", { class: "card", style: "margin-top:24px" },
-      el("summary", {}, `Weitere, weniger passende Treffer (${weitere.length})`),
-      weitere.map(lessonKarte)) : null,
-    el("div", { class: "row", style: "flex-wrap:wrap" }, fuss, neuFormulieren)));
+  const ohneEigene = !data.treffer.length ? el("div", { class: "notice info" }, icon("info"), el("div", {}, el("strong", {}, "Dazu hast du noch keine eigenen Erfahrungen."), "Der Plan ist reines Fachwissen von Claude.")) : null;
+  const summaryOderHinweis = data.ki_moeglich || data.zusammenfassung ? summaryCard : (data.ki_hinweis ? el("p", { class: "footnote" }, data.ki_hinweis) : null);
+  const weitereBlock = weitere.length ? el("details", { class: "card", style: "margin-top:24px" },
+    el("summary", {}, `Weitere, weniger passende Treffer (${weitere.length})`),
+    weitere.map(lessonKarte)) : null;
+  const einladung = (!data.treffer.length || (data.plan && !data.plan.punkte_erfahrung)) && !istEntwurf ? lueckenKarte(data) : null;
+  const fussZeile = el("div", { class: "row", style: "flex-wrap:wrap" }, fuss, neuFormulieren);
+
+  if (istPlan) {
+    fill(rueckschauSlot, el("p", { class: "footnote" }, "Die Rückschau erscheint, sobald der Plan steht."));
+    fill(abschnitte.ueberblick, ohneEigene, summaryOderHinweis, kennzahlenSlot, besonderheitenSlot);
+    fill(abschnitte.ausarbeitung, planSlot, lueckenSlot);
+    fill(abschnitte.eigene, eigeneSlot, einladung, weitereBlock);
+    fill(abschnitte.rueckschau, rueckschauSlot);
+    zeigeAbschnitt(aktiverAbschnitt);
+    fill(container, el("div", {},
+      data.bilder?.length ? el("div", { class: "card" }, el("p", { class: "overline" }, "Geprüfter Entwurf"), thumbsRow(data.bilder)) : null,
+      kopfZeile, segmente,
+      abschnitte.ueberblick, abschnitte.ausarbeitung, abschnitte.eigene, abschnitte.rueckschau,
+      fussZeile));
+  } else {
+    fill(container, el("div", {},
+      data.bilder?.length ? el("div", { class: "card" }, el("p", { class: "overline" }, "Geprüfter Entwurf"), thumbsRow(data.bilder)) : null,
+      kopfZeile,
+      ohneEigene,
+      summaryOderHinweis,
+      eigeneSlot,
+      planSlot,
+      beruecksichtigtSlot,
+      einladung,
+      weitereBlock,
+      fussZeile));
+  }
   if (data.zusammenfassung || data.plan) showSummary(data);
   else if (data.ki_moeglich || data._wechsel) loadSummary();
 }
@@ -587,7 +636,7 @@ function lueckenAbschnitt(data, plan, titelVon) {
     return box;
   };
   return el("section", { class: "luecken" },
-    el("h2", { class: "row", style: "gap:8px;margin-top:32px" }, icon("lightbulb"), "Blinde Flecken"),
+    el("h2", { class: "row", style: "gap:8px;margin-top:28px" }, icon("lightbulb"), "Blinde Flecken"),
     el("p", { class: "footnote", style: "margin:0 0 10px" }, `Dazu sagen deine Einträge noch nichts. Claude hat die ${luecken.length === 1 ? "Lücke" : `${luecken.length} Lücken`} mit Fachwissen geschlossen; übernimm es oder halte deine eigene Erfahrung fest.`),
     luecken.map(karte));
 }
@@ -597,7 +646,7 @@ function lueckenAbschnitt(data, plan, titelVon) {
 function rueckschauKarte(data, plan, offen = false) {
   const alle = plan.abschnitte.flatMap((a) => a.punkte);
   if (!alle.length) return null;
-  const titel = el("h2", { class: "row", style: "gap:8px;margin-top:32px" }, icon("refresh"), "Rückschau");
+  const titel = el("h2", { class: "row", style: "gap:8px;margin:4px 0 12px" }, icon("refresh"), "Rückschau");
   if (data.rueckschau) {
     const r = data.rueckschau;
     const bewertet = r.punkte.filter((p) => p.ergebnis);

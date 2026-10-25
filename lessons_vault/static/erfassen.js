@@ -1,8 +1,8 @@
 // Erfassen: erst sichern, dann veredeln. Jede Notiz liegt sofort auf dem PC, Claude strukturiert danach.
 import {
-  ZIEL_LESSONS, MAX_FOTOS, anf, ansicht, aufZaehler, zaehlerKarte, api, ausgangAdd, bereiche, bereicheSofort, debounce, diktatKnopf, el,
+  ZIEL_LESSONS, MAX_FOTOS, anf, ansicht, artInfo, aufZaehler, zaehlerKarte, eingangZeile, api, ausgangAdd, bereiche, bereicheSofort, debounce, diktatKnopf, el,
   errorNotice, fill, fokusAufTitel, fotoInput, fotosHochladen, grosserTitel, heute, hinweisBox, icon, istOffline,
-  kopf, kuerzen, refreshStats, say, skeleton, statistikSofort, status, statusSofort, store, thumbsRow, toast,
+  kopf, kuerzen, refreshStats, relTime, say, skeleton, statistikSofort, status, statusSofort, store, thumbsRow, toast,
   wochenSchluessel, ersetzenIn,
 } from "./core.js";
 import { abschlussKarte, entwurfKarte, rueckgaengig, uebernehmen } from "./entwurf.js";
@@ -26,9 +26,9 @@ function startTimer() { if (!capture.start) { capture.start = Date.now(); sicher
 function sekunden() { return capture.start ? Math.round((Date.now() - capture.start) / 100) / 10 : null; }
 
 const MODUS_ZEILE = {
-  claude: ["cloud", "Claude strukturiert. Namen und Projektdaten prüft die App vorher."],
-  lokal: ["lock", "Bleibt auf deinem PC und wird dort strukturiert."],
-  manuell: ["pencil", "Ohne KI: „Sichern“ öffnet das Formular, „Nur merken“ legt die Notiz in den Eingang."],
+  claude: ["cloud", "Claude strukturiert", "Claude strukturiert die Notiz. Namen und Projektdaten prüft die App vorher."],
+  lokal: ["lock", "Bleibt auf deinem PC", "Bleibt auf deinem PC und wird dort strukturiert."],
+  manuell: ["pencil", "Ohne KI", "Ohne KI: „Sichern“ öffnet das Formular, „Nur merken“ legt die Notiz in den Eingang."],
 };
 
 function modusFuer(st, bereich) {
@@ -66,7 +66,7 @@ export async function viewErfassen(params = {}) {
   const oben = el("div", { id: "erfassen-oben" });
   const ergebnis = el("div", { id: "draft" });
   const fehlerSlot = el("div");
-  const modusZeile = el("p", { class: "footnote row", style: "gap:8px;margin:12px 0 0" });
+  const modusZeile = el("p", { class: "modus" });
   const chips = el("div", { class: "chips", role: "group", "aria-labelledby": "bereich-label" });
   const bereichBlock = el("div", {}, el("p", { class: "overline", id: "bereich-label", style: "margin-top:16px" }, "Bereich ", el("span", { style: "text-transform:none;letter-spacing:0;font-weight:400" }, "(optional)")), chips);
   const sichernBtn = el("button", { type: "button", class: "primary" }, "Sichern");
@@ -83,8 +83,9 @@ export async function viewErfassen(params = {}) {
   }) : null);
 
   const updateModus = () => {
-    const [sym, text] = MODUS_ZEILE[modusFuer(st, capture.bereich)] || MODUS_ZEILE.manuell;
+    const [sym, text, lang] = MODUS_ZEILE[modusFuer(st, capture.bereich)] || MODUS_ZEILE.manuell;
     fill(modusZeile, icon(sym, "icon sm"), el("span", {}, text));
+    modusZeile.title = lang;
   };
   const renderChips = () => {
     const aktive = bereichListe.filter((b) => b.aktiv);
@@ -104,9 +105,10 @@ export async function viewErfassen(params = {}) {
     }, capture.bereich === b.name ? icon("check") : null, b.name, modusFuer(st, b.name) === "lokal" ? el("small", {}, "lokal") : null)));
   };
 
+  // Die Eingabe ist das größte Element der Seite: Diktat, Foto und der Hinweis, wer strukturiert, sitzen im Feld.
   const composer = el("div", { id: "composer" },
     el("label", { for: textId, style: "margin-top:0" }, "Was willst du festhalten?"),
-    el("div", { class: "composer" }, textarea, el("div", { class: "tools" }, mic, fotoBtn)),
+    el("div", { class: "composer gross" }, textarea, el("div", { class: "tools" }, mic, fotoBtn), modusZeile),
     textFehler,
     el("p", { class: "hint", id: "capture-hint" }, "Kurz ist gut. Du kannst später ergänzen."),
     wiederhergestellt ? el("p", { class: "footnote row", style: "gap:8px" }, icon("undo", "icon sm"),
@@ -115,7 +117,6 @@ export async function viewErfassen(params = {}) {
     thumbs,
     fotoPanel,
     bereichBlock,
-    modusZeile,
     fehlerSlot,
     // Fest über der Leiste, damit Sichern ohne Scrollen erreichbar ist
     el("div", { class: "sticky-actions" }, sichernBtn, merkenBtn));
@@ -438,15 +439,17 @@ export async function viewErfassen(params = {}) {
   renderChips();
   updateModus();
   renderThumbs();
-  // Notizfeld zuerst: Tageskarten (Woche, Wiedersehen …) stehen darunter und verdrängen das Erfassen nicht.
-  // Zähler: kompakt über dem Notizfeld, aktualisiert sich nach jedem Sichern
-  const zaehlerSlot = el("div", { id: "zaehler" });
-  const zeigeZaehler = (s) => { if (s && zaehlerSlot.isConnected !== false) fill(zaehlerSlot, zaehlerKarte(s)); };
+  // Notizfeld zuerst. Darunter eine Zeile Wochenziel, der Eingang (falls etwas wartet), Tageskarten und die
+  // zuletzt gesicherten Einträge. Der Zähler aktualisiert sich nach jedem Sichern.
+  const zaehlerSlot = el("div", { id: "zaehler", style: "margin-top:16px" });
+  const zeigeZaehler = (s) => { if (s && zaehlerSlot.isConnected !== false) fill(zaehlerSlot, zaehlerKarte(s), eingangZeile(s)); };
   zeigeZaehler(statistikSofort());
   const abmelden = aufZaehler((s) => { if (!render.aktiv()) { abmelden(); return; } zeigeZaehler(s); });
-  const ok = render(grosserTitel("Erfassen"), zaehlerSlot, oben, composer, fotoIn, notizZeile, ergebnis, tagesSlot);
+  const zuletztSlot = el("div", { id: "zuletzt" });
+  const ok = render(grosserTitel("Erfassen"), oben, composer, fotoIn, notizZeile, ergebnis, zaehlerSlot, tagesSlot, zuletztSlot);
   if (!ok) return;
   fokusAufTitel();
+  zuletztGesichert(zuletztSlot, render);
 
   // Läuft noch ein Entwurf aus einer vorherigen Sitzung? Dann dort weitermachen.
   const laufend = store.get("lv-laufend");
@@ -477,8 +480,25 @@ async function heuteKarte(slot, textarea) {
     textarea.focus();
     textarea.setSelectionRange(text.length, text.length);
   };
-  const karte = ernteKarte(s) || offeneSchleife(vorbelegen) || wochenKarte(s, vorbelegen) || await wiedersehenKarte(s) || eingangHinweis(s);
+  const karte = ernteKarte(s) || offeneSchleife(vorbelegen) || wochenKarte(s, vorbelegen) || await wiedersehenKarte(s);
   if (karte && !slot.childNodes.length) fill(slot, karte);
+}
+
+// Die drei zuletzt gesicherten Einträge, als kurze Liste mit Art und Bereich
+async function zuletztGesichert(slot, render) {
+  let items;
+  try { items = await api("/api/suche?limit=3"); } catch { return; }
+  if (!render.aktiv() || !items?.length) return;
+  fill(slot,
+    el("div", { class: "row", style: "margin:20px 0 8px" },
+      el("h2", { class: "grow", style: "margin:0" }, "Zuletzt gesichert"),
+      el("a", { href: "#/suche", class: "footnote", style: "font-weight:500" }, "Alle")),
+    el("ul", { class: "list" }, items.map(({ lesson: l }) => el("li", { style: "padding:0" },
+      el("a", { class: "li grow", href: `#/lesson/${l.id}` },
+        el("span", { class: `art art-${l.art || "erfahrung"}`, "aria-hidden": "true" }),
+        el("span", { class: "grow" }, el("span", { style: "display:block;font-weight:600" }, anf(l.titel)),
+          el("span", { class: "li-sub" }, `${artInfo(l.art).label} · ${l.bereich} · ${relTime(l.erstellt_am)}`)),
+        icon("chevron-right", "icon sm chev"))))));
 }
 
 function schliessen(karte, key, wert) {
@@ -580,12 +600,6 @@ async function wiedersehenKarte(s) {
         },
       }, "Überholt")));
   return karte;
-}
-
-function eingangHinweis(s) {
-  if (!s.offene_entwuerfe) return null;
-  return el("a", { class: "card result row", href: "#/eingang", style: "gap:12px" },
-    icon("inbox"), el("span", { class: "grow" }, `${s.offene_entwuerfe} Notiz${s.offene_entwuerfe > 1 ? "en warten" : " wartet"} im Eingang`), icon("chevron-right", "icon sm"));
 }
 
 // ---------------------------------------------------------------- Ernte-Modus (Startbestand)

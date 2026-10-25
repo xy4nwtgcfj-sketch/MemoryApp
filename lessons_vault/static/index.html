@@ -5,15 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Lessons Vault</title>
   <meta name="description" content="Persönliche Lessons-Learned-Datenbank">
-  <meta name="theme-color" content="#f7f6f3" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0e1116" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#0b0d12">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Lessons">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <!-- Schriften: Space Grotesk für Überschriften und Zahlen, Inter für Text; ohne Netz greifen die Systemschriften -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -68,7 +71,7 @@
       <svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg><span id="nav-back-text">Zurück</span>
     </button>
     <span class="topbar-title" id="topbar-title" aria-hidden="true"></span>
-    <a class="progress-pill" id="stats" href="#/einstellungen" hidden></a>
+    <a class="progress-pill" id="stats" href="#/fortschritt" hidden></a>
   </header>
   <div id="offline" class="offline" role="status" hidden>
     <svg class="icon" aria-hidden="true"><use href="#i-wifi-off"/></svg>
@@ -80,9 +83,8 @@
   <nav class="tabbar" aria-label="Hauptnavigation">
     <a href="#/erfassen" data-tab="erfassen"><svg class="icon" aria-hidden="true"><use href="#i-square-pen"/></svg><span>Erfassen</span></a>
     <a href="#/briefing" data-tab="briefing"><svg class="icon" aria-hidden="true"><use href="#i-clipboard-list"/></svg><span>Briefing</span></a>
-    <a href="#/eingang" data-tab="eingang"><svg class="icon" aria-hidden="true"><use href="#i-inbox"/></svg><span>Eingang</span><b id="eingang-count" class="count" hidden></b></a>
     <a href="#/suche" data-tab="suche"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><span>Suchen</span></a>
-    <a href="#/einstellungen" data-tab="einstellungen"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg><span>Einstellungen</span></a>
+    <a href="#/einstellungen" data-tab="mehr"><svg class="icon" aria-hidden="true"><use href="#i-more"/></svg><span>Mehr</span><b id="eingang-count" class="count" hidden></b></a>
   </nav>
   <script src="app.js" type="module"></script>
 </body>

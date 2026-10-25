@@ -421,19 +421,18 @@ export function statsAnzeigen(s) {
   if (!s) return;
   statsEl.hidden = false;
   const z = zaehlerStand(s);
+  // Ruhig: nur Ring und Level. Alles Weitere steht auf der Fortschrittsseite, zu der die Pille führt.
   fill(statsEl,
-    ring(z.punkte.anteil, 20, false),
-    el("span", { class: "lvl" }, `Lv ${z.punkte.level}`),
-    el("span", { class: `woche ${z.erreicht ? "ok" : ""}` }, `${z.diese}/${z.ziel}`),
-    z.serie ? el("span", { class: "serie" }, icon("flame", "icon sm"), z.serie) : null);
-  statsEl.title = "Level, Wochenziel und Serie";
-  statsEl.setAttribute("aria-label", `Level ${z.punkte.level} ${z.punkte.name}, ${z.punkte.xp} Punkte. Diese Woche ${z.diese} von ${z.ziel} Einträgen${z.serie ? `, ${z.serie} ${z.serie === 1 ? "Woche" : "Wochen"} in Folge` : ""}, ${z.gesamt} Einträge insgesamt`);
+    ring(z.punkte.anteil, 24, false),
+    el("span", { class: "lvl" }, `Lv ${z.punkte.level}`));
+  statsEl.title = "Fortschritt ansehen";
+  statsEl.setAttribute("aria-label", `Fortschritt: Level ${z.punkte.level} ${z.punkte.name}, ${z.punkte.xp} Punkte. Diese Woche ${z.diese} von ${z.ziel} Einträgen${z.serie ? `, ${z.serie} ${z.serie === 1 ? "Woche" : "Wochen"} in Folge` : ""}, ${z.gesamt} Einträge insgesamt`);
   zaehlerHoerer.forEach((fn) => { try { fn(s); } catch { /* Ansicht weg */ } });
   const badge = document.getElementById("eingang-count");
   badge.hidden = !s.offene_entwuerfe;
   badge.textContent = s.offene_entwuerfe || "";
-  const link = document.querySelector('.tabbar a[data-tab="eingang"]');
-  link.setAttribute("aria-label", s.offene_entwuerfe ? `Eingang, ${s.offene_entwuerfe} offen` : "Eingang");
+  const link = document.querySelector('.tabbar a[data-tab="mehr"]');
+  link.setAttribute("aria-label", s.offene_entwuerfe ? `Mehr, ${s.offene_entwuerfe} im Eingang` : "Mehr");
 }
 // ---------------------------------------------------------------- Belohnungen: Punkte, Level, Wochenziel, Serie, Wirkung
 // Wochen statt Tage: Ein freier Tag bricht keine Serie. Punkte gibt es für Input (Einträge, Bestätigungen)
@@ -482,10 +481,10 @@ export function zaehlerStand(s) {
 }
 
 // Fortschrittsring als SVG (nur Zahlen im Markup, daher sicher)
-export function ring(anteil, groesse = 20, voll = false) {
+export function ring(anteil, groesse = 20, voll = false, klasse = "") {
   const r = 8, u = 2 * Math.PI * r;
   const wert = Math.max(0, Math.min(1, anteil || 0));
-  const span = el("span", { class: `ring ${voll ? "voll" : ""}`, "aria-hidden": "true" });
+  const span = el("span", { class: `ring ${voll ? "voll" : ""} ${klasse}`, "aria-hidden": "true" });
   span.innerHTML = `<svg viewBox="0 0 20 20" width="${groesse}" height="${groesse}"><circle cx="10" cy="10" r="${r}" class="ring-bg"/>` +
     `<circle cx="10" cy="10" r="${r}" class="ring-fg" stroke-dasharray="${(wert * u).toFixed(2)} ${u.toFixed(2)}" transform="rotate(-90 10 10)"/></svg>`;
   return span;
@@ -493,29 +492,30 @@ export function ring(anteil, groesse = 20, voll = false) {
 
 const nf = new Intl.NumberFormat("de-DE");
 
+// Eine ruhige Zeile auf der Startseite: Wochenziel-Ring, Level und Serie. Die Details stehen unter Fortschritt.
 export function zaehlerKarte(s) {
   const z = zaehlerStand(s);
   const pk = z.punkte;
   const fehlt = Math.max(0, z.ziel - z.diese);
-  const bisMeilenstein = z.naechster - z.gesamt;
-  return el("a", { class: `card zaehler ${z.erreicht ? "erreicht" : ""}`, href: "#/einstellungen", "aria-label": "Fortschritt ansehen" },
-    el("div", { class: "zaehler-kopf" },
-      el("span", { class: "level-badge" }, el("b", {}, `Level ${pk.level}`), ` · ${pk.name}`),
-      el("span", { class: "xp" }, `${nf.format(pk.xp)} Punkte`)),
-    el("div", { class: "progress xp-bar", "aria-hidden": "true" }, el("span", { style: `width:${Math.round(pk.anteil * 100)}%` })),
-    el("p", { class: "zaehler-sub" }, `Noch ${nf.format(pk.bis - pk.xp)} Punkte bis Level ${pk.level + 1} · ${pk.naechsterName}`),
-    el("div", { class: "zaehler-zeile" },
-      el("div", { class: "zaehler-ring" }, ring(z.diese / z.ziel, 44, z.erreicht), el("span", { class: `zaehler-zahl ${String(z.diese).length > 2 ? "klein" : ""}` }, String(z.diese))),
-      el("div", { class: "grow" },
-        el("p", { class: "zaehler-titel" }, z.erreicht ? `Wochenziel geschafft · ${z.diese} von ${z.ziel}` : `Wochenziel ${z.diese} von ${z.ziel} · noch ${fehlt}`),
-        el("p", { class: "zaehler-serie" }, icon("flame", "icon sm"),
-          z.serie ? `${z.serie} ${z.serie === 1 ? "Woche" : "Wochen"} in Folge` : "Erreiche das Wochenziel und starte eine Serie"))),
-    el("div", { class: "zaehler-wirkung" },
-      el("span", {}, icon("clipboard-list", "icon sm"), `${pk.briefings} Briefings`),
-      el("span", {}, icon("user", "icon sm"), `${pk.planpunkte}× dein Wissen im Plan`),
-      el("span", {}, icon("thumbs-up", "icon sm"), `${pk.hilfreich}× geholfen`),
-      pk.rueckschauen ? el("span", {}, icon("refresh", "icon sm"), `${pk.rueckschauen}× Kreis geschlossen`) : null),
-    el("p", { class: "zaehler-meilenstein" }, `${z.gesamt} Einträge · noch ${bisMeilenstein} bis ${z.naechster}`));
+  return el("a", { class: `card zaehler ${z.erreicht ? "erreicht" : ""}`, href: "#/fortschritt", "aria-label": "Fortschritt ansehen" },
+    el("div", { class: "zaehler-ring" }, ring(z.diese / z.ziel, 44, z.erreicht), el("span", { class: `zaehler-zahl ${String(z.diese).length > 2 ? "klein" : ""}` }, String(z.diese))),
+    el("div", { class: "grow" },
+      el("p", { class: "zaehler-titel" }, z.erreicht ? "Wochenziel erreicht" : `Wochenziel: noch ${fehlt} ${fehlt === 1 ? "Eintrag" : "Einträge"}`),
+      el("p", { class: "zaehler-sub" }, `Level ${pk.level} · ${pk.name} · ${nf.format(pk.xp)} Punkte`,
+        z.serie ? ` · ${z.serie} ${z.serie === 1 ? "Woche" : "Wochen"} in Folge` : "")),
+    icon("chevron-right", "icon sm chev"));
+}
+
+// Eingang als Zeile auf der Startseite, nur wenn dort etwas wartet
+export function eingangZeile(s) {
+  const n = s?.offene_entwuerfe || 0;
+  if (!n) return null;
+  return el("a", { class: "card zaehler", href: "#/eingang", "aria-label": `Eingang, ${n} ${n === 1 ? "Entwurf wartet" : "Entwürfe warten"}` },
+    el("span", { class: "ic", style: "width:44px;height:44px;border-radius:14px;background:var(--surface-2);color:var(--text-2);display:inline-flex;align-items:center;justify-content:center;flex:none" }, icon("inbox")),
+    el("div", { class: "grow" },
+      el("p", { class: "zaehler-titel" }, "Eingang"),
+      el("p", { class: "zaehler-sub" }, n === 1 ? "1 Entwurf wartet auf deinen Blick" : `${n} Entwürfe warten auf deinen Blick`)),
+    el("span", { class: "zahl" }, String(n)));
 }
 
 function feiernWennNoetig(vorher, jetzt, anlass = "") {
@@ -559,7 +559,7 @@ export function feiern(text) { belohnung(text, "", { gross: true }); }
 
 function konfetti(anzahl) {
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const farben = ["#d9a441", "#3567a6", "#2f8a55", "#e8b45c", "#8db4e8", "#ff8f87"];
+  const farben = ["#c8f55a", "#e3b458", "#6ee7a0", "#aab4ff", "#ff9f6e", "#4fd1c5"];
   const box = el("div", { class: "konfetti", "aria-hidden": "true" });
   for (let i = 0; i < anzahl; i++) {
     const stueck = el("span", {});
@@ -612,21 +612,24 @@ export function quelleText(q) {
   return { sprache: "per Diktat", text: "per Text", import: "aus dem Startbestand" }[q] || "";
 }
 
-// Eine Meta-Zeile statt vieler Badges: Bereich · Schwere · erlebt · Datum
-export function metaZeile(l, { datum = true, bereich = true } = {}) {
+// Eine ruhige Meta-Zeile: Art als Farbpunkt · Phase · Bereich · Datum, rechts der Status.
+// In Listen bleibt es dabei; die Detailansicht (voll) zeigt zusätzlich Gewicht und "eigene Erfahrung".
+export function metaZeile(l, { datum = true, bereich = true, voll = false } = {}) {
+  const a = artInfo(l.art);
   const teile = [
-    artBadge(l.art),
-    phaseBadge(l.phase),
+    el("span", { class: `art art-${ART[l.art] ? l.art : "erfahrung"}`, title: a.label }, a.label),
+    PHASEN[l.phase] ? el("span", {}, PHASEN[l.phase]) : null,
     bereich ? el("span", {}, l.bereich) : null,
-    sevPunkte(l.schweregrad, l.art),
-    l.bestaetigungen > 1 ? el("span", {}, `${l.bestaetigungen}× ${artInfo(l.art).bestaetigt}`) : null,
+    voll ? sevPunkte(l.schweregrad, l.art) : null,
     datum ? el("span", {}, formatDate(l.erstellt_am, true)) : null,
   ].filter(Boolean);
+  const status = l.status === "überholt" ? el("span", { class: "badge" }, "überholt")
+    : l.status === "bestätigt" ? el("span", { class: "badge success" }, icon("check"), `bestätigt${l.bestaetigungen > 1 ? ` · ${l.bestaetigungen}× ${a.bestaetigt}` : ""}`)
+      : l.bestaetigungen > 1 ? el("span", { class: "badge success" }, icon("check"), `${l.bestaetigungen}× ${a.bestaetigt}`) : null;
   return el("p", { class: "meta" },
     teile.map((t, i) => (i ? [el("span", { class: "sep", "aria-hidden": "true" }), t] : t)),
-    l.spezifisch === true ? el("span", { class: "badge own" }, icon("user"), "eigene Erfahrung") : null,
-    l.status === "bestätigt" ? el("span", { class: "badge success" }, "bestätigt") : null,
-    l.status === "überholt" ? el("span", { class: "badge" }, "überholt") : null);
+    voll && l.spezifisch === true ? el("span", { class: "badge own" }, icon("user"), "eigene Erfahrung") : null,
+    status ? el("span", { class: "status" }, status) : null);
 }
 
 export function lessonKarte(l, { href = `#/lesson/${l.id}`, extra = null } = {}) {
