@@ -121,15 +121,26 @@ class Marke(BaseModel):
 
     name: str = Field(default="", max_length=60)
     untertitel: str = Field(default="", max_length=120)
+    # Hauptfarbe: Titelfolie (Stil dunkel) und Überschriften; Akzent: Marken, Sterne, Linien
     farbe: str = Field(default="#1F3A5F", pattern=r"^#[0-9A-Fa-f]{6}$")
     akzent: str = Field(default="#D9A441", pattern=r"^#[0-9A-Fa-f]{6}$")
+    # Stil dunkel: Titelfolie in der Hauptfarbe, Logo oben rechts. Stil hell: Titelfolie auf `hintergrund`,
+    # Wortmarke statt Logo auf den Inhaltsfolien, Illustration (Logo) groß auf der Titelfolie.
+    stil: Literal["dunkel", "hell"] = "dunkel"
+    hintergrund: str = Field(default="#F4F1E9", pattern=r"^#[0-9A-Fa-f]{6}$")
     schrift: str = Field(default="Calibri", max_length=40)
+    # Schrift für Überschriften und Wortmarke; leer = wie `schrift`
+    schrift_titel: str = Field(default="", max_length=40)
 
 
 # Voreinstellung je Bereich; der Nutzer passt sie in den Einstellungen an.
 STANDARD_MARKEN: dict[str, Marke] = {
     "Beruf": Marke(name="Deloitte", farbe="#000000", akzent="#86BC25", schrift="Open Sans"),
-    "Immobilien": Marke(name="van Newboert Immobilien", farbe="#1C2B3A", akzent="#B08D57", schrift="Georgia"),
+    # Nach dem van-Newboert-Master: Creme, Anthrazit, Gold; Serifen-Überschriften, Wortmarke in Versalien
+    "Immobilien": Marke(
+        name="VAN NEWBOERT", untertitel="IMMOBILIEN", farbe="#1B1D1A", akzent="#9C7F52", stil="hell",
+        hintergrund="#F4F1E9", schrift="Calibri", schrift_titel="Georgia",
+    ),
 }
 
 

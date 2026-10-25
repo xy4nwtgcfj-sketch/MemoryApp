@@ -141,14 +141,17 @@ export async function viewEinstellungen() {
 
   // Folien-Marke: Name, Farben, Schrift und Logo für die PowerPoint-Ausgabe von Briefings dieses Bereichs
   const markeBlock = (b) => {
-    const m = { name: "", untertitel: "", farbe: "#1F3A5F", akzent: "#D9A441", schrift: "Calibri", logo: false, ...(marken[b.name] || einst.marken?.[b.name] || {}) };
+    const m = { name: "", untertitel: "", farbe: "#1F3A5F", akzent: "#D9A441", stil: "dunkel", hintergrund: "#F4F1E9", schrift: "Calibri", schrift_titel: "", logo: false, ...(marken[b.name] || einst.marken?.[b.name] || {}) };
     const id = (f) => `marke-${f}-${b.name}`;
     const probe = el("div", { class: "marke-probe" });
     const probeZeichnen = () => {
-      probe.style.background = m.farbe;
-      probe.style.color = hell(m.farbe) ? "#1a1d21" : "#ffffff";
-      fill(probe, el("span", { class: "strich", style: `background:${m.akzent}` }), el("span", { style: `font-family:'${m.schrift}',sans-serif` }, m.name || "Ohne Marke"),
+      const grund = m.stil === "hell" ? m.hintergrund : m.farbe;
+      probe.style.background = grund;
+      probe.style.color = m.stil === "hell" ? m.farbe : (hell(m.farbe) ? "#1a1d21" : "#ffffff");
+      fill(probe, el("span", { class: "strich", style: `background:${m.akzent}` }),
+        el("span", { style: `font-family:'${m.schrift_titel || m.schrift}',serif;letter-spacing:${m.stil === "hell" ? ".08em" : "0"}` }, m.name || "Ohne Marke"),
         el("span", { style: "margin-left:auto;font-weight:400;font-size:.8125rem;opacity:.85" }, "Titelfolie"));
+      hintergrundFeld.hidden = m.stil !== "hell";
     };
     const sichern = debounce(async () => {
       try {
@@ -162,6 +165,14 @@ export async function viewEinstellungen() {
       el("input", { id: id(f), type: typ, value: m[f], maxlength: max, oninput: (e) => { m[f] = e.target.value; probeZeichnen(); sichern(); } }));
     const schrift = el("select", { id: id("schrift"), onchange: (e) => { m.schrift = e.target.value; probeZeichnen(); sichern(); } },
       SCHRIFTEN.map((sName) => el("option", { value: sName, selected: m.schrift === sName ? "" : null }, sName)));
+    const schriftTitel = el("select", { id: id("schrift_titel"), onchange: (e) => { m.schrift_titel = e.target.value; probeZeichnen(); sichern(); } },
+      [["", "Wie Fließtext"], ...SCHRIFTEN.map((sName) => [sName, sName])].map(([v, t]) => el("option", { value: v, selected: (m.schrift_titel || "") === v ? "" : null }, t)));
+    const stilSeg = el("div", { class: "segmented", role: "group", "aria-label": "Stil der Titelfolie" }, [["dunkel", "Dunkel: Hauptfarbe als Grund, Logo klein"], ["hell", "Hell: heller Grund, Wortmarke, Illustration groß"]].map(([v, t]) => el("button", {
+      type: "button", "aria-pressed": String(m.stil === v), title: t,
+      onclick: (e) => { m.stil = v; e.currentTarget.parentElement.querySelectorAll("button").forEach((k) => k.setAttribute("aria-pressed", String(k === e.currentTarget))); probeZeichnen(); sichern(); },
+    }, v === "dunkel" ? "Dunkel" : "Hell")));
+    const hintergrundFeld = el("div", {}, el("label", { for: id("hintergrund") }, "Grund der Titelfolie"),
+      el("input", { id: id("hintergrund"), type: "color", value: m.hintergrund, oninput: (e) => { m.hintergrund = e.target.value; probeZeichnen(); sichern(); } }));
     const logoSlot = el("div", { style: "margin-top:8px" });
     const datei = el("input", { type: "file", accept: "image/png,image/jpeg", class: "sr-only", tabindex: "-1", "aria-hidden": "true" });
     datei.addEventListener("change", async () => {
@@ -188,7 +199,7 @@ export async function viewEinstellungen() {
             try { await api(`/api/marken/${encodeURIComponent(b.name)}/logo`, { method: "DELETE" }); m.logo = false; say("Logo entfernt."); logoZeichnen(); }
             catch (err) { toast(err.message, { fehler: true }); }
           } }, "Entfernen") : null),
-        el("p", { class: "footnote", style: "margin:4px 0 0" }, "Erscheint oben rechts auf jeder Folie und auf der Titelfolie. Bleibt auf dem PC."));
+        el("p", { class: "footnote", style: "margin:4px 0 0" }, m.stil === "hell" ? "Erscheint als große Illustration auf der Titelfolie. Bleibt auf dem PC." : "Erscheint oben rechts auf jeder Folie und auf der Titelfolie. Bleibt auf dem PC."));
     };
     probeZeichnen();
     logoZeichnen();
@@ -197,9 +208,12 @@ export async function viewEinstellungen() {
       el("div", { class: "marke-felder" },
         feld("name", "Name", { voll: true }),
         feld("untertitel", "Untertitel auf der Titelfolie", { max: 120, voll: true }),
+        el("div", { class: "voll" }, el("p", { class: "label", style: "margin:0 0 4px;font-size:.875rem" }, "Stil"), stilSeg),
         feld("farbe", "Hauptfarbe", { typ: "color" }),
         feld("akzent", "Akzentfarbe", { typ: "color" }),
-        el("div", { class: "voll" }, el("label", { for: id("schrift") }, "Schrift"), schrift)),
+        hintergrundFeld,
+        el("div", {}, el("label", { for: id("schrift") }, "Schrift Fließtext"), schrift),
+        el("div", {}, el("label", { for: id("schrift_titel") }, "Schrift Überschriften"), schriftTitel)),
       probe, logoSlot, datei);
   };
   const neuerBereich = el("input", { type: "text", id: "neuer-bereich", placeholder: "Neuer Bereich" });

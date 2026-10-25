@@ -267,7 +267,7 @@ def test_marke_und_logo_fuer_powerpoint(env):
     # Voreinstellung: Beruf trägt die Deloitte-Marke, Immobilien van Newboert
     einst = client.get("/api/einstellungen").json()
     assert einst["marken"]["Beruf"]["name"] == "Deloitte" and einst["marken"]["Beruf"]["akzent"] == "#86BC25"
-    assert einst["marken"]["Immobilien"]["name"].startswith("van Newboert")
+    assert einst["marken"]["Immobilien"]["name"] == "VAN NEWBOERT" and einst["marken"]["Immobilien"]["stil"] == "hell"
     # Marke anpassen, unbekannte Bereiche fallen weg
     r = client.put("/api/einstellungen", json={"marken": {**einst["marken"], "Beruf": {**einst["marken"]["Beruf"], "untertitel": "Internal"}, "Nix": {"name": "x"}}}).json()
     assert r["marken"]["Beruf"]["untertitel"] == "Internal" and "Nix" not in r["marken"]
@@ -296,6 +296,20 @@ def test_marke_und_logo_fuer_powerpoint(env):
     # Logo entfernen
     assert client.delete("/api/marken/Beruf/logo").status_code == 204
     assert client.get("/api/marken").json()["Beruf"]["logo"] is False
+
+    # Heller Stil (van Newboert): Wortmarke auf den Inhaltsfolien, Illustration nur auf der Titelfolie
+    add(titel="WEG-Protokolle vor dem Kauf lesen", bereich="Immobilien", lesson="Vor dem Kauf die WEG-Protokolle der letzten drei Jahre lesen.")
+    assert client.post("/api/marken/Immobilien/logo", files={"datei": ("logo.jpg", bild.getvalue(), "image/jpeg")}).status_code == 201
+    data = client.post("/api/briefing", json={"situation": "Besichtigung einer Eigentumswohnung", "bereich": "Immobilien"}).json()
+    client.post(f"/api/briefing/{data['id']}/zusammenfassung")
+    praes = Presentation(io.BytesIO(client.get(f"/api/briefing/{data['id']}/pptx").content))
+    texte = [" ".join(sh.text_frame.text for sh in folie.shapes if sh.has_text_frame) for folie in praes.slides]
+    assert "VAN NEWBOERT" in texte[0] and "IMMOBILIEN" in texte[0]
+    assert all("VAN NEWBOERT" in t for t in texte[1:])  # Wortmarke oben rechts
+    bilder = [sh for folie in praes.slides for sh in folie.shapes if sh.shape_type == 13]
+    assert len(bilder) == 1  # Illustration nur auf der Titelfolie
+    schriften = {r.font.name for sh in praes.slides[1].shapes if sh.has_text_frame for p in sh.text_frame.paragraphs for r in p.runs}
+    assert {"Georgia", "Calibri"} <= schriften
 
 
 def test_kombiniert_ist_standard(env):
