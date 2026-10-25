@@ -2,7 +2,7 @@
 import {
   ZIEL_LESSONS, MAX_FOTOS, anf, ansicht, artInfo, aufZaehler, zaehlerKarte, eingangZeile, api, ausgangAdd, bereiche, bereicheSofort, debounce, diktatKnopf, el,
   errorNotice, fill, fokusAufTitel, fotoInput, fotosHochladen, grosserTitel, heute, hinweisBox, icon, istOffline,
-  kopf, kuerzen, refreshStats, relTime, say, skeleton, statistikSofort, status, statusSofort, store, thumbsRow, toast,
+  kopf, kuerzen, refreshStats, relTime, say, skeleton, statistikSofort, status, statusSofort, store, textareaAnpassen, thumbsRow, toast,
   wochenSchluessel, ersetzenIn,
 } from "./core.js";
 import { abschlussKarte, entwurfKarte, rueckgaengig, uebernehmen } from "./entwurf.js";
@@ -51,12 +51,13 @@ export async function viewErfassen(params = {}) {
   const textarea = el("textarea", {
     id: textId,
     class: "capture",
-    placeholder: "Erfahrung, Wissen, Vorgehen oder Entscheidung. Drei Stichworte reichen.\nz. B. „Bankgespräch, Gehaltsnachweise vergessen, zweiter Termin“ oder „Wave-Schnitt: kritische Läger nach hinten, keine Peak Seasons“",
+    placeholder: "Drei Stichworte reichen, z. B. „Bankgespräch, Gehaltsnachweise vergessen, zweiter Termin“.",
     "aria-describedby": "capture-hint",
     enterkeyhint: "enter",
     oninput: () => { startTimer(); capture.text = textarea.value; textarea.removeAttribute("aria-invalid"); fill(textFehler); sichernLokal(); },
   });
   textarea.value = capture.text;
+  requestAnimationFrame(() => textareaAnpassen(textarea));
   const textFehler = el("p", { class: "feld-fehler", id: "capture-fehler" });
 
   const mic = diktatKnopf(textarea, { onStart: () => { startTimer(); capture.quelle = "sprache"; sichernLokal(); } });

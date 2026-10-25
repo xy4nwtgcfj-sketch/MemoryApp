@@ -201,6 +201,17 @@ export function toast(text, { aktion = null, fehler = false, ms } = {}) {
   toastTimerStart(dauer);
 }
 
+// ---------------------------------------------------------------- Textfelder, die mitwachsen
+// Chromium regelt das per CSS (field-sizing: content). Safari kennt das nicht; dort setzt das Skript die Höhe
+// nach jeder Eingabe auf den Inhalt, höchstens 60 % des Fensters.
+const feldWaechstPerCss = Boolean(window.CSS?.supports?.("field-sizing", "content"));
+export function textareaAnpassen(feld) {
+  if (feldWaechstPerCss || !feld || feld.tagName !== "TEXTAREA") return;
+  feld.style.height = "auto";
+  feld.style.height = `${Math.min(feld.scrollHeight + 2, Math.round(window.innerHeight * 0.6))}px`;
+}
+if (!feldWaechstPerCss) document.addEventListener("input", (e) => textareaAnpassen(e.target));
+
 // ---------------------------------------------------------------- Formatierung
 export function debounce(fn, ms) {
   let t;

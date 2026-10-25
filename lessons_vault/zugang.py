@@ -14,7 +14,9 @@ from starlette.responses import JSONResponse, Response
 log = logging.getLogger(__name__)
 
 CSP = (
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob:; "
+    # Schriften (Inter, Space Grotesk) kommen von Google Fonts; alles andere bleibt beim eigenen Ursprung.
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com; img-src 'self' blob:; "
     "connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 )
 

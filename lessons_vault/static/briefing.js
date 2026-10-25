@@ -107,12 +107,17 @@ export async function viewBriefing(id, params = {}) {
   const entwurfPanel = el("div");
   let bereichListe = bereicheSofort().filter((b) => b.aktiv);
   const chips = el("div", { class: "chips", role: "group", "aria-label": "Bereich (optional)" });
-  const renderChips = () => fill(chips, bereichListe.map((b) => el("button", {
-    type: "button",
-    class: "chip",
-    "aria-pressed": String(briefingState.bereich === b.name),
-    onclick: () => { briefingState.bereich = briefingState.bereich === b.name ? "" : b.name; renderChips(); },
-  }, briefingState.bereich === b.name ? icon("check") : null, b.name)));
+  const chipsBlock = el("div", { style: "margin-top:12px" }, chips);
+  const renderChips = () => {
+    // Beim allerersten Start sind die Bereiche noch nicht da; der Block erscheint, sobald sie geladen sind.
+    chipsBlock.hidden = bereichListe.length < 2;
+    fill(chips, bereichListe.map((b) => el("button", {
+      type: "button",
+      class: "chip",
+      "aria-pressed": String(briefingState.bereich === b.name),
+      onclick: () => { briefingState.bereich = briefingState.bereich === b.name ? "" : b.name; renderChips(); },
+    }, briefingState.bereich === b.name ? icon("check") : null, b.name)));
+  };
   renderChips();
   bereiche().then((b) => { bereichListe = b.filter((x) => x.aktiv); renderChips(); }).catch(() => {});
 
@@ -126,7 +131,7 @@ export async function viewBriefing(id, params = {}) {
     el("div", { class: "composer" }, situation, el("div", { class: "tools" }, mic, pruefBtn)),
     fehler,
     el("p", { class: "hint" }, "Ein Satz genügt. Mit der Kamera prüfst du einen fertigen Plan gegen deine Erfahrung."),
-    bereichListe.length > 1 || bereicheSofort().length > 1 ? el("div", { style: "margin-top:12px" }, chips) : null,
+    chipsBlock,
     el("div", { class: "row", style: "margin-top:16px;gap:12px" },
       el("label", { for: "pptx-schalter", class: "grow", style: "margin:0;font-weight:500" }, "Auch als PowerPoint",
         el("span", { class: "li-sub" }, "Lädt den Plan nach dem Erstellen als .pptx herunter")),

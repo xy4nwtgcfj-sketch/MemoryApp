@@ -6,7 +6,7 @@ import {
 } from "./core.js";
 import { lessonForm, loeschenBestaetigen } from "./entwurf.js";
 
-const searchState = { q: "", modus: "hybrid", art: "", phase: "", bereich: "", status: "", schweregrad_min: "", von: "", bis: "" };
+const searchState = { q: "", modus: "hybrid", art: "", phase: "", bereich: "", status: "", schweregrad_min: "", von: "", bis: "", aktiv: "" };
 const FILTER = ["art", "phase", "bereich", "status", "schweregrad_min", "von", "bis", "modus"];
 
 export async function viewSuche(params = {}) {
@@ -106,14 +106,36 @@ export async function viewSuche(params = {}) {
     onclick: () => { searchState.phase = searchState.phase === v ? "" : v; renderPhasen(); updateFilterBtn(); const sel = document.getElementById("s-phase"); if (sel) sel.value = searchState.phase; run(); },
   }, tx, el("small", {}, String(proPhase[v] || 0)))));
   renderPhasen();
-  if (!render(grosserTitel("Suchen"),
+
+  // Desktop: zwei Spalten. Ein Treffer öffnet rechts, die Liste bleibt stehen. Am Handy bleibt es die Detailseite.
+  const breit = matchMedia("(min-width: 900px)");
+  const detail = el("aside", { class: "suche-detail", "aria-label": "Eintrag" });
+  const detailLeer = () => fill(detail, el("div", { class: "empty" }, el("span", { class: "empty-icon" }, icon("search")),
+    el("h2", {}, "Wähle einen Treffer"), el("p", {}, "Der Eintrag erscheint hier, die Liste bleibt stehen.")));
+  const detailZeigen = async (id) => {
+    searchState.aktiv = id;
+    results.querySelectorAll(".result").forEach((r) => r.classList.toggle("aktiv", r.dataset.id === id));
+    fill(detail, skeleton());
+    const node = await lessonDetail(id, { neuLaden: () => detailZeigen(id) });
+    if (render.aktiv() && searchState.aktiv === id) { fill(detail, node); detail.scrollTop = 0; }
+  };
+  results.addEventListener("click", (e) => {
+    const karte = e.target.closest("a.result");
+    if (!karte || !breit.matches || !karte.dataset.id) return;
+    e.preventDefault();
+    detailZeigen(karte.dataset.id);
+  });
+  detailLeer();
+  const liste = el("div", { class: "suche-liste" },
     el("div", { class: "row" },
       el("div", { class: "suchfeld grow" }, icon("search"), el("label", { for: "q", class: "sr-only" }, "Suchbegriff"), q, leeren),
       filterBtn),
     Object.keys(proPhase).length ? phasenChips : null,
-    filterPanel, anzahl, results)) return;
+    filterPanel, anzahl, results);
+  if (!render(grosserTitel("Suchen"), el("div", { class: "suche-layout" }, liste, detail))) return;
   fokusAufTitel();
-  run();
+  await run();
+  if (breit.matches && searchState.aktiv && results.querySelector(`.result[data-id="${searchState.aktiv}"]`)) detailZeigen(searchState.aktiv);
 }
 
 // ---------------------------------------------------------------- Detail
@@ -122,15 +144,20 @@ export async function viewLesson(id) {
   const zurueck = { text: "Zurück", href: "#/suche" };
   kopf("Eintrag", zurueck);
   render(skeleton());
+  const node = await lessonDetail(id, { neuLaden: () => viewLesson(id), titel: (t) => kopf(t, zurueck), seite: true });
+  if (render(node)) fokusAufTitel();
+}
+
+// Der Eintrag als Baustein: ganze Seite (seite = true, mit großem Titel) oder rechte Spalte der Suche.
+async function lessonDetail(id, { neuLaden, titel = () => {}, seite = false }) {
   let data;
   try {
     data = await api(`/api/lessons/${encodeURIComponent(id)}`);
   } catch (err) {
-    render(grosserTitel("Eintrag"), errorNotice(err), el("a", { href: "#/suche" }, "Zur Suche"));
-    return;
+    return el("div", {}, seite ? grosserTitel("Eintrag") : null, errorNotice(err), seite ? el("a", { href: "#/suche" }, "Zur Suche") : null);
   }
   const l = data.lesson;
-  kopf(l.titel, zurueck);
+  titel(l.titel);
   const compliance = hinweisKompakt(data.compliance_hinweise);
 
   const a = artInfo(l.art);
@@ -142,7 +169,7 @@ export async function viewLesson(id) {
       const updated = await api(`/api/lessons/${l.id}/bestaetigen`, { method: "POST", body: { notiz } });
       toast(`Gezählt: jetzt ${updated.bestaetigungen}× ${a.bestaetigt}.`);
       refreshStats();
-      viewLesson(l.id);
+      neuLaden();
     } catch (err) { toast(err.message, { fehler: true }); }
   });
 
@@ -155,7 +182,7 @@ export async function viewLesson(id) {
       onclick: async () => {
         const next = l.status === "überholt" ? (l.bestaetigungen >= 2 ? "bestätigt" : "neu") : "überholt";
         if (next === "überholt" && !(await bestaetigen({ titel: "Als überholt markieren?", text: "Sie bleibt sichtbar, erscheint aber nicht mehr in Briefings.", ok: "Markieren" }))) return;
-        try { await api(`/api/lessons/${l.id}`, { method: "PUT", body: { status: next } }); viewLesson(l.id); }
+        try { await api(`/api/lessons/${l.id}`, { method: "PUT", body: { status: next } }); neuLaden(); }
         catch (err) { toast(err.message, { fehler: true }); }
       },
     },
@@ -163,16 +190,19 @@ export async function viewLesson(id) {
       text: "Löschen", icon: "trash", gefahr: true,
       onclick: async () => {
         if (!(await loeschenBestaetigen(l))) return;
-        try { await api(`/api/lessons/${l.id}`, { method: "DELETE" }); toast("Gelöscht."); refreshStats(); location.hash = "#/suche"; }
+        try { await api(`/api/lessons/${l.id}`, { method: "DELETE" }); toast("Gelöscht."); refreshStats(); if (seite) location.hash = "#/suche"; else viewSuche(); }
         catch (err) { toast(err.message, { fehler: true }); }
       },
     },
   ]));
 
   const feld = (label, value) => (value ? [el("dt", {}, label), el("dd", {}, anf(value))] : []);
-  const ok = render(
+  const kopfTitel = seite
+    ? grosserTitel(anf(l.titel), { style: "font-size:1.375rem;margin:8px 0 12px" })
+    : el("h2", { style: "font-size:1.375rem;margin:4px 0 12px" }, anf(l.titel));
+  return el("div", { class: "lesson-detail" },
     el("div", { class: "card-head" },
-      el("div", { class: "grow" }, grosserTitel(anf(l.titel), { style: "font-size:1.375rem;margin:8px 0 12px" })),
+      el("div", { class: "grow" }, kopfTitel),
       el("a", { class: "button icon-btn", href: `#/lesson/${l.id}/bearbeiten`, "aria-label": "Bearbeiten", style: "margin-top:4px" }, icon("pencil")),
       el("span", { style: "margin-top:4px" }, mehr)),
     el("p", { class: `quote ${l.spezifisch ? "own" : ""}` }, anf(l.lesson)),
@@ -185,16 +215,15 @@ export async function viewLesson(id) {
       feld("Stichworte", l.tags.join(", "))),
     compliance,
     el("div", { class: "actions", style: "margin-top:24px" }, erneut),
-    fotoSection(l, data.bilder || []),
+    fotoSection(l, data.bilder || [], neuLaden),
     el("h2", {}, "Verlauf"),
     el("ul", { class: "timeline" }, data.protokoll.map((p) => el("li", {}, el("span", { class: "footnote" }, formatDate(p.datum)), p.notiz && p.notiz !== "erstmals erlebt" ? el("span", {}, ` · ${anf(p.notiz)}`) : el("span", {}, p.notiz === "erstmals erlebt" ? (l.art === "erfahrung" ? " · erstmals erlebt" : " · erfasst") : "")))),
     el("p", { class: "footnote", style: "margin-top:24px" }, `Erfasst am ${formatDate(l.erstellt_am)}`, quelleText(l.quelle) ? ` ${quelleText(l.quelle)}` : "",
       l.geaendert_am !== l.erstellt_am ? `, zuletzt geändert am ${formatDate(l.geaendert_am)}` : "", "."),
   );
-  if (ok) fokusAufTitel();
 }
 
-function fotoSection(l, bilder) {
+function fotoSection(l, bilder, neuLaden) {
   const btn = el("button", { type: "button", class: "text" }, icon("camera", "icon sm"), "Foto hinzufügen");
   const input = fotoInput(async (files) => {
     btn.setAttribute("aria-disabled", "true");
@@ -202,7 +231,7 @@ function fotoSection(l, bilder) {
       const neu = await fotosHochladen(files);
       await api(`/api/lessons/${l.id}/bilder`, { method: "POST", body: { bild_ids: neu.map((b) => b.id) } });
       toast("Foto angehängt.");
-      viewLesson(l.id);
+      neuLaden();
     } catch (err) {
       btn.removeAttribute("aria-disabled");
       toast(err.message, { fehler: true });
@@ -215,7 +244,7 @@ function fotoSection(l, bilder) {
       titel: l.titel,
       onRemove: async (b) => {
         if (!(await bestaetigen({ titel: "Foto entfernen?", text: "Das Foto wird von diesem Eintrag gelöst.", ok: "Entfernen", gefahr: true }))) return;
-        try { await api(`/api/lessons/${l.id}/bilder/${b.id}`, { method: "DELETE" }); viewLesson(l.id); }
+        try { await api(`/api/lessons/${l.id}/bilder/${b.id}`, { method: "DELETE" }); neuLaden(); }
         catch (err) { toast(err.message, { fehler: true }); }
       },
     }) : el("p", { class: "footnote", style: "margin-top:0" }, "Zum Beispiel die Folie oder das Whiteboard, aus dem der Eintrag stammt."),
