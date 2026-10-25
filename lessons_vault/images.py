@@ -59,6 +59,21 @@ def _jpeg(img: Image.Image, qualitaet: int = 85) -> bytes:
     return puffer.getvalue()
 
 
+def logo_als_png(daten: bytes, kante: int = 800) -> bytes:
+    """Logo für Folien: als PNG mit Transparenz, längste Kante höchstens `kante` Pixel, ohne Metadaten."""
+    try:
+        with Image.open(io.BytesIO(daten)) as img:
+            img.load()
+            bild = ImageOps.exif_transpose(img) or img
+            bild = bild.convert("RGBA") if bild.mode not in ("RGBA", "LA") else bild
+            bild = _verkleinern(bild, kante)
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise BildFehler("Das Logo muss ein PNG- oder JPEG-Bild sein.") from exc
+    puffer = io.BytesIO()
+    bild.save(puffer, "PNG", optimize=True)
+    return puffer.getvalue()
+
+
 class Bildspeicher:
     def __init__(self, ordner: Path):
         self.ordner = ordner

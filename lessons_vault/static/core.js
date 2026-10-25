@@ -443,7 +443,7 @@ export const LEVEL = [
   [0, "Anfänger"], [100, "Sammler"], [300, "Kenner"], [600, "Praktiker"], [1000, "Experte"],
   [1500, "Meister"], [2200, "Mentor"], [3000, "Großmeister"], [4000, "Legende"], [5500, "Orakel"],
 ];
-export const PUNKTE = { eintrag: 10, importiert: 3, bestaetigung: 5, briefing: 15, planpunkt: 5, hilfreich: 20 };
+export const PUNKTE = { eintrag: 10, importiert: 3, bestaetigung: 5, briefing: 15, planpunkt: 5, hilfreich: 20, rueckschau: 25 };
 let sitzungsStand = null;
 const zaehlerHoerer = new Set();
 export function aufZaehler(fn) { zaehlerHoerer.add(fn); return () => zaehlerHoerer.delete(fn); }
@@ -457,7 +457,7 @@ export function punkteStand(s) {
   const importiert = s?.importiert || 0;
   const eigene = Math.max(0, (s?.gesamt || 0) - importiert);
   const wirkungPunkte = (s?.briefings || 0) * PUNKTE.briefing + (s?.plan_punkte_erfahrung || 0) * PUNKTE.planpunkt
-    + (s?.feedback_hilfreich_gesamt || 0) * PUNKTE.hilfreich;
+    + (s?.feedback_hilfreich_gesamt || 0) * PUNKTE.hilfreich + (s?.rueckschauen || 0) * PUNKTE.rueckschau;
   const xp = eigene * PUNKTE.eintrag + importiert * PUNKTE.importiert + (s?.bestaetigungen_erneut || 0) * PUNKTE.bestaetigung + wirkungPunkte;
   let i = 0;
   while (i + 1 < LEVEL.length && xp >= LEVEL[i + 1][0]) i++;
@@ -465,7 +465,7 @@ export function punkteStand(s) {
   const bis = i + 1 < LEVEL.length ? LEVEL[i + 1][0] : ab + 1500 * (1 + Math.floor((xp - ab) / 1500));
   const naechsterName = i + 1 < LEVEL.length ? LEVEL[i + 1][1] : `${LEVEL[LEVEL.length - 1][1]} +${Math.floor((xp - ab) / 1500) + 1}`;
   return { xp, level: i + 1, name: LEVEL[i][1], ab, bis, naechsterName, anteil: (xp - ab) / Math.max(1, bis - ab), wirkungPunkte,
-    briefings: s?.briefings || 0, planpunkte: s?.plan_punkte_erfahrung || 0, hilfreich: s?.feedback_hilfreich_gesamt || 0 };
+    briefings: s?.briefings || 0, planpunkte: s?.plan_punkte_erfahrung || 0, hilfreich: s?.feedback_hilfreich_gesamt || 0, rueckschauen: s?.rueckschauen || 0 };
 }
 
 export function zaehlerStand(s) {
@@ -513,7 +513,8 @@ export function zaehlerKarte(s) {
     el("div", { class: "zaehler-wirkung" },
       el("span", {}, icon("clipboard-list", "icon sm"), `${pk.briefings} Briefings`),
       el("span", {}, icon("user", "icon sm"), `${pk.planpunkte}× dein Wissen im Plan`),
-      el("span", {}, icon("thumbs-up", "icon sm"), `${pk.hilfreich}× geholfen`)),
+      el("span", {}, icon("thumbs-up", "icon sm"), `${pk.hilfreich}× geholfen`),
+      pk.rueckschauen ? el("span", {}, icon("refresh", "icon sm"), `${pk.rueckschauen}× Kreis geschlossen`) : null),
     el("p", { class: "zaehler-meilenstein" }, `${z.gesamt} Einträge · noch ${bisMeilenstein} bis ${z.naechster}`));
 }
 

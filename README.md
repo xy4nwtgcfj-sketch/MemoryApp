@@ -41,8 +41,17 @@ Mustererkennung folgen nach der Abnahme von Phase 1 (drei Wochen echte Nutzung, 
   - weniger passende Treffer eingeklappt, unten die Angabe, was an Claude gesendet wurde.
 
   Der Schalter **Mit Claude-Fachwissen** im Ergebnis wechselt zwischen Plan und "nur deine Erfahrung".
-  Fehlt eigene Erfahrung, lädt das Briefing ein, sie direkt festzuhalten. Am nächsten Tag fragt die App
-  einmal nach: "Wie lief ...? Was nimmst du mit?"
+  Fehlt eigene Erfahrung, lädt das Briefing ein, sie direkt festzuhalten.
+  - **Blinde Flecken:** Themen, die für die Aufgabe wichtig sind und zu denen deine Einträge nichts sagen.
+    Claude schließt jede Lücke mit Fachwissen; "Als Wissen übernehmen" macht daraus einen eigenen
+    Wissenseintrag, "Eigene Erfahrung dazu" sichert deine Erfahrung als Notiz.
+  - **Rückschau:** Nach der Situation (die Startseite erinnert am nächsten Tag) markierst du je Planpunkt
+    "Stimmte" oder "Anders". Bestätigte Punkte aus deinen Einträgen zählen als erneut erlebt; Abweichungen,
+    bewährtes Fachwissen und dein Fazit werden als neue Einträge strukturiert (Eingang). Das schließt den Kreis
+    und bringt 25 Punkte.
+  - **PowerPoint mit Marke:** Jeder Bereich hat in den Einstellungen eine Folien-Marke (Name, Untertitel,
+    Haupt- und Akzentfarbe, Schrift, Logo-Upload). Voreingestellt: Beruf = Deloitte (Schwarz, Grün, Open Sans),
+    Immobilien = van Newboert Immobilien. Das Logo liegt als PNG unter `data\marken\` und bleibt auf dem PC.
 - **Fotos:**
   - *Lessons aus Fotos:* Folie, Whiteboard oder Notiz fotografieren. Die App findet darin Erfahrungen,
     du wählst aus, alle landen strukturiert im Eingang. Das Foto hängt an jeder Lesson.

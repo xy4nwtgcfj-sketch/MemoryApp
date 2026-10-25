@@ -513,8 +513,10 @@ function offeneSchleife(vorbelegen) {
   karte = el("div", { class: "card tinted" },
     el("div", { class: "card-head" }, el("p", { class: "overline grow" }, "Offene Frage"), el("button", { type: "button", class: "icon-btn", "aria-label": "Karte ausblenden", onclick: () => { store.remove("lv-offen"); karte.remove(); } }, icon("x"))),
     el("p", { class: "lead" }, `Wie lief „${kuerzen(offen.situation, 70)}“? Was nimmst du mit?`),
-    el("div", { class: "actions" },
-      el("button", { type: "button", class: "primary", onclick: () => { store.remove("lv-offen"); karte.remove(); vorbelegen(`Nach „${kuerzen(offen.situation, 60)}“: `); } }, "Jetzt notieren"),
+    offen.plan ? el("p", { class: "small muted", style: "margin:6px 0 0" }, "Gleich den Plan abgleichen: Was hat gestimmt, was lief anders? Das bestätigt deine Einträge und macht aus Abweichungen neue.") : null,
+    el("div", { class: "actions", style: "flex-wrap:wrap" },
+      offen.plan ? el("a", { class: "button primary", href: `#/briefing/${offen.id}?rueckschau=1`, onclick: () => { karte.remove(); } }, icon("refresh", "icon sm"), "Rückschau zum Plan") : null,
+      el("button", { type: "button", class: offen.plan ? "" : "primary", onclick: () => { store.remove("lv-offen"); karte.remove(); vorbelegen(`Nach „${kuerzen(offen.situation, 60)}“: `); } }, "Jetzt notieren"),
       el("button", { type: "button", class: "text", onclick: () => { store.remove("lv-offen"); karte.remove(); } }, "Nichts Neues")));
   return karte;
 }

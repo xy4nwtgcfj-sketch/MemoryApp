@@ -733,6 +733,37 @@ details.bereich-details[open] > summary { margin-bottom: 8px; }
 .zaehler-wirkung .icon { color: var(--own); }
 .zaehler-meilenstein { margin: 8px 0 0; }
 
+/* Blinde Flecken und Rückschau im Briefing */
+.luecke { border-left: 3px solid var(--ai); }
+.luecke h3 { margin: 0; font-size: 1.0625rem; }
+.luecke-wissen { margin-top: 8px; }
+.luecke-wissen summary { font-size: .9375rem; font-weight: 600; color: var(--ai); cursor: pointer; padding: 6px 0; }
+.luecke-wissen .stack { margin-top: 4px; }
+.luecke-wissen .stack p, .luecke-wissen .stack li { font-size: .9375rem; line-height: 1.5; }
+.luecke-frage { display: flex; gap: 6px; align-items: flex-start; margin: 10px 0 0; }
+.luecke-frage .icon { flex: none; margin-top: 2px; }
+.luecke-eigen { margin-top: 8px; }
+.rs-liste li { align-items: center; }
+.rs-liste .icon.ok { color: var(--success); flex: none; }
+.rs-liste .icon.nein { color: var(--text-3); flex: none; }
+.rs-punkt { flex-wrap: wrap; }
+.rs-punkt textarea { margin-top: 8px; }
+.rs-wahl { display: flex; gap: 6px; flex: none; }
+.rs-wahl button { min-height: 40px; padding: 6px 10px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); font-size: .875rem; font-weight: 600; }
+.rs-wahl button[aria-pressed="true"].rs-ja { background: var(--success-tint); color: var(--success); }
+.rs-wahl button[aria-pressed="true"].rs-nein { background: var(--surface-2); color: var(--text); box-shadow: inset 0 0 0 1.5px var(--text-3); }
+.rueckschau summary { font-weight: 600; cursor: pointer; }
+.rueckschau.fertig { border-color: transparent; background: var(--success-tint); box-shadow: none; }
+.rs-marke { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; color: var(--success); font-weight: 600; }
+/* Folien-Marke in den Einstellungen */
+.marke-felder { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; margin-top: 8px; }
+.marke-felder label { margin: 0 0 4px; font-size: .875rem; }
+.marke-felder .voll { grid-column: 1 / -1; }
+.marke-felder input[type="color"] { width: 100%; height: 44px; padding: 2px; border-radius: 10px; }
+.logo-vorschau { max-height: 56px; max-width: 200px; display: block; margin: 8px 0; background: var(--surface-2); padding: 6px; border-radius: 8px; }
+.marke-probe { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 10px; margin-top: 10px; font-weight: 700; }
+.marke-probe .strich { width: 28px; height: 4px; border-radius: 2px; flex: none; }
+
 .belohnung { position: fixed; left: 12px; right: 12px; top: calc(8px + env(safe-area-inset-top)); z-index: 45; display: flex; align-items: center; gap: 12px;
   max-width: 560px; margin: 0 auto; padding: 12px 8px 12px 14px; border-radius: var(--r-lg); background: var(--surface); border: 2px solid var(--own-line);
   box-shadow: var(--shadow-lg); transform: translateY(-120%); opacity: 0; transition: transform .35s cubic-bezier(.2,.9,.3,1.2), opacity .25s; }

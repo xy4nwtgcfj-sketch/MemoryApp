@@ -1,8 +1,11 @@
 // Einstellungen, Fortschritt und Zugang.
 import {
-  ZIEL_LESSONS, MEILENSTEINE, ansicht, statsAnzeigen, wochenziel, zaehlerStand, api, bereiche, bereicheVergessen, copyText, el, errorNotice, fill, fokusAufTitel,
+  ZIEL_LESSONS, MEILENSTEINE, ansicht, statsAnzeigen, wochenziel, zaehlerStand, api, bereiche, bereicheVergessen, copyText, debounce, el, errorNotice, fill, fokusAufTitel,
   grosserTitel, herunterladen, icon, kopf, refreshStats, say, skeleton, state, status, store, toast,
 } from "./core.js";
+
+const SCHRIFTEN = ["Calibri", "Open Sans", "Arial", "Segoe UI", "Georgia", "Verdana"];
+const hell = (hex) => { const n = parseInt(hex.slice(1), 16); return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) > 160; };
 
 const STUFEN = [
   ["lokal", "Nur lokal", "lock"],
@@ -24,9 +27,10 @@ export async function viewEinstellungen() {
   if (!render(grosserTitel("Einstellungen"), skeleton())) return;
   fokusAufTitel();
 
-  let st, s, bereichListe, einst;
+  let st, s, bereichListe, einst, marken = {};
   try {
     [st, s, bereichListe, einst] = await Promise.all([status(true), refreshStats(), bereiche(true), api("/api/einstellungen")]);
+    try { marken = await api("/api/marken"); } catch { marken = {}; }
   } catch (err) {
     render(grosserTitel("Einstellungen"), errorNotice(err, { erneut: viewEinstellungen }), zugangKarte());
     return;
@@ -128,10 +132,75 @@ export async function viewEinstellungen() {
             ohneClaude ? null : [seg, el("p", { class: "footnote", style: "margin:0" }, erklaerung)],
             el("div", { class: "row" },
               el("label", { for: berufId, class: "grow", style: "margin:0;font-weight:500" }, "Beruflich", el("span", { class: "li-sub" }, "Strengere Prüfung auf Namen und Zahlen, Fotos nie als Bild")),
-              beruf))) : null);
+              beruf),
+            markeBlock(b))) : null);
     };
     zeichnen();
     return li;
+  };
+
+  // Folien-Marke: Name, Farben, Schrift und Logo für die PowerPoint-Ausgabe von Briefings dieses Bereichs
+  const markeBlock = (b) => {
+    const m = { name: "", untertitel: "", farbe: "#1F3A5F", akzent: "#D9A441", schrift: "Calibri", logo: false, ...(marken[b.name] || einst.marken?.[b.name] || {}) };
+    const id = (f) => `marke-${f}-${b.name}`;
+    const probe = el("div", { class: "marke-probe" });
+    const probeZeichnen = () => {
+      probe.style.background = m.farbe;
+      probe.style.color = hell(m.farbe) ? "#1a1d21" : "#ffffff";
+      fill(probe, el("span", { class: "strich", style: `background:${m.akzent}` }), el("span", { style: `font-family:'${m.schrift}',sans-serif` }, m.name || "Ohne Marke"),
+        el("span", { style: "margin-left:auto;font-weight:400;font-size:.8125rem;opacity:.85" }, "Titelfolie"));
+    };
+    const sichern = debounce(async () => {
+      try {
+        const { logo, ...werte } = m;
+        await speichern({ marken: { ...einst.marken, [b.name]: werte } });
+        marken[b.name] = { ...m };
+      } catch (err) { toast(err.message, { fehler: true }); }
+    }, 600);
+    const feld = (f, label, { typ = "text", max = 60, voll = false } = {}) => el("div", { class: voll ? "voll" : "" },
+      el("label", { for: id(f) }, label),
+      el("input", { id: id(f), type: typ, value: m[f], maxlength: max, oninput: (e) => { m[f] = e.target.value; probeZeichnen(); sichern(); } }));
+    const schrift = el("select", { id: id("schrift"), onchange: (e) => { m.schrift = e.target.value; probeZeichnen(); sichern(); } },
+      SCHRIFTEN.map((sName) => el("option", { value: sName, selected: m.schrift === sName ? "" : null }, sName)));
+    const logoSlot = el("div", { style: "margin-top:8px" });
+    const datei = el("input", { type: "file", accept: "image/png,image/jpeg", class: "sr-only", tabindex: "-1", "aria-hidden": "true" });
+    datei.addEventListener("change", async () => {
+      if (!datei.files.length) return;
+      const form = new FormData();
+      form.append("datei", datei.files[0], datei.files[0].name);
+      datei.value = "";
+      try {
+        await api(`/api/marken/${encodeURIComponent(b.name)}/logo`, { method: "POST", body: form, timeoutMs: 60000 });
+        m.logo = true;
+        say("Logo gespeichert.");
+        logoZeichnen();
+      } catch (err) { toast(err.message, { fehler: true }); }
+    });
+    const logoZeichnen = () => {
+      const bild = m.logo ? el("img", { class: "logo-vorschau", alt: `Logo ${b.name}` }) : null;
+      if (bild) api(`/api/marken/${encodeURIComponent(b.name)}/logo`, { raw: true }).then((r) => r.blob()).then((blob) => { bild.src = URL.createObjectURL(blob); }).catch(() => bild.remove());
+      fill(logoSlot,
+        el("p", { class: "overline", style: "margin:0" }, "Logo"),
+        bild,
+        el("div", { class: "row", style: "gap:8px;flex-wrap:wrap;margin-top:6px" },
+          el("button", { type: "button", onclick: () => datei.click() }, icon("upload", "icon sm"), m.logo ? "Logo ersetzen" : "Logo hochladen (PNG)"),
+          m.logo ? el("button", { type: "button", class: "text", onclick: async () => {
+            try { await api(`/api/marken/${encodeURIComponent(b.name)}/logo`, { method: "DELETE" }); m.logo = false; say("Logo entfernt."); logoZeichnen(); }
+            catch (err) { toast(err.message, { fehler: true }); }
+          } }, "Entfernen") : null),
+        el("p", { class: "footnote", style: "margin:4px 0 0" }, "Erscheint oben rechts auf jeder Folie und auf der Titelfolie. Bleibt auf dem PC."));
+    };
+    probeZeichnen();
+    logoZeichnen();
+    return el("details", { class: "marke" },
+      el("summary", {}, el("span", { style: "font-weight:500" }, "Folien-Marke"), el("span", { class: "li-sub" }, m.name ? `${m.name} · ${m.schrift}` : "Neutral (Navy und Gold)")),
+      el("div", { class: "marke-felder" },
+        feld("name", "Name", { voll: true }),
+        feld("untertitel", "Untertitel auf der Titelfolie", { max: 120, voll: true }),
+        feld("farbe", "Hauptfarbe", { typ: "color" }),
+        feld("akzent", "Akzentfarbe", { typ: "color" }),
+        el("div", { class: "voll" }, el("label", { for: id("schrift") }, "Schrift"), schrift)),
+      probe, logoSlot, datei);
   };
   const neuerBereich = el("input", { type: "text", id: "neuer-bereich", placeholder: "Neuer Bereich" });
   const bereicheListe = el("ul", { class: "list" }, bereichListe.map(bereichZeile));

@@ -73,6 +73,12 @@ def server(tmp_path_factory):
                     ]},
                 ],
                 "besonderheiten": [{"punkt": "Bei dir scheiterte es am Personal, nicht an der Technik", "lesson_nr": 1}],
+                "luecken": [{
+                    "titel": "Define exit criteria for hypercare before go-live", "kontext": "Any go-live with a hypercare phase.",
+                    "wissen": "Exit criteria make the end of hypercare a decision, not a drift.\n- Ticket inflow below a threshold\n- No open P1/P2",
+                    "kern": "Agree measurable hypercare exit criteria before go-live.", "anwendung": "Put the criteria into the cutover plan.",
+                    "frage": "Have you ever had hypercare drag on because nobody defined its end?", "phase": "hypercare",
+                }],
             }
         if kwargs["system"] == KANDIDATEN_PROMPT:
             return {"kandidaten": [
@@ -263,7 +269,7 @@ def test_lokaler_ablauf(server, page):
 
     page.goto(f"{base}/#/einstellungen")
     # Bereichsdetails sind eingeklappt; Beruf ist der erste Bereich
-    page.locator("details.bereich-details").first.locator("summary").click()
+    page.locator("details.bereich-details").first.locator("> summary").click()
     gruppe = page.get_by_role("group", name="Datenschutz-Stufe Beruf")
     expect(gruppe.get_by_role("button", name="Nur lokal")).to_have_attribute("aria-pressed", "true")
     # Stufe umstellen speichert direkt
@@ -303,7 +309,27 @@ def test_briefing_kombiniert(server, page):
     with page.expect_download() as dl:
         page.get_by_role("button", name="Als PowerPoint").click()
     assert dl.value.suggested_filename.endswith(".pptx")
+    # Blinde Flecken: Claude-Wissen mit einem Tipp als eigenen Wissenseintrag übernehmen
+    expect(page.get_by_role("heading", name="Blinde Flecken")).to_be_visible()
+    expect(page.get_by_text("Define exit criteria for hypercare before go-live")).to_be_visible()
+    page.get_by_text("Was Claude dazu weiß").click()
+    expect(page.get_by_text("Ticket inflow below a threshold")).to_be_visible()
     shot(page, "15-briefing-kombiniert")
+    page.get_by_role("button", name="Als Wissen übernehmen").click()
+    expect(page.get_by_text("Lücke geschlossen")).to_be_visible()
+    expect(page.locator(".belohnung")).to_contain_text("Lücke geschlossen")
+    # Rückschau: Planpunkte mit der Wirklichkeit abgleichen
+    page.get_by_text("Wie lief es? Plan mit der Wirklichkeit abgleichen").click()
+    punkte = page.locator(".rs-punkt")
+    expect(punkte).to_have_count(3)
+    punkte.nth(1).get_by_role("button", name=re.compile("hat gestimmt")).click()
+    punkte.nth(2).get_by_role("button", name=re.compile("lief anders")).click()
+    punkte.nth(2).locator("textarea").fill("Meeting nur alle zwei Tage")
+    expect(page.get_by_text("1 hat gestimmt, 1 war anders.")).to_be_visible()
+    page.get_by_role("button", name="Rückschau abschließen").click()
+    expect(page.locator(".rueckschau.fertig .overline")).to_contain_text("Kreis geschlossen")
+    expect(page.get_by_text("1 Eintrag bestätigt, 1 neuer Entwurf aus dieser Situation.")).to_be_visible()
+    shot(page, "15b-briefing-rueckschau")
     kein_null(page)
 
     page.locator("#modus-schalter").click()
@@ -357,8 +383,13 @@ def test_offene_frage_am_naechsten_tag(server, page):
     page.evaluate("localStorage.setItem('lv-offen', JSON.stringify({id: 'x', situation: 'Besichtigung Wuppertal', t: Date.now() - 20*3600*1000}))")
     page.reload()
     expect(page.get_by_text(re.compile("Wie lief „Besichtigung Wuppertal“"))).to_be_visible()
+    expect(page.get_by_role("link", name="Rückschau zum Plan")).to_have_count(0)
     page.get_by_role("button", name="Jetzt notieren").click()
     expect(page.locator("#capture-text")).to_have_value(re.compile("^Nach „Besichtigung Wuppertal“: "))
+    # Mit Plan führt die Karte zur Rückschau des Briefings
+    page.evaluate("localStorage.setItem('lv-offen', JSON.stringify({id: 'x', situation: 'Hypercare', plan: true, t: Date.now() - 20*3600*1000}))")
+    page.reload()
+    expect(page.get_by_role("link", name="Rückschau zum Plan")).to_have_attribute("href", "#/briefing/x?rueckschau=1")
     assert page.errors == []
 
 

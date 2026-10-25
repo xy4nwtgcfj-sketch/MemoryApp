@@ -7,7 +7,9 @@ from urllib.parse import quote
 import hmac
 import json
 import logging
+import re
 import time
+from collections import Counter
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,7 +28,7 @@ from .briefing import BriefingSchreiber, kombinieren, lokale_checkliste, ranglis
 from .compliance import lesson_text_fuer_pruefung, pruefen, sperrbegriffe_schwaerzen, sperrliste_treffer
 from .config import Settings, load_settings
 from .foto import abgleich_inhalt, abgleichen, kandidaten_finden, kandidaten_inhalt
-from .images import BildFehler, Bildspeicher, Texterkennung
+from .images import BildFehler, Bildspeicher, Texterkennung, logo_als_png
 from .embeddings import (
     EmbeddingFehler,
     EmbeddingProvider,
@@ -53,8 +55,10 @@ from .models import (
     LessonImport,
     LessonIn,
     LessonUpdate,
+    Marke,
     NotizAnfrage,
     RueckmeldungIn,
+    RueckschauIn,
     StrukturierenAnfrage,
 )
 from .repository import Invalid, NotFound, Repository
@@ -130,6 +134,7 @@ def create_app(
         schreiber = BriefingSchreiber(claude_client, settings.claude_model, settings.claude_effort)
     bilder_ordner = Path(settings.bilder_pfad) if settings.bilder_pfad else Path(settings.db_path).parent / "bilder"
     speicher = Bildspeicher(bilder_ordner)
+    marken_ordner = Path(settings.db_path).parent / "marken"  # Logos der Folien-Marken, eines je Bereich
     ocr = ocr or Texterkennung(settings.tesseract_cmd)
     suche = Suche(repo, provider)
     ollama_cache: dict[str, Any] = {"zeit": 0.0, "status": {"erreichbar": False, "modelle": []}}
@@ -369,11 +374,64 @@ def create_app(
     @app.put("/api/einstellungen", dependencies=deps)
     def einstellungen_speichern(neu: Einstellungen) -> Einstellungen:
         # Nur mitgeschickte Felder ändern, damit z. B. das Speichern der Sperrliste die KI-Modi nicht zurücksetzt.
-        data = repo.einstellungen().model_copy(update=neu.model_dump(exclude_unset=True))
+        data = Einstellungen.model_validate({**repo.einstellungen().model_dump(), **neu.model_dump(exclude_unset=True)})
         data.sperrliste = sorted({s.strip() for s in data.sperrliste if s.strip()}, key=str.lower)
         bekannte = {b.name for b in repo.bereiche()}
         data.strukturierung_bereiche = {k: v for k, v in data.strukturierung_bereiche.items() if k in bekannte}
+        data.marken = {k: v for k, v in data.marken.items() if k in bekannte}
         return repo.einstellungen_speichern(data)
+
+    # Folien-Marken ---------------------------------------------------------
+    def logo_pfad(bereich: str) -> Path:
+        return marken_ordner / ((re.sub(r"[^\w-]+", "_", bereich, flags=re.UNICODE).strip("_") or "marke") + ".png")
+
+    def marke_fuer(bereich: str, einst: Einstellungen | None = None) -> tuple[Marke | None, bytes | None]:
+        """Marke und Logo eines Bereichs für die PowerPoint-Ausgabe."""
+        if not bereich:
+            return None, None
+        einst = einst or repo.einstellungen()
+        marke = einst.marken.get(bereich)
+        pfad = logo_pfad(bereich)
+        logo = pfad.read_bytes() if pfad.is_file() else None
+        return marke, logo
+
+    @app.get("/api/marken", dependencies=deps)
+    def marken() -> dict[str, dict[str, Any]]:
+        """Marke je Bereich inklusive der Information, ob ein Logo hochgeladen ist."""
+        einst = repo.einstellungen()
+        return {
+            b.name: {**(einst.marken.get(b.name) or Marke()).model_dump(), "logo": logo_pfad(b.name).is_file()}
+            for b in repo.bereiche()
+        }
+
+    @app.get("/api/marken/{bereich}/logo", dependencies=deps)
+    def marken_logo(bereich: str) -> Response:
+        pfad = logo_pfad(bereich)
+        if not repo.bereich_existiert(bereich) or not pfad.is_file():
+            raise HTTPException(status_code=404, detail="Kein Logo hinterlegt.")
+        return Response(pfad.read_bytes(), media_type="image/png", headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/marken/{bereich}/logo", dependencies=deps, status_code=201)
+    def marken_logo_setzen(bereich: str, datei: UploadFile = File(...)) -> dict[str, Any]:
+        """Logo (PNG oder JPEG, bis 2 MB) wird als PNG gespeichert; Transparenz bleibt erhalten."""
+        if not repo.bereich_existiert(bereich):
+            raise HTTPException(status_code=404, detail=f"Unbekannter Bereich '{bereich}'")
+        rohdaten = datei.file.read(2 * 1024 * 1024 + 1)
+        if len(rohdaten) > 2 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Das Logo darf höchstens 2 MB groß sein.")
+        try:
+            png = logo_als_png(rohdaten)
+        except BildFehler as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        marken_ordner.mkdir(parents=True, exist_ok=True)
+        logo_pfad(bereich).write_bytes(png)
+        return {"bereich": bereich, "logo": True}
+
+    @app.delete("/api/marken/{bereich}/logo", dependencies=deps, status_code=204)
+    def marken_logo_loeschen(bereich: str) -> None:
+        pfad = logo_pfad(bereich)
+        if pfad.is_file():
+            pfad.unlink()
 
     # Erfassen ------------------------------------------------------------
     def kandidaten_fuer(text: str, ausschliessen: set[str] | None = None) -> list[DublettenKandidat]:
@@ -822,7 +880,12 @@ def create_app(
         if not data.get("plan"):
             raise HTTPException(status_code=409, detail="Erst den Plan mit Claude-Fachwissen erstellen, dann als PowerPoint laden.")
         lessons = {t["lesson"].id: t["lesson"] for t in data["treffer"]}
-        inhalt = briefing_pptx(data["situation"], data["plan"], lessons, data.get("erstellt_am", ""))
+        # Marke: gewählter Bereich, sonst der häufigste Bereich unter den eigenen Treffern
+        bereich = data["bereich"]
+        if not bereich and lessons:
+            bereich = Counter(l.bereich for l in lessons.values()).most_common(1)[0][0]
+        marke, logo = marke_fuer(bereich)
+        inhalt = briefing_pptx(data["situation"], data["plan"], lessons, data.get("erstellt_am", ""), marke=marke, logo=logo)
         name = pptx_dateiname(data["situation"])
         return Response(
             inhalt,
@@ -887,6 +950,61 @@ def create_app(
     def briefing_feedback(briefing_id: str, data: FeedbackIn) -> dict[str, str]:
         repo.feedback_setzen(briefing_id, data.lesson_id, data.bewertung or None)
         return repo.feedback_fuer_briefing(briefing_id)
+
+    @app.post("/api/briefing/{briefing_id}/rueckschau", dependencies=deps)
+    def briefing_rueckschau(briefing_id: str, data: RueckschauIn, hintergrund: BackgroundTasks) -> dict[str, Any]:
+        """Kreis schließen: Bestätigte Punkte aus eigenen Einträgen zählen als erneut erlebt; Abweichungen,
+        bewährtes Fachwissen und das Fazit werden als Notizen strukturiert und landen im Eingang."""
+        briefing = repo.briefing_holen(briefing_id)
+        if briefing["rueckschau"]:
+            raise HTTPException(status_code=409, detail="Zu diesem Briefing gibt es schon eine Rückschau.")
+        situation = briefing["situation"]
+        bereich = briefing["bereich"]
+        einst = repo.einstellungen()
+        privat = (bereich and bereich in lokale_bereiche(einst)) or (not bereich and privat_aktiv(einst))
+        modus = "lokal" if privat else modus_fuer(bereich, einst)
+
+        def notiz_anlegen(text: str) -> None:
+            eintrag = repo.entwurf_anlegen(text, "text", bereich, None, modus=modus)
+            einplanen(eintrag, hintergrund, warten=False)
+
+        bestaetigt, bestaetigte_ids = 0, set()
+        bewaehrt, entwuerfe = [], 0
+        for p in data.punkte:
+            if p.ergebnis == "bestaetigt":
+                if p.quelle == "erfahrung" and p.lesson_id and p.lesson_id not in bestaetigte_ids:
+                    try:
+                        repo.bestaetigen(p.lesson_id, f"Held up after: {situation}"[:200])
+                        bestaetigte_ids.add(p.lesson_id)
+                        bestaetigt += 1
+                    except NotFound:
+                        pass
+                elif p.quelle == "allgemein":
+                    bewaehrt.append(p.punkt)
+            elif p.ergebnis == "abweichung":
+                notiz_anlegen(
+                    f"After \"{situation}\": the plan point \"{p.punkt}\" did not hold up in practice."
+                    + (f" What was different: {p.notiz.strip()}" if p.notiz.strip() else "")
+                )
+                entwuerfe += 1
+        if bewaehrt:
+            notiz_anlegen(
+                f"After \"{situation}\": these approaches from the briefing proved right in practice:\n"
+                + "\n".join(f"- {b}" for b in bewaehrt)
+            )
+            entwuerfe += 1
+        if data.fazit.strip():
+            notiz_anlegen(f"Looking back at \"{situation}\": {data.fazit.strip()}")
+            entwuerfe += 1
+        rueckschau = {
+            "datum": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
+            "punkte": [p.model_dump() for p in data.punkte],
+            "fazit": data.fazit.strip(),
+            "bestaetigt": bestaetigt,
+            "entwuerfe": entwuerfe,
+        }
+        repo.briefing_rueckschau_setzen(briefing_id, rueckschau)
+        return {**briefing_antwort(briefing_id), "bestaetigt": bestaetigt, "entwuerfe": entwuerfe}
 
     # Bestand ---------------------------------------------------------------
     @app.get("/api/export", dependencies=deps)

@@ -18,7 +18,7 @@ from typing import Any
 
 import numpy as np
 
-from .models import Lesson
+from .models import PHASEN, Lesson
 from .search import RRF_K, Filter, Suche
 from .structuring import claude_json
 
@@ -236,6 +236,18 @@ durch allgemeine Lehrbuchversionen zu ersetzen.
   Eigene Erfahrungen gehören an die passende Stelle im Plan, nicht in einen Sammelabschnitt.
 - besonderheiten: Punkte, an denen seine Erfahrung vom üblichen Vorgehen abweicht, es verschärft oder eine
   Lücke im Standard aufzeigt. Jeweils mit lesson_nr. Leer, wenn es keine gibt.
+- luecken: seine blinden Flecken. 2 bis 5 Themen, die für diese Aufgabe wichtig sind und zu denen keiner
+  seiner Einträge etwas sagt. Du schließt jede Lücke mit deinem Fachwissen, so vollständig, dass er es als
+  eigenen Wissenseintrag übernehmen kann. Je Lücke:
+  - titel: kurze Aussage, höchstens 80 Zeichen.
+  - kontext: wann und wofür das gilt (1 Satz).
+  - wissen: das Fachwissen selbst, 3 bis 8 Sätze oder Stichpunkte, konkret und für sich verständlich.
+  - kern: die wichtigste Aussage in einem Satz.
+  - anwendung: was er damit konkret tut (Prüfschritt, Frage, Regel).
+  - frage: eine Frage an ihn, die seine eigene Erfahrung dazu hervorlockt ("Hast du schon einmal ...?").
+  - phase: Projektphase, falls die Aufgabe beruflich ist und die Lücke zu einer Phase gehört
+    (sales, concept, build, test, cutover, hypercare), sonst leerer String.
+  Keine Lücke zu Themen, die seine Einträge abdecken. Gibt es keine Lücken, leere Liste.
 
 Regeln:
 1. Ordne nie einen Punkt einem Eintrag zu, der ihn nicht hergibt. Im Zweifel quelle "allgemein".
@@ -270,6 +282,20 @@ def kombi_schema(anzahl: int) -> dict[str, Any]:
         "required": ["punkt", "lesson_nr"],
         "additionalProperties": False,
     }
+    luecke = {
+        "type": "object",
+        "properties": {
+            "titel": {"type": "string"},
+            "kontext": {"type": "string"},
+            "wissen": {"type": "string"},
+            "kern": {"type": "string"},
+            "anwendung": {"type": "string"},
+            "frage": {"type": "string"},
+            "phase": {"type": "string", "enum": ["", *PHASEN]},
+        },
+        "required": ["titel", "kontext", "wissen", "kern", "anwendung", "frage", "phase"],
+        "additionalProperties": False,
+    }
     return {
         "type": "object",
         "properties": {
@@ -285,10 +311,35 @@ def kombi_schema(anzahl: int) -> dict[str, Any]:
             },
             "besonderheiten": {"type": "array", "items": besonderheit},
             "ausarbeitung": {"type": "string"},
+            "luecken": {"type": "array", "items": luecke},
         },
-        "required": ["zusammenfassung", "ausarbeitung", "abschnitte", "besonderheiten"],
+        "required": ["zusammenfassung", "ausarbeitung", "abschnitte", "besonderheiten", "luecken"],
         "additionalProperties": False,
     }
+
+
+def luecken_auswerten(roh: Any) -> list[dict[str, str]]:
+    """Blinde Flecken: nur vollständige Einträge mit Titel, Wissen und Kernaussage; Titel auf 80 Zeichen."""
+    ergebnis = []
+    for l in roh or []:
+        if not isinstance(l, dict):
+            continue
+        titel = str(l.get("titel", "")).strip()[:80]
+        wissen = str(l.get("wissen", "")).strip()
+        kern = str(l.get("kern", "")).strip()
+        if not (titel and wissen and kern):
+            continue
+        phase = str(l.get("phase", "")).strip()
+        ergebnis.append({
+            "titel": titel,
+            "kontext": str(l.get("kontext", "")).strip(),
+            "wissen": wissen,
+            "kern": kern,
+            "anwendung": str(l.get("anwendung", "")).strip(),
+            "frage": str(l.get("frage", "")).strip(),
+            "phase": phase if phase in PHASEN else "",
+        })
+    return ergebnis[:5]
 
 
 MARKE = re.compile(r"\s?\[E\s*(\d+)\]")
@@ -336,6 +387,7 @@ def kombi_auswerten(data: dict[str, Any], lessons: list[Lesson]) -> dict[str, An
         "ausarbeitung": marken_aufloesen(str(data.get("ausarbeitung", "") or ""), lesson_id),
         "abschnitte": abschnitte,
         "besonderheiten": besonderheiten,
+        "luecken": luecken_auswerten(data.get("luecken")),
         "punkte_erfahrung": sum(1 for p in alle if p["quelle"] == "erfahrung"),
         "punkte_gesamt": len(alle),
     }

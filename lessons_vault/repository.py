@@ -425,15 +425,25 @@ class Repository:
                 (modus, briefing_id),
             )
 
+    def briefing_rueckschau_setzen(self, briefing_id: str, rueckschau: dict[str, Any]) -> None:
+        self.briefing_holen(briefing_id)
+        with self.conn:
+            self.conn.execute(
+                "UPDATE briefings SET rueckschau_json = ? WHERE id = ?",
+                (json.dumps(rueckschau, ensure_ascii=False), briefing_id),
+            )
+
     def briefing_holen(self, briefing_id: str) -> dict[str, Any]:
         row = self.conn.execute(
             "SELECT id, situation, bereich, treffer_json, checkliste_json, zusammenfassung, ki_checkliste_json, ki_modell, "
-            "erstellt_am, entwurf_weg, entwurf_text, abgleich_json, modus, plan_json FROM briefings WHERE id = ?",
+            "erstellt_am, entwurf_weg, entwurf_text, abgleich_json, modus, plan_json, rueckschau_json FROM briefings WHERE id = ?",
             (briefing_id,),
         ).fetchone()
         if row is None:
             raise NotFound(briefing_id)
         data = dict(row)
+        rueckschau = data.pop("rueckschau_json")
+        data["rueckschau"] = json.loads(rueckschau) if rueckschau else None
         data["treffer"] = json.loads(data.pop("treffer_json"))
         data["checkliste"] = json.loads(data.pop("checkliste_json"))
         raw = data.pop("ki_checkliste_json")
@@ -469,11 +479,12 @@ class Repository:
     def briefings(self, limit: int = 20) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             "SELECT b.id, b.situation, b.bereich, b.erstellt_am, b.entwurf_weg, b.modus, json_array_length(b.treffer_json) AS anzahl, "
+            "(b.plan_json != '') AS plan, (b.rueckschau_json != '') AS rueckschau, "
             "(SELECT COUNT(*) FROM briefing_feedback f WHERE f.briefing_id = b.id AND f.bewertung = 'hilfreich') AS hilfreich "
             "FROM briefings b ORDER BY b.erstellt_am DESC LIMIT ?",
             (limit,),
         )
-        return [dict(r) for r in rows]
+        return [dict(r) | {"plan": bool(r["plan"]), "rueckschau": bool(r["rueckschau"])} for r in rows]
 
     def briefing_loeschen(self, briefing_id: str) -> None:
         with self.conn:
@@ -646,6 +657,8 @@ class Repository:
             "bestaetigungen_erneut": q("SELECT COUNT(*) FROM bestaetigungen WHERE notiz != 'erstmals erlebt'").fetchone()[0],
             "feedback_hilfreich_gesamt": q("SELECT COUNT(*) FROM briefing_feedback WHERE bewertung = 'hilfreich'").fetchone()[0],
             "pro_phase": {r[0]: r[1] for r in q("SELECT phase, COUNT(*) FROM lessons WHERE phase != '' GROUP BY phase")},
+            # Geschlossene Kreise: Briefings mit Rückschau
+            "rueckschauen": q("SELECT COUNT(*) FROM briefings WHERE rueckschau_json != ''").fetchone()[0],
         }
 
     def _wochen_zaehler(self, anzahl_wochen: int) -> list[dict[str, Any]]:

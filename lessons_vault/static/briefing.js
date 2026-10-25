@@ -67,7 +67,10 @@ function ausarbeitungKnoten(text, titelVon) {
 
 function planText(situation, plan) {
   if (plan.ausarbeitung) {
-    return ["Briefing: " + situation, "", plan.zusammenfassung || "", "", plan.ausarbeitung.replace(/\s?\[\[E:[\w-]+\]\]/g, " (eigene Erfahrung)")].join("\n").trim();
+    const luecken = (plan.luecken || []).length
+      ? ["", "## Blind spots (not covered by your entries yet)", ...plan.luecken.map((l) => `- ${l.titel}: ${l.kern}`)]
+      : [];
+    return ["Briefing: " + situation, "", plan.zusammenfassung || "", "", plan.ausarbeitung.replace(/\s?\[\[E:[\w-]+\]\]/g, " (eigene Erfahrung)"), ...luecken].join("\n").trim();
   }
   const zeilen = [`Plan: ${situation}`, ""];
   if (plan.zusammenfassung) zeilen.push(plan.zusammenfassung, "");
@@ -160,7 +163,7 @@ export async function viewBriefing(id, params = {}) {
       history.replaceState(null, "", `#/briefing/${data.id}`);
       store.setJson("lv-offen", { id: data.id, situation: text, t: Date.now() });
       einklappen(text);
-      showBriefing(result, data);
+      showBriefing(result, data, params);
       refreshStats({ anlass: `Briefing erstellt · ${data.treffer.length} eigene Einträge gefunden` });
     } catch (err) {
       fill(result, errorNotice(err, { erneut: go }));
@@ -225,7 +228,7 @@ export async function viewBriefing(id, params = {}) {
       const data = await api(`/api/briefing/${encodeURIComponent(id)}`);
       situation.value = briefingState.situation = data.entwurf_weg ? "" : data.situation;
       einklappen(data.situation);
-      showBriefing(result, data);
+      showBriefing(result, data, params);
     } catch (err) {
       fill(result, errorNotice(err));
     }
@@ -244,15 +247,18 @@ async function showVerlauf(container) {
         el("a", { class: "li grow", href: `#/briefing/${b.id}`, style: "box-shadow:none" },
           b.entwurf_weg ? icon("camera") : icon("clipboard-list"),
           el("span", { class: "grow" }, anf(kuerzen(b.situation, 90)),
-            el("span", { class: "li-sub" }, formatDate(b.erstellt_am), ` · ${b.anzahl} Einträge`, b.hilfreich ? ` · ${b.hilfreich} hilfreich` : "", b.bereich ? ` · ${b.bereich}` : "")),
+            el("span", { class: "li-sub" }, formatDate(b.erstellt_am), ` · ${b.anzahl} Einträge`, b.hilfreich ? ` · ${b.hilfreich} hilfreich` : "", b.bereich ? ` · ${b.bereich}` : "",
+              b.rueckschau ? el("span", { class: "rs-marke" }, icon("check", "icon sm"), "Rückschau") : b.plan ? " · Rückschau offen" : "")),
           icon("chevron-right", "icon sm chev"))))));
   } catch { /* Verlauf ist optional */ }
 }
 
-function showBriefing(container, data) {
+function showBriefing(container, data, params = {}) {
   const istEntwurf = Boolean(data.entwurf_weg);
   const istPlan = data.modus === "kombiniert" && !istEntwurf;
   const titelVon = Object.fromEntries(data.treffer.map((t) => [t.lesson.id, t.lesson]));
+  const rueckschauSlot = el("div");
+  const lueckenSlot = el("div");
   const feedback = { ...data.feedback };
   const max = data.treffer[0]?.relevanz || 0;
   const stark = data.treffer.filter((t, i) => i < 4 && t.relevanz >= 0.6 * max);
@@ -406,6 +412,11 @@ function showBriefing(container, data) {
         pptxBtn),
       ausarbeitung,
       checkliste);
+    fill(lueckenSlot, lueckenAbschnitt(data, plan, titelVon));
+    fill(rueckschauSlot, rueckschauKarte(data, plan, params.rueckschau === "1"));
+    // Die offene Frage auf der Startseite führt später zur Rückschau dieses Plans
+    const offen = store.json("lv-offen", null);
+    if (offen && offen.id === data.id && !offen.plan) store.setJson("lv-offen", { ...offen, plan: true });
     // Auf Wunsch einmal automatisch als PowerPoint laden
     if (briefingState.pptx && !pptxGeladen.has(data.id)) {
       pptxGeladen.add(data.id);
@@ -491,8 +502,10 @@ function showBriefing(container, data) {
     data.ki_moeglich || data.zusammenfassung ? summaryCard : (data.ki_hinweis ? el("p", { class: "footnote" }, data.ki_hinweis) : null),
     // Mit Claude-Fachwissen steht die kuratierte Antwort vorn, die eigenen Lessons dienen als Beleg darunter.
     istPlan ? planSlot : eigeneSlot,
+    istPlan ? lueckenSlot : null,
     istPlan ? eigeneSlot : planSlot,
     beruecksichtigtSlot,
+    istPlan ? rueckschauSlot : null,
     (!data.treffer.length || (data.plan && !data.plan.punkte_erfahrung)) && !istEntwurf ? lueckenKarte(data) : null,
     weitere.length ? el("details", { class: "card", style: "margin-top:24px" },
       el("summary", {}, `Weitere, weniger passende Treffer (${weitere.length})`),
@@ -500,6 +513,161 @@ function showBriefing(container, data) {
     el("div", { class: "row", style: "flex-wrap:wrap" }, fuss, neuFormulieren)));
   if (data.zusammenfassung || data.plan) showSummary(data);
   else if (data.ki_moeglich || data._wechsel) loadSummary();
+}
+
+// Zielbereich für Übernahmen aus dem Briefing: gewählter Bereich, sonst der häufigste unter den Treffern
+function zielBereich(data) {
+  if (data.bereich) return data.bereich;
+  const zaehler = {};
+  for (const t of data.treffer) zaehler[t.lesson.bereich] = (zaehler[t.lesson.bereich] || 0) + 1;
+  const haeufigster = Object.entries(zaehler).sort((a, b) => b[1] - a[1])[0]?.[0];
+  return haeufigster || bereicheSofort().find((b) => b.aktiv)?.name || "Beruf";
+}
+
+// Blinde Flecken: Themen, zu denen die eigenen Einträge nichts sagen. Claude schließt die Lücke; ein Tipp
+// macht daraus einen eigenen Wissenseintrag, oder man ergänzt gleich die eigene Erfahrung dazu.
+function lueckenAbschnitt(data, plan, titelVon) {
+  const luecken = plan.luecken || [];
+  if (!luecken.length) return null;
+  const bereich = zielBereich(data);
+  const beruflich = Boolean(bereicheSofort().find((b) => b.name === bereich)?.beruflich);
+  const karte = (l, i) => {
+    const box = el("div", { class: "card luecke" });
+    const fehlerSlot = el("div");
+    const uebernehmen = el("button", { type: "button", class: "primary" }, icon("plus", "icon sm"), "Als Wissen übernehmen");
+    uebernehmen.addEventListener("click", async () => {
+      uebernehmen.setAttribute("aria-disabled", "true");
+      try {
+        const res = await api("/api/lessons", { method: "POST", body: {
+          art: "wissen", titel: l.titel, situation: l.kontext || `Relevant for: ${data.situation}`, ereignis: l.wissen,
+          lesson: l.kern, massnahme: l.anwendung || "", bereich, phase: beruflich ? (l.phase || "") : "",
+          tags: [], schweregrad: 3, spezifisch: false, quelle: "text",
+        } });
+        fill(box,
+          el("p", { class: "overline", style: "color:var(--success)" }, "Lücke geschlossen"),
+          el("p", { class: "lead" }, anf(l.titel)),
+          el("p", { class: "small muted", style: "margin:6px 0 0" }, `Liegt jetzt als Wissen in ${bereich}. Ergänze dort deine eigene Erfahrung, sobald du eine hast.`),
+          el("div", { class: "actions" }, el("a", { class: "button text", href: `#/lesson/${res.lesson.id}` }, "Ansehen")));
+        refreshStats({ anlass: `Lücke geschlossen: „${kuerzen(l.titel, 48)}“ ist jetzt dein Wissen` });
+      } catch (err) {
+        uebernehmen.removeAttribute("aria-disabled");
+        fill(fehlerSlot, errorNotice(err));
+      }
+    });
+    const feldId = `luecke-${data.id}-${i}`;
+    const feld = el("textarea", { id: feldId, rows: 2, placeholder: "Deine Erfahrung dazu, ein Satz genügt." });
+    const eigeneBox = el("div", { class: "luecke-eigen", hidden: true },
+      el("label", { for: feldId, class: "sr-only" }, "Eigene Erfahrung"),
+      el("div", { class: "composer" }, feld, el("div", { class: "tools" }, diktatKnopf(feld))),
+      el("div", { class: "actions" }, el("button", { type: "button", class: "primary", onclick: async (e) => {
+        const text = feld.value.trim();
+        if (!text) { feld.setAttribute("aria-invalid", "true"); feld.focus(); return; }
+        e.currentTarget.setAttribute("aria-disabled", "true");
+        try {
+          await api("/api/notiz", { method: "POST", body: { text: `On "${l.titel}" (${data.situation}): ${text}`, bereich } });
+          fill(eigeneBox, el("p", { class: "row", style: "gap:6px;margin:8px 0 0;color:var(--success)" }, icon("check", "icon sm"), "Gesichert. Liegt strukturiert im Eingang."));
+          refreshStats({ anlass: "Eigene Erfahrung zu einem blinden Fleck. Genau das macht dein Wissen einzigartig." });
+        } catch (err) { e.currentTarget.removeAttribute("aria-disabled"); fill(fehlerSlot, errorNotice(err)); }
+      } }, "Sichern")));
+    const eigeneBtn = el("button", { type: "button", class: "text", "aria-expanded": "false", onclick: () => {
+      eigeneBox.hidden = !eigeneBox.hidden;
+      eigeneBtn.setAttribute("aria-expanded", String(!eigeneBox.hidden));
+      if (!eigeneBox.hidden) feld.focus();
+    } }, icon("user", "icon sm"), "Eigene Erfahrung dazu");
+    fill(box,
+      el("div", { class: "card-head" }, el("h3", { class: "grow" }, anf(l.titel)), l.phase ? el("span", { class: `badge phase ${l.phase}` }, l.phase) : null),
+      el("p", { class: "quote", style: "font-size:1rem;font-weight:400;margin-top:4px" }, anf(l.kern)),
+      el("details", { class: "luecke-wissen" },
+        el("summary", {}, "Was Claude dazu weiß"),
+        el("div", { class: "stack small" }, ausarbeitungKnoten(l.wissen, titelVon),
+          l.anwendung ? el("p", {}, el("span", { class: "overline", style: "display:inline;margin-right:6px" }, "Anwendung"), anf(l.anwendung)) : null)),
+      l.frage ? el("p", { class: "small muted luecke-frage" }, icon("lightbulb", "icon sm"), anf(l.frage)) : null,
+      el("div", { class: "actions", style: "flex-wrap:wrap" }, uebernehmen, eigeneBtn),
+      eigeneBox, fehlerSlot);
+    return box;
+  };
+  return el("section", { class: "luecken" },
+    el("h2", { class: "row", style: "gap:8px;margin-top:32px" }, icon("lightbulb"), "Blinde Flecken"),
+    el("p", { class: "footnote", style: "margin:0 0 10px" }, `Dazu sagen deine Einträge noch nichts. Claude hat die ${luecken.length === 1 ? "Lücke" : `${luecken.length} Lücken`} mit Fachwissen geschlossen; übernimm es oder halte deine eigene Erfahrung fest.`),
+    luecken.map(karte));
+}
+
+// Rückschau: Nach der Situation markieren, welche Planpunkte gestimmt haben. Bestätigt eigene Einträge,
+// macht aus Abweichungen und bewährtem Fachwissen neue Einträge, und schließt so den Kreis.
+function rueckschauKarte(data, plan, offen = false) {
+  const alle = plan.abschnitte.flatMap((a) => a.punkte);
+  if (!alle.length) return null;
+  const titel = el("h2", { class: "row", style: "gap:8px;margin-top:32px" }, icon("refresh"), "Rückschau");
+  if (data.rueckschau) {
+    const r = data.rueckschau;
+    const bewertet = r.punkte.filter((p) => p.ergebnis);
+    return el("section", {}, titel,
+      el("div", { class: "card rueckschau fertig" },
+        el("p", { class: "overline", style: "color:var(--success)" }, `Kreis geschlossen · ${formatDate(r.datum)}`),
+        el("p", { class: "lead" }, `${r.bestaetigt} ${r.bestaetigt === 1 ? "Eintrag" : "Einträge"} bestätigt, ${r.entwuerfe} ${r.entwuerfe === 1 ? "neuer Entwurf" : "neue Entwürfe"} aus dieser Situation.`),
+        bewertet.length ? el("ul", { class: "checklist rs-liste" }, bewertet.map((p) => el("li", {},
+          icon(p.ergebnis === "bestaetigt" ? "check" : "x", `icon sm ${p.ergebnis === "bestaetigt" ? "ok" : "nein"}`),
+          el("div", { class: "grow" }, el("span", { class: "punkt" }, anf(p.punkt)), p.notiz ? el("span", { class: "li-sub" }, anf(p.notiz)) : null)))) : null,
+        r.fazit ? el("p", { class: "small", style: "margin-top:10px" }, el("span", { class: "overline", style: "display:inline;margin-right:6px" }, "Fazit"), anf(r.fazit)) : null,
+        r.entwuerfe ? el("div", { class: "actions" }, el("a", { class: "button text", href: "#/eingang" }, "Zum Eingang")) : null));
+  }
+  const zustand = alle.map((p) => ({ punkt: p.punkt, quelle: p.quelle, lesson_id: p.lesson_id || null, ergebnis: "", notiz: "" }));
+  const stand = el("p", { class: "footnote", style: "margin:8px 0 0" });
+  const zaehlen = () => {
+    const ja = zustand.filter((z) => z.ergebnis === "bestaetigt").length;
+    const nein = zustand.filter((z) => z.ergebnis === "abweichung").length;
+    stand.textContent = ja || nein ? `${ja} ${ja === 1 ? "hat" : "haben"} gestimmt, ${nein} ${nein === 1 ? "war" : "waren"} anders.` : "Tippe an, was gestimmt hat und was anders lief. Unbewertete Punkte bleiben offen.";
+  };
+  const zeile = (z, i) => {
+    const notizId = `rs-notiz-${data.id}-${i}`;
+    const notiz = el("textarea", { id: notizId, rows: 2, placeholder: "Was war anders?", hidden: true, oninput: (e) => { z.notiz = e.target.value; } });
+    const ja = el("button", { type: "button", class: "rs-ja", "aria-pressed": "false", "aria-label": `„${kuerzen(z.punkt, 50)}“ hat gestimmt` }, icon("check", "icon sm"), "Stimmte");
+    const nein = el("button", { type: "button", class: "rs-nein", "aria-pressed": "false", "aria-label": `„${kuerzen(z.punkt, 50)}“ lief anders` }, icon("x", "icon sm"), "Anders");
+    const sync = () => {
+      ja.setAttribute("aria-pressed", String(z.ergebnis === "bestaetigt"));
+      nein.setAttribute("aria-pressed", String(z.ergebnis === "abweichung"));
+      notiz.hidden = z.ergebnis !== "abweichung";
+      zaehlen();
+    };
+    ja.addEventListener("click", () => { z.ergebnis = z.ergebnis === "bestaetigt" ? "" : "bestaetigt"; sync(); });
+    nein.addEventListener("click", () => { z.ergebnis = z.ergebnis === "abweichung" ? "" : "abweichung"; sync(); if (!notiz.hidden) notiz.focus(); });
+    return el("li", { class: "rs-punkt" },
+      el("div", { class: "grow", style: "min-width:0" },
+        el("span", { class: "punkt" }, anf(z.punkt)),
+        z.quelle === "erfahrung" ? el("span", { class: "src eigen" }, icon("user"), "Dein Eintrag, wird bestätigt") : el("span", { class: "src" }, icon("sparkles"), "Claude, wird bei Bestätigung dein Wissen"),
+        el("label", { for: notizId, class: "sr-only" }, "Was war anders?"), notiz),
+      el("div", { class: "rs-wahl", role: "group", "aria-label": "Bewertung" }, ja, nein));
+  };
+  const fazitId = `rs-fazit-${data.id}`;
+  const fazit = el("textarea", { id: fazitId, rows: 2, placeholder: "Was nimmst du insgesamt mit? (optional)" });
+  const fehlerSlot = el("div");
+  const senden = el("button", { type: "button", class: "primary" }, icon("check", "icon sm"), "Rückschau abschließen");
+  const box = el("details", { class: "card rueckschau", open: offen || null },
+    el("summary", {}, "Wie lief es? Plan mit der Wirklichkeit abgleichen"),
+    el("p", { class: "small muted", style: "margin:4px 0 0" }, "Bestätigte Punkte aus deinen Einträgen zählen als erneut erlebt. Abweichungen, bewährtes Fachwissen und dein Fazit werden als neue Einträge strukturiert."),
+    stand,
+    el("ul", { class: "checklist rs-liste" }, zustand.map(zeile)),
+    el("label", { for: fazitId }, "Fazit"),
+    el("div", { class: "composer" }, fazit, el("div", { class: "tools" }, diktatKnopf(fazit))),
+    el("div", { class: "actions" }, senden), fehlerSlot);
+  senden.addEventListener("click", async () => {
+    const bewertet = zustand.some((z) => z.ergebnis) || fazit.value.trim();
+    if (!bewertet) { toast("Bewerte mindestens einen Punkt oder schreib ein Fazit."); return; }
+    senden.setAttribute("aria-disabled", "true");
+    try {
+      const res = await api(`/api/briefing/${data.id}/rueckschau`, { method: "POST", body: { punkte: zustand, fazit: fazit.value.trim() } });
+      const offenKarte = store.json("lv-offen", null);
+      if (offenKarte?.id === data.id) store.remove("lv-offen");
+      box.replaceWith(rueckschauKarte(res, plan).lastChild);
+      say("Rückschau gespeichert.");
+      refreshStats({ anlass: `Kreis geschlossen: ${res.bestaetigt} ${res.bestaetigt === 1 ? "Eintrag" : "Einträge"} bestätigt, ${res.entwuerfe} ${res.entwuerfe === 1 ? "neuer Entwurf" : "neue Entwürfe"} im Eingang` });
+    } catch (err) {
+      senden.removeAttribute("aria-disabled");
+      fill(fehlerSlot, errorNotice(err));
+    }
+  });
+  zaehlen();
+  return el("section", {}, titel, box);
 }
 
 // Lücke als Einladung: direkt aus dem Briefing eine Notiz sichern

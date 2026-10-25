@@ -115,8 +115,43 @@ class BereichUpdate(BaseModel):
     beruflich: bool | None = None
 
 
+class Marke(BaseModel):
+    """Folien-Marke eines Bereichs: Name, Farben und Schrift für die PowerPoint-Ausgabe. Das Logo liegt als
+    Datei unter data/marken/<bereich>.png und wird getrennt hochgeladen."""
+
+    name: str = Field(default="", max_length=60)
+    untertitel: str = Field(default="", max_length=120)
+    farbe: str = Field(default="#1F3A5F", pattern=r"^#[0-9A-Fa-f]{6}$")
+    akzent: str = Field(default="#D9A441", pattern=r"^#[0-9A-Fa-f]{6}$")
+    schrift: str = Field(default="Calibri", max_length=40)
+
+
+# Voreinstellung je Bereich; der Nutzer passt sie in den Einstellungen an.
+STANDARD_MARKEN: dict[str, Marke] = {
+    "Beruf": Marke(name="Deloitte", farbe="#000000", akzent="#86BC25", schrift="Open Sans"),
+    "Immobilien": Marke(name="van Newboert Immobilien", farbe="#1C2B3A", akzent="#B08D57", schrift="Georgia"),
+}
+
+
+class RueckschauPunkt(BaseModel):
+    punkt: str = Field(min_length=1)
+    quelle: Literal["erfahrung", "allgemein"] = "allgemein"
+    lesson_id: str | None = None
+    ergebnis: Literal["", "bestaetigt", "abweichung"] = ""
+    notiz: str = Field(default="", max_length=2000)
+
+
+class RueckschauIn(BaseModel):
+    """Nach der Situation: Welche Planpunkte haben gestimmt, welche nicht, was nehme ich mit?"""
+
+    punkte: list[RueckschauPunkt] = Field(default_factory=list, max_length=80)
+    fazit: str = Field(default="", max_length=4000)
+
+
 class Einstellungen(BaseModel):
     sperrliste: list[str] = Field(default_factory=list)
+    # Folien-Marke je Bereich (PowerPoint-Ausgabe des Briefings)
+    marken: dict[str, Marke] = Field(default_factory=lambda: {k: v.model_copy() for k, v in STANDARD_MARKEN.items()})
     # auto: Claude, wenn ein Key da ist, sonst lokal, wenn Ollama läuft, sonst manuell
     strukturierung_standard: Literal["auto", "claude", "lokal", "manuell"] = "auto"
     # Überschreibung pro Bereich, z. B. {"Beruf": "lokal"}

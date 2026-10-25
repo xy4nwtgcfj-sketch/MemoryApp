@@ -31,6 +31,13 @@ KOMBI_ANTWORT = {
         {"punkt": "Bei dir fehlte das Personal, nicht die Technik: Personal früher bestätigen als üblich", "lesson_nr": 1},
         {"punkt": "ohne Bezug", "lesson_nr": 0},
     ],
+    "luecken": [
+        {"titel": "Define exit criteria for hypercare before go-live", "kontext": "Any go-live with a hypercare phase.",
+         "wissen": "Exit criteria make the end of hypercare a decision, not a drift. Typical criteria: ticket inflow below a threshold, no open P1/P2, key users confirm.",
+         "kern": "Agree measurable hypercare exit criteria before go-live.", "anwendung": "Put the criteria into the cutover plan.",
+         "frage": "Have you ever had hypercare drag on because nobody defined its end?", "phase": "hypercare"},
+        {"titel": "", "kontext": "", "wissen": "unvollständig", "kern": "", "anwendung": "", "frage": "", "phase": ""},
+    ],
 }
 
 
@@ -212,6 +219,83 @@ def test_kombi_auswerten_sichert_quellen():
     assert punkte[3]["quelle"] == "allgemein" and punkte[3]["lesson_id"] is None
     assert plan["punkte_erfahrung"] == 1 and plan["punkte_gesamt"] == 4
     assert plan["besonderheiten"] == [{"punkt": KOMBI_ANTWORT["besonderheiten"][0]["punkt"], "lesson_id": "L1"}]
+    # Blinde Flecken: nur vollständige Einträge
+    assert [l["titel"] for l in plan["luecken"]] == ["Define exit criteria for hypercare before go-live"]
+    assert plan["luecken"][0]["phase"] == "hypercare"
+
+
+def test_rueckschau_bestaetigt_und_erzeugt_entwuerfe(env):
+    client, claude, add = env
+    l1 = add(titel="Schichtleiter in der Hypercare einplanen", bereich="Beruf",
+             lesson="In der Hypercare die Schichtleiter für zwei Wochen schriftlich einplanen.")
+    data = client.post("/api/briefing", json={"situation": "Plan für die Hypercare-Phase eines SAP-EWM-Projekts"}).json()
+    r = client.post(f"/api/briefing/{data['id']}/zusammenfassung").json()
+    punkte = [p for a in r["plan"]["abschnitte"] for p in a["punkte"]]
+    bewertung = [
+        {**punkte[0], "ergebnis": "bestaetigt"},                       # Fachwissen, hat gestimmt -> ein Entwurf "bewährt"
+        {**punkte[1], "ergebnis": "bestaetigt"},                       # eigener Eintrag -> erneut erlebt
+        {**punkte[2], "ergebnis": "abweichung", "notiz": "Meeting fand nur alle zwei Tage statt."},
+        {**punkte[3], "ergebnis": ""},
+    ]
+    entwuerfe_vorher = client.get("/api/statistik").json()["offene_entwuerfe"]
+    res = client.post(f"/api/briefing/{data['id']}/rueckschau", json={"punkte": bewertung, "fazit": "Hypercare war kürzer als geplant."})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["bestaetigt"] == 1 and body["entwuerfe"] == 3  # Abweichung, bewährtes Fachwissen, Fazit
+    assert body["rueckschau"]["fazit"] == "Hypercare war kürzer als geplant."
+    assert client.get(f"/api/lessons/{l1['id']}").json()["lesson"]["bestaetigungen"] == 2
+    assert client.get("/api/statistik").json()["offene_entwuerfe"] == entwuerfe_vorher + 3
+    assert client.get("/api/statistik").json()["rueckschauen"] == 1
+    # Die Notizen sind strukturiert worden (Claude-Aufrufe für Entwürfe) und tragen den Bezug zur Situation
+    texte = [e["rohtext"] for e in client.get("/api/entwuerfe").json()["eintraege"]]
+    assert any("did not hold up" in t and "alle zwei Tage" in t for t in texte)
+    assert any("proved right in practice" in t for t in texte)
+    assert any("Looking back at" in t for t in texte)
+    # Nur eine Rückschau je Briefing; im Verlauf markiert
+    assert client.post(f"/api/briefing/{data['id']}/rueckschau", json={"punkte": [], "fazit": "x"}).status_code == 409
+    eintrag = next(b for b in client.get("/api/briefings").json() if b["id"] == data["id"])
+    assert eintrag["rueckschau"] is True and eintrag["plan"] is True
+
+
+def test_marke_und_logo_fuer_powerpoint(env):
+    import io
+
+    from PIL import Image
+    from pptx import Presentation
+
+    client, claude, add = env
+    # Voreinstellung: Beruf trägt die Deloitte-Marke, Immobilien van Newboert
+    einst = client.get("/api/einstellungen").json()
+    assert einst["marken"]["Beruf"]["name"] == "Deloitte" and einst["marken"]["Beruf"]["akzent"] == "#86BC25"
+    assert einst["marken"]["Immobilien"]["name"].startswith("van Newboert")
+    # Marke anpassen, unbekannte Bereiche fallen weg
+    r = client.put("/api/einstellungen", json={"marken": {**einst["marken"], "Beruf": {**einst["marken"]["Beruf"], "untertitel": "Internal"}, "Nix": {"name": "x"}}}).json()
+    assert r["marken"]["Beruf"]["untertitel"] == "Internal" and "Nix" not in r["marken"]
+    assert client.put("/api/einstellungen", json={"marken": {"Beruf": {"farbe": "rot"}}}).status_code == 422
+    # Logo hochladen (JPEG wird zu PNG), abrufen, in der Übersicht markiert
+    bild = io.BytesIO()
+    Image.new("RGB", (300, 120), (0, 0, 0)).save(bild, "JPEG")
+    assert client.get("/api/marken/Beruf/logo").status_code == 404
+    assert client.post("/api/marken/Beruf/logo", files={"datei": ("logo.jpg", bild.getvalue(), "image/jpeg")}).status_code == 201
+    assert client.post("/api/marken/Beruf/logo", files={"datei": ("logo.txt", b"kein bild", "text/plain")}).status_code == 422
+    assert client.post("/api/marken/Fremd/logo", files={"datei": ("logo.jpg", bild.getvalue(), "image/jpeg")}).status_code == 404
+    logo = client.get("/api/marken/Beruf/logo")
+    assert logo.status_code == 200 and logo.content[:8] == b"\x89PNG\r\n\x1a\n"
+    assert client.get("/api/marken").json()["Beruf"]["logo"] is True
+
+    add(titel="Schichtleiter in der Hypercare einplanen", bereich="Beruf",
+        lesson="In der Hypercare die Schichtleiter für zwei Wochen schriftlich einplanen.")
+    data = client.post("/api/briefing", json={"situation": "Hypercare-Plan"}).json()  # ohne Bereich: Marke des häufigsten Treffer-Bereichs
+    client.post(f"/api/briefing/{data['id']}/zusammenfassung")
+    praes = Presentation(io.BytesIO(client.get(f"/api/briefing/{data['id']}/pptx").content))
+    texte = [" ".join(sh.text_frame.text for sh in folie.shapes if sh.has_text_frame) for folie in praes.slides]
+    assert "Deloitte" in texte[0] and "Internal" in texte[0]
+    assert any("Blind spots" in t and "Define exit criteria" in t for t in texte)
+    bilder = [sh for folie in praes.slides for sh in folie.shapes if sh.shape_type == 13]  # PICTURE
+    assert len(bilder) >= len(praes.slides) - 1  # Logo auf jeder Folie
+    # Logo entfernen
+    assert client.delete("/api/marken/Beruf/logo").status_code == 204
+    assert client.get("/api/marken").json()["Beruf"]["logo"] is False
 
 
 def test_kombiniert_ist_standard(env):

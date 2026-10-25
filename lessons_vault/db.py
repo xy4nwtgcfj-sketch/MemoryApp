@@ -193,6 +193,10 @@ MIGRATIONS: list[str] = [
         CHECK (phase IN ('', 'sales', 'concept', 'build', 'test', 'cutover', 'hypercare'));
     CREATE INDEX idx_lessons_phase ON lessons(phase);
     """,
+    # Rückschau zum Briefing: welche Planpunkte haben gestimmt, was kam neu dazu
+    """
+    ALTER TABLE briefings ADD COLUMN rueckschau_json TEXT NOT NULL DEFAULT '';
+    """,
 ]
 
 
