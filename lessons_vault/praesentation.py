@@ -544,8 +544,10 @@ def _kacheln(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, ho
         kurz = p.get("kurz", "")
         textbreite = kb - Inches(0.44)
         if kurz:
-            kopf = _textfeld(folie, kx + Inches(0.22) + icon + Inches(0.06), ky + Inches(0.22), textbreite - icon - Inches(0.06), icon, anker=MSO_ANCHOR.MIDDLE)
-            _absatz(kopf, kurz, groesse=14, farbe=thema.primaer, fett=True, erster=True, abstand=0, schrift=thema.schrift_titel)
+            kopfbreite = textbreite - icon - Inches(0.06)
+            kopf = _textfeld(folie, kx + Inches(0.22) + icon + Inches(0.06), ky + Inches(0.22), kopfbreite, icon, anker=MSO_ANCHOR.MIDDLE)
+            kopfgroesse = _passend(kurz, thema.schrift_titel, kopfbreite / Inches(1), icon / Inches(1), 14, 10, fett=True, abstand=1.1)
+            _absatz(kopf, kurz, groesse=kopfgroesse, farbe=thema.primaer, fett=True, erster=True, abstand=0, schrift=thema.schrift_titel, zeilenabstand=1.0)
             ty = ky + Inches(0.22) + icon + Inches(0.1)
             tx, tb = kx + Inches(0.22), textbreite
         else:
