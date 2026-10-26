@@ -17,6 +17,8 @@ from .test_structuring import FakeClient, payload
 
 KOMBI_ANTWORT = {
     "zusammenfassung": "Hypercare steht und fällt mit klaren Eskalationswegen.",
+    "titel": "Hypercare Playbook",
+    "untertitel": "Stabilizing the first four weeks",
     "kernbotschaften": [
         {"titel": "Staff before you stabilize", "text": "Confirm shift leads in writing before go-live."},
         {"titel": "", "text": ""},  # leer fällt weg
@@ -227,13 +229,16 @@ def test_kombi_auswerten_sichert_quellen():
     punkte = [p for a in plan["abschnitte"] for p in a["punkte"]]
     assert [a["titel"] for a in plan["abschnitte"]] == ["Vorbereitung", "Betrieb"]  # leere Abschnitte fallen weg
     assert punkte[1] == {"punkt": "Schichtleiter für die ersten zwei Wochen schriftlich einplanen", "quelle": "erfahrung", "lesson_id": "L1",
-                         "kurz": "Staffing confirmed", "icon": "users", "gewicht": 5, "eintritt": 0, "auswirkung": 0}
+                         "kurz": "Staffing confirmed", "icon": "users", "gewicht": 5, "eintritt": 0, "auswirkung": 0,
+                         "wert": "", "start": 0, "ende": 0, "aufwand": 0, "gruppe": "", "status": ""}
     # "erfahrung" ohne gültige Lesson wird nie als eigene Erfahrung ausgewiesen
     assert punkte[3]["quelle"] == "allgemein" and punkte[3]["lesson_id"] is None
     # Folienfelder: Abschnitt 1 vollständig, Abschnitt 2 mit Rückfallwerten
     assert plan["abschnitte"][0]["kernaussage"] == "Fix staffing and escalation before go-live." and plan["abschnitte"][0]["darstellung"] == "schritte"
     assert plan["abschnitte"][1]["kernaussage"] == "" and plan["abschnitte"][1]["darstellung"] == "kacheln"
-    assert punkte[2] == {"punkt": "Tägliches Hypercare-Meeting", "quelle": "allgemein", "lesson_id": None, "kurz": "", "icon": "", "gewicht": 0, "eintritt": 0, "auswirkung": 0}
+    assert punkte[2] == {"punkt": "Tägliches Hypercare-Meeting", "quelle": "allgemein", "lesson_id": None, "kurz": "", "icon": "", "gewicht": 0,
+                         "eintritt": 0, "auswirkung": 0, "wert": "", "start": 0, "ende": 0, "aufwand": 0, "gruppe": "", "status": ""}
+    assert plan["titel"] == "Hypercare Playbook" and plan["untertitel"] == "Stabilizing the first four weeks"
     assert plan["kernbotschaften"] == [{"titel": "Staff before you stabilize", "text": "Confirm shift leads in writing before go-live."}]
     assert plan["naechste_schritte"] == [{"schritt": "Confirm shift leads in writing", "zeitpunkt": "Go-live −2 weeks"}]
     assert plan["punkte_erfahrung"] == 1 and plan["punkte_gesamt"] == 4
@@ -407,7 +412,7 @@ def test_ausarbeitung_marken_und_powerpoint(env):
     assert "filename*=UTF-8''Briefing%20Plan" in res.headers["content-disposition"]
     praes = Presentation(io.BytesIO(res.content))
     texte = [" ".join(sh.text_frame.text for sh in folie.shapes if sh.has_text_frame) for folie in praes.slides]
-    assert "Plan für die Hypercare-Phase" in texte[0]
+    assert "Hypercare Playbook" in texte[0] and "Plan für die Hypercare-Phase" not in texte[0]
     assert "Agenda" in texte[1] and "Vorbereitung" in texte[1] and "Next steps" in texte[1]
     assert any("Schichtleiter für die ersten zwei Wochen" in t for t in texte)
     # Keine Quellen, keine KI, keine Lesson-Titel auf den Folien

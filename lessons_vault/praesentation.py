@@ -50,7 +50,6 @@ BREITE, HOEHE = Inches(13.333), Inches(7.5)
 RAND = Inches(0.6)
 INHALT_OBEN = Inches(1.85)
 INHALT_HOEHE = Inches(4.9)
-PUNKTE_JE_FOLIE = {"kacheln": 6, "schritte": 6, "risiken": 8, "prioritaeten": 8}
 STANDARD_ICONS = ("flag", "target", "gear", "users", "check", "chart", "clock", "document")
 
 MARKE = re.compile(r"\s?\[\[E:([\w-]+)\]\]")
@@ -78,6 +77,7 @@ def _abdunkeln(farbe: RGBColor, faktor: float = 0.7) -> RGBColor:
 
 def _mischen(a: RGBColor, b: RGBColor, anteil: float) -> RGBColor:
     """anteil 0 = a, 1 = b."""
+    anteil = min(1.0, max(0.0, anteil))
     return RGBColor(*(int(round(a[i] * (1 - anteil) + b[i] * anteil)) for i in range(3)))
 
 
@@ -409,7 +409,8 @@ def _kurz(text: str, laenge: int) -> str:
 
 
 # ------------------------------------------------------------------ Titel, Agenda, Kapitel
-def _titelfolie(praes, thema: Thema, situation: str, datum: str):
+def _titelfolie(praes, thema: Thema, titel: str, untertitel: str, datum: str):
+    """Decktitel und Untertitel aus dem Plan; die Aufgabenbeschreibung selbst steht nicht auf der Folie."""
     folie = praes.slides.add_slide(praes.slide_layouts[6])
     _flaeche(folie, 0, 0, praes.slide_width, praes.slide_height, thema.titel_grund)
     s = thema.schrift
@@ -422,11 +423,13 @@ def _titelfolie(praes, thema: Thema, situation: str, datum: str):
             if thema.untertitel:
                 _absatz(kopf, thema.untertitel, groesse=8, farbe=GRAU, abstand=0, schrift=s, sperrung=3)
         textbreite = Inches(6.6) if thema.logo else praes.slide_width - Inches(1.8)
-        rahmen = _textfeld(folie, Inches(0.9), Inches(2.4), textbreite, Inches(3.6))
-        groesse = _passend(situation, thema.schrift_titel, textbreite / Inches(1), 2.4, 34, 22, fett=True, abstand=1.1)
-        _absatz(rahmen, "BRIEFING", groesse=11, farbe=thema.akzent_text, fett=True, erster=True, abstand=14, schrift=s, sperrung=2)
-        _absatz(rahmen, situation, groesse=groesse, farbe=thema.titel_schrift, fett=True, abstand=14, schrift=thema.schrift_titel, zeilenabstand=1.05)
-        _absatz(rahmen, datum, groesse=14, farbe=thema.titel_nebenschrift, schrift=s)
+        rahmen = _textfeld(folie, Inches(0.9), Inches(2.3), textbreite, Inches(3.8))
+        groesse = _passend(titel, thema.schrift_titel, textbreite / Inches(1), 2.0, 34, 22, fett=True, abstand=1.1)
+        _flaeche(folie, Inches(0.9), Inches(2.1), Inches(1.0), Inches(0.06), thema.akzent_text)
+        _absatz(rahmen, titel, groesse=groesse, farbe=thema.titel_schrift, fett=True, erster=True, abstand=12, schrift=thema.schrift_titel, zeilenabstand=1.05)
+        if untertitel:
+            _absatz(rahmen, untertitel, groesse=16, farbe=thema.titel_schrift, abstand=14, schrift=s, zeilenabstand=1.15)
+        _absatz(rahmen, datum, groesse=13, farbe=thema.titel_nebenschrift, schrift=s)
         bild = _bild(praes, folie, thema.logo, hoehe=Inches(5.0), links=0, oben=0)
         if bild is not None:
             if bild.width > Inches(5.2):  # breite Illustrationen kleiner setzen
@@ -440,12 +443,13 @@ def _titelfolie(praes, thema: Thema, situation: str, datum: str):
         kopfzeile = _textfeld(folie, Inches(0.9), Inches(0.5), praes.slide_width - Inches(1.8), Inches(0.6))
         _absatz(kopfzeile, thema.name, groesse=20, farbe=thema.titel_schrift, fett=True, erster=True, schrift=s)
     textbreite = praes.slide_width - Inches(1.8)
-    rahmen = _textfeld(folie, Inches(0.9), Inches(2.4), textbreite, Inches(3.4))
-    groesse = _passend(situation, thema.schrift_titel, textbreite / Inches(1), 2.2, 36, 24, fett=True, abstand=1.1)
-    _absatz(rahmen, "BRIEFING", groesse=14, farbe=thema.akzent, fett=True, erster=True, abstand=10, schrift=s, sperrung=2)
-    _absatz(rahmen, situation, groesse=groesse, farbe=thema.titel_schrift, fett=True, abstand=16, schrift=thema.schrift_titel, zeilenabstand=1.05)
+    rahmen = _textfeld(folie, Inches(0.9), Inches(2.4), textbreite, Inches(3.6))
+    groesse = _passend(titel, thema.schrift_titel, textbreite / Inches(1), 1.9, 40, 24, fett=True, abstand=1.1)
+    _absatz(rahmen, titel, groesse=groesse, farbe=thema.titel_schrift, fett=True, erster=True, abstand=12, schrift=thema.schrift_titel, zeilenabstand=1.05)
+    if untertitel:
+        _absatz(rahmen, untertitel, groesse=18, farbe=thema.titel_schrift, abstand=16, schrift=s, zeilenabstand=1.15)
     if unterzeile:
-        _absatz(rahmen, unterzeile, groesse=16, farbe=thema.titel_nebenschrift, schrift=s)
+        _absatz(rahmen, unterzeile, groesse=14, farbe=thema.titel_nebenschrift, schrift=s)
     _bild(praes, folie, thema.logo, hoehe=Inches(0.9), unten_links=True)
     return folie
 
@@ -506,7 +510,8 @@ def _kapitelfolie(praes, thema: Thema, nr: int, titel: str, kernaussage: str, ka
         else:
             pille = _flaeche(folie, x, y, breite, Inches(0.38), _mischen(thema.titel_grund, thema.titel_schrift, 0.1), MSO_SHAPE.ROUNDED_RECTANGLE, rundung=0.5)
             farbe = thema.titel_nebenschrift
-        _form_text(pille, _kurz(f"{i + 1:02d}  {k['titel']}", 26), groesse=9, farbe=farbe, schrift=thema.schrift, fett=aktiv)
+        beschriftung = f"{i + 1:02d}" if n > 10 else _kurz(f"{i + 1:02d}  {k['titel']}", 26)
+        _form_text(pille, beschriftung, groesse=9, farbe=farbe, schrift=thema.schrift, fett=aktiv)
         x += breite + luecke
     return folie
 
@@ -561,9 +566,11 @@ def _kacheln(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, ho
             _gewichtspunkte(folie, thema, kx + kb - Inches(0.12), ky + kh - Inches(0.26), int(p["gewicht"]))
 
 
-def _schritte(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, hoehe):
+def _schritte(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, hoehe, senkrecht: bool | None = None):
     n = len(punkte)
-    if n <= 4:
+    if senkrecht is None:
+        senkrecht = n > 4
+    if not senkrecht:
         luecke = Inches(0.12)
         sb = int((breite - luecke * (n - 1)) / n)
         for i, p in enumerate(punkte):
@@ -659,11 +666,11 @@ def _risiken(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, ho
     _legende(folie, thema, punkte, lx, y, x + breite - lx, hoehe)
 
 
-def _balkendiagramm(folie, thema: Thema, x, y, breite, hoehe, kategorien: list[str], werte: list[float], *, maximum=5, format="0"):
+def _balkendiagramm(folie, thema: Thema, x, y, breite, hoehe, kategorien: list[str], werte: list[float], *, maximum=5, format="0", senkrecht=False):
     daten = CategoryChartData()
     daten.categories = kategorien
     daten.add_series("Importance", werte)
-    grafik = folie.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, x, y, breite, hoehe, daten)
+    grafik = folie.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED if senkrecht else XL_CHART_TYPE.BAR_CLUSTERED, x, y, breite, hoehe, daten)
     diagramm = grafik.chart
     diagramm.has_legend = False
     diagramm.has_title = False
@@ -685,7 +692,7 @@ def _balkendiagramm(folie, thema: Thema, x, y, breite, hoehe, kategorien: list[s
     labels.font.bold = True
     labels.font.color.rgb = thema.primaer
     kat = diagramm.category_axis
-    kat.reverse_order = True
+    kat.reverse_order = not senkrecht
     kat.has_major_gridlines = False
     kat.format.line.color.rgb = LINIE
     kat.tick_labels.font.size = Pt(11)
@@ -707,6 +714,575 @@ def _prioritaeten(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breit
     r = _textfeld(folie, x, y + hoehe - Inches(0.3), db, Inches(0.3))
     _absatz(r, "IMPORTANCE 1 (LOW) – 5 (CRITICAL)", groesse=9, farbe=GRAU, fett=True, erster=True, abstand=0, schrift=thema.schrift, mitte=True, sperrung=1)
     _legende(folie, thema, geordnet, x + db + Inches(0.4), y, breite - db - Inches(0.4), hoehe, nummern=False)
+
+
+def _palette(thema: Thema) -> list[RGBColor]:
+    return [thema.primaer, _mischen(thema.primaer, WEISS, 0.3), thema.akzent, _mischen(thema.primaer, WEISS, 0.55),
+            _mischen(thema.akzent, WEISS, 0.45), _mischen(thema.primaer, WEISS, 0.75), GRAU, HELLGRAU]
+
+
+def _harvey(folie, thema: Thema, x, y, d, anteil: float):
+    """Harvey Ball: Kreis, im Uhrzeigersinn von oben zu `anteil` gefüllt."""
+    ring = _flaeche(folie, x, y, d, d, WEISS, MSO_SHAPE.OVAL)
+    ring.line.color.rgb = thema.primaer
+    ring.line.width = Pt(1)
+    if anteil >= 0.99:
+        _flaeche(folie, x, y, d, d, thema.primaer, MSO_SHAPE.OVAL)
+    elif anteil > 0.01:
+        tortenstueck = _flaeche(folie, x, y, d, d, thema.primaer, MSO_SHAPE.PIE)
+        tortenstueck.adjustments[0] = 270 * 0.6  # Winkel in 60000stel Grad, normiert auf 1/100000
+        tortenstueck.adjustments[1] = ((270 + 360 * anteil) % 360) * 0.6
+
+
+def _nummern(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, hoehe):
+    """Zweispaltige Liste mit großen Nummern und Harvey Ball für das Gewicht."""
+    n = len(punkte)
+    spalten = 2 if n > 3 else 1
+    je_spalte = math.ceil(n / spalten)
+    luecke = Inches(0.6)
+    sb = int((breite - luecke * (spalten - 1)) / spalten)
+    zh = min(Inches(1.6), int(hoehe / je_spalte))
+    for i, p in enumerate(punkte):
+        spalte, zeile = divmod(i, je_spalte)
+        zx = x + spalte * (sb + luecke)
+        zy = y + zeile * zh
+        r = _textfeld(folie, zx - Inches(0.08), zy, Inches(0.9), Inches(0.6))
+        _absatz(r, f"{i + 1:02d}", groesse=26, farbe=thema.akzent_text, fett=True, erster=True, abstand=0, schrift=thema.schrift_titel)
+        ball = Inches(0.3)
+        if p.get("gewicht"):
+            _harvey(folie, thema, zx + sb - ball, zy + Inches(0.1), ball, p["gewicht"] / 5)
+        tx = zx + Inches(0.85)
+        tb = sb - Inches(0.85) - (ball + Inches(0.15) if p.get("gewicht") else 0)
+        rahmen = _textfeld(folie, tx, zy, tb, zh - Inches(0.12))
+        kurz = p.get("kurz")
+        if kurz:
+            _absatz(rahmen, kurz, groesse=14, farbe=thema.primaer, fett=True, erster=True, abstand=2, schrift=thema.schrift_titel)
+        groesse = _passend(p["punkt"], thema.schrift, tb / Inches(1), (zh - Inches(0.45 if kurz else 0.15)) / Inches(1), 13, 9)
+        _absatz(rahmen, p["punkt"], groesse=groesse, farbe=TEXT, erster=not kurz, abstand=0, schrift=thema.schrift, zeilenabstand=1.1)
+        if zeile < je_spalte - 1 and i < n - 1:
+            _flaeche(folie, zx, zy + zh - Inches(0.06), sb, Emu(9525), LINIE)
+
+
+def _kennzahlen(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, hoehe):
+    """Kacheln mit großer Zahl oben."""
+    n = len(punkte)
+    spalten = {1: 1, 2: 2, 3: 3, 4: 4, 5: 3, 6: 3}.get(n, 4)
+    zeilen = math.ceil(n / spalten)
+    luecke = Inches(0.25)
+    kb = int((breite - luecke * (spalten - 1)) / spalten)
+    kh = int((hoehe - luecke * (zeilen - 1)) / zeilen)
+    if zeilen == 1:
+        kh = min(kh, Inches(3.4))
+    for i, p in enumerate(punkte):
+        zeile, spalte = divmod(i, spalten)
+        kx = x + spalte * (kb + luecke)
+        ky = y + zeile * (kh + luecke)
+        _karte(folie, kx, ky, kb, kh, thema.karte)
+        _flaeche(folie, kx + Inches(0.22), ky + Inches(0.26), Inches(0.5), Inches(0.05), thema.akzent)
+        wert = p.get("wert") or (f"{p['gewicht']}/5" if p.get("gewicht") else "–")
+        r = _textfeld(folie, kx + Inches(0.14), ky + Inches(0.36), kb - Inches(0.28), Inches(0.9), anker=MSO_ANCHOR.MIDDLE)
+        groesse = _passend(wert, thema.schrift_titel, (kb - Inches(0.28)) / Inches(1), 0.85, 34, 18, fett=True, abstand=1.0)
+        _absatz(r, wert, groesse=groesse, farbe=thema.primaer, fett=True, erster=True, abstand=0, schrift=thema.schrift_titel)
+        _piktogramm(folie, thema, _icon_von(p, i), kx + kb - Inches(0.62), ky + Inches(0.18), Inches(0.44), grund=thema.primaer_hell)
+        rahmen = _textfeld(folie, kx + Inches(0.14), ky + Inches(1.3), kb - Inches(0.28), kh - Inches(1.42))
+        kurz = p.get("kurz")
+        if kurz:
+            _absatz(rahmen, kurz, groesse=13, farbe=thema.primaer, fett=True, erster=True, abstand=3, schrift=thema.schrift_titel)
+        groesse = _passend(p["punkt"], thema.schrift, (kb - Inches(0.28)) / Inches(1), (kh - Inches(1.42) - (Inches(0.35) if kurz else 0)) / Inches(1), 12, 8)
+        _absatz(rahmen, p["punkt"], groesse=groesse, farbe=TEXT, erster=not kurz, abstand=0, schrift=thema.schrift, zeilenabstand=1.1)
+
+
+def _zeitplan(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, hoehe):
+    """Gantt: Wochen als Spalten, je Punkt ein Balken."""
+    n = len(punkte)
+    fenster = []
+    for p in punkte:
+        s, e = int(p.get("start") or 0), int(p.get("ende") or 0)
+        s = s or e or 1
+        e = max(e, s)
+        fenster.append((s, e))
+    w0 = min(s for s, _ in fenster)
+    w1 = max(e for _, e in fenster)
+    wochen = w1 - w0 + 1
+    lb = Inches(3.1)
+    gx = x + lb
+    gb = breite - lb
+    kopf = Inches(0.4)
+    zh = min(Inches(0.9), int((hoehe - kopf) / n))
+    sw = int(gb / wochen)
+    palette = _palette(thema)
+    for w in range(wochen):
+        r = _textfeld(folie, gx + w * sw, y, sw, kopf, anker=MSO_ANCHOR.MIDDLE)
+        _absatz(r, f"W{w0 + w}", groesse=10, farbe=GRAU, fett=True, erster=True, abstand=0, schrift=thema.schrift, mitte=True)
+        _flaeche(folie, gx + w * sw, y + kopf, Emu(9525), zh * n, LINIE)
+    _flaeche(folie, gx + wochen * sw, y + kopf, Emu(9525), zh * n, LINIE)
+    _flaeche(folie, x, y + kopf, breite, Emu(9525), LINIE)
+    for i, (p, (s, e)) in enumerate(zip(punkte, fenster)):
+        zy = y + kopf + i * zh
+        if i % 2 == 1:
+            _flaeche(folie, x, zy, breite, zh, _mischen(thema.karte, WEISS, 0.5))
+        rahmen = _textfeld(folie, x, zy + Inches(0.04), lb - Inches(0.2), zh - Inches(0.08), anker=MSO_ANCHOR.MIDDLE)
+        kurz = p.get("kurz")
+        if kurz:
+            _absatz(rahmen, kurz, groesse=12, farbe=thema.primaer, fett=True, erster=True, abstand=1, schrift=thema.schrift_titel)
+        groesse = _passend(p["punkt"], thema.schrift, (lb - Inches(0.2)) / Inches(1), (zh - Inches(0.36 if kurz else 0.1)) / Inches(1), 10, 8)
+        _absatz(rahmen, p["punkt"], groesse=groesse, farbe=TEXT, erster=not kurz, abstand=0, schrift=thema.schrift, zeilenabstand=1.05)
+        bx = gx + (s - w0) * sw + Inches(0.05)
+        bb = (e - s + 1) * sw - Inches(0.1)
+        bh = min(Inches(0.38), zh - Inches(0.2))
+        balken = _flaeche(folie, bx, zy + int((zh - bh) / 2), bb, bh, palette[i % 2 * 1], MSO_SHAPE.ROUNDED_RECTANGLE, rundung=0.5)
+        _form_text(balken, f"W{s}" if s == e else f"W{s}–W{e}", groesse=9, farbe=WEISS if not _hell(palette[i % 2]) else TEXT, schrift=thema.schrift)
+
+
+def _trichter(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, hoehe):
+    """Stufen von breit nach eng, Legende rechts."""
+    n = len(punkte)
+    tb = Inches(6.0)
+    luecke = Inches(0.06)
+    sh = int((hoehe - luecke * (n - 1)) / n)
+    cx = x + int(tb / 2)
+    for i, p in enumerate(punkte):
+        oben = 1.0 - 0.6 * i / n
+        unten = 1.0 - 0.6 * (i + 1) / n
+        sy = y + i * (sh + luecke)
+        wo, wu = int(tb * oben), int(tb * unten)
+        builder = folie.shapes.build_freeform(cx - int(wo / 2), sy, scale=1.0)
+        builder.add_line_segments([(cx + int(wo / 2), sy), (cx + int(wu / 2), sy + sh), (cx - int(wu / 2), sy + sh)], close=True)
+        stufe = builder.convert_to_shape()
+        fuellung = _mischen(thema.primaer, WEISS, 0.55 - 0.55 * i / max(1, n - 1))
+        stufe.fill.solid()
+        stufe.fill.fore_color.rgb = fuellung
+        stufe.line.fill.background()
+        stufe.shadow.inherit = False
+        r = _textfeld(folie, cx - int(wu / 2), sy, wu, sh, anker=MSO_ANCHOR.MIDDLE)
+        label = f"{i + 1}  {p.get('kurz') or _kurz(p['punkt'], 24)}"
+        _absatz(r, label, groesse=12, farbe=TEXT if _hell(fuellung) else WEISS, fett=True, erster=True, abstand=0, schrift=thema.schrift, mitte=True)
+    _legende(folie, thema, punkte, x + tb + Inches(0.5), y, breite - tb - Inches(0.5), hoehe)
+
+
+def _tabelle(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, hoehe):
+    n = len(punkte)
+    mit_gewicht = any(p.get("gewicht") for p in punkte)
+    spalten = [Inches(0.5), Inches(2.6), breite - Inches(3.1) - (Inches(1.3) if mit_gewicht else 0)] + ([Inches(1.3)] if mit_gewicht else [])
+    kopfzeile = Inches(0.42)
+    zh = min(Inches(0.95), int((hoehe - kopfzeile) / n))
+    form = folie.shapes.add_table(n + 1, len(spalten), x, y, breite, kopfzeile + zh * n)
+    tbl = form.table
+    tblPr = tbl._tbl.tblPr
+    stil = tblPr.find("{http://schemas.openxmlformats.org/drawingml/2006/main}tableStyleId")
+    if stil is None:
+        stil = OxmlElement("a:tableStyleId")
+        tblPr.append(stil)
+    stil.text = "{2D5ABB26-0587-4C30-8999-92F81FD0307C}"  # No Style, No Grid
+    tbl.first_row = False
+    tbl.horz_banding = False
+    for c, b in enumerate(spalten):
+        tbl.columns[c].width = b
+    tbl.rows[0].height = kopfzeile
+    titel = ["#", "Topic", "Action"] + (["Importance"] if mit_gewicht else [])
+    for c, t in enumerate(titel):
+        zelle = tbl.cell(0, c)
+        zelle.fill.solid()
+        zelle.fill.fore_color.rgb = thema.primaer
+        zelle.margin_left = zelle.margin_right = Inches(0.1)
+        zelle.margin_top = zelle.margin_bottom = Inches(0.04)
+        zelle.vertical_anchor = MSO_ANCHOR.MIDDLE
+        _absatz(zelle.text_frame, t.upper(), groesse=10, farbe=TEXT if _hell(thema.primaer) else WEISS, fett=True, erster=True, abstand=0,
+                schrift=thema.schrift, sperrung=1, mitte=(c == 0))
+    for i, p in enumerate(punkte, start=1):
+        tbl.rows[i].height = zh
+        werte = [f"{i:02d}", p.get("kurz") or "", p["punkt"]]
+        if mit_gewicht:
+            g = int(p.get("gewicht") or 0)
+            werte.append("●" * g + "○" * (5 - g))
+        for c, t in enumerate(werte):
+            zelle = tbl.cell(i, c)
+            zelle.fill.solid()
+            zelle.fill.fore_color.rgb = thema.karte if i % 2 == 0 else WEISS
+            zelle.margin_left = zelle.margin_right = Inches(0.1)
+            zelle.margin_top = zelle.margin_bottom = Inches(0.04)
+            zelle.vertical_anchor = MSO_ANCHOR.MIDDLE
+            if c == 2:
+                groesse = _passend(t, thema.schrift, spalten[c] / Inches(1), zh / Inches(1), 12, 8)
+                _absatz(zelle.text_frame, t, groesse=groesse, farbe=TEXT, erster=True, abstand=0, schrift=thema.schrift, zeilenabstand=1.05)
+            elif c == 1:
+                _absatz(zelle.text_frame, t, groesse=12, farbe=thema.primaer, fett=True, erster=True, abstand=0, schrift=thema.schrift_titel)
+            elif c == 0:
+                _absatz(zelle.text_frame, t, groesse=12, farbe=thema.akzent_text, fett=True, erster=True, abstand=0, schrift=thema.schrift_titel, mitte=True)
+            else:
+                _absatz(zelle.text_frame, t, groesse=12, farbe=thema.primaer, erster=True, abstand=0, schrift="Calibri", mitte=True)
+    return form
+
+
+def _radar(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, hoehe):
+    daten = CategoryChartData()
+    daten.categories = [p.get("kurz") or _kurz(p["punkt"], 20) for p in punkte]
+    daten.add_series("Importance", [float(p.get("gewicht") or 3) for p in punkte])
+    db = int(breite * 0.52)
+    grafik = folie.shapes.add_chart(XL_CHART_TYPE.RADAR_MARKERS, x, y, db, hoehe, daten)
+    diagramm = grafik.chart
+    diagramm.has_legend = False
+    diagramm.font.size = Pt(11)
+    diagramm.font.name = thema.schrift
+    diagramm.font.color.rgb = TEXT
+    serie = diagramm.plots[0].series[0]
+    serie.format.line.color.rgb = thema.primaer
+    serie.format.line.width = Pt(2.25)
+    serie.marker.format.fill.solid()
+    serie.marker.format.fill.fore_color.rgb = thema.akzent
+    serie.marker.format.line.color.rgb = thema.akzent
+    serie.marker.size = 8
+    wert = diagramm.value_axis
+    wert.minimum_scale = 0
+    wert.maximum_scale = 5
+    wert.major_unit = 1
+    wert.major_gridlines.format.line.color.rgb = LINIE
+    wert.tick_labels.font.size = Pt(8)
+    wert.tick_labels.font.color.rgb = HELLGRAU
+    _legende(folie, thema, punkte, x + db + Inches(0.3), y, breite - db - Inches(0.3), hoehe, nummern=False)
+
+
+def _kreis(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, hoehe):
+    palette = _palette(thema)
+    daten = CategoryChartData()
+    daten.categories = [p.get("kurz") or _kurz(p["punkt"], 20) for p in punkte]
+    gewichte = [float(p.get("gewicht") or 3) for p in punkte]
+    daten.add_series("Share", gewichte)
+    db = int(breite * 0.46)
+    grafik = folie.shapes.add_chart(XL_CHART_TYPE.DOUGHNUT, x, y, db, hoehe, daten)
+    diagramm = grafik.chart
+    diagramm.has_legend = False
+    diagramm.font.size = Pt(11)
+    diagramm.font.name = thema.schrift
+    plot = diagramm.plots[0]
+    plot.vary_by_categories = True
+    loch = plot._element.find("{http://schemas.openxmlformats.org/drawingml/2006/chart}holeSize")
+    if loch is not None:
+        loch.set("val", "62")
+    serie = plot.series[0]
+    for i, punkt in enumerate(serie.points):
+        punkt.format.fill.solid()
+        punkt.format.fill.fore_color.rgb = palette[i % len(palette)]
+        punkt.format.line.color.rgb = WEISS
+    plot.has_data_labels = True
+    labels = plot.data_labels
+    labels.show_percentage = True
+    labels.show_value = False
+    labels.show_category_name = False
+    labels.number_format = "0%"
+    labels.number_format_is_linked = False
+    labels.font.size = Pt(10)
+    labels.font.bold = True
+    labels.font.color.rgb = WEISS
+    # Legende rechts mit Farbpunkten
+    lx = x + db + Inches(0.3)
+    lb = breite - db - Inches(0.3)
+    n = len(punkte)
+    zh = int(hoehe / n)
+    gesamt = sum(gewichte)
+    for i, p in enumerate(punkte):
+        zy = y + i * zh
+        _flaeche(folie, lx, zy + Inches(0.08), Inches(0.26), Inches(0.26), palette[i % len(palette)], MSO_SHAPE.OVAL)
+        rahmen = _textfeld(folie, lx + Inches(0.4), zy - Inches(0.04), lb - Inches(0.4), zh - Inches(0.04))
+        kurz = f"{p.get('kurz') or _kurz(p['punkt'], 24)}  ·  {gewichte[i] / gesamt:.0%}"
+        _absatz(rahmen, kurz, groesse=12, farbe=thema.primaer, fett=True, erster=True, abstand=0, schrift=thema.schrift_titel)
+        groesse = _passend(p["punkt"], thema.schrift, (lb - Inches(0.4)) / Inches(1), (zh - Inches(0.3)) / Inches(1), 12, 8)
+        _absatz(rahmen, p["punkt"], groesse=groesse, farbe=TEXT, abstand=0, schrift=thema.schrift, zeilenabstand=1.1)
+
+
+def _achsenkreuz(folie, thema: Thema, mx, my, seite, x_label: str, y_label: str):
+    r = _textfeld(folie, mx, my + seite + Inches(0.06), seite, Inches(0.3))
+    _absatz(r, x_label, groesse=9, farbe=GRAU, fett=True, erster=True, abstand=0, schrift=thema.schrift, mitte=True, sperrung=1)
+    achse = folie.shapes.add_textbox(mx - Inches(0.3) - int(seite / 2), my + int(seite / 2) - Inches(0.15), seite, Inches(0.3))
+    achse.rotation = 270.0
+    achse.text_frame.margin_top = achse.text_frame.margin_bottom = 0
+    _absatz(achse.text_frame, y_label, groesse=9, farbe=GRAU, fett=True, erster=True, abstand=0, schrift=thema.schrift, mitte=True, sperrung=1)
+
+
+def _matrix(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, hoehe):
+    """2x2: Nutzen (Gewicht) gegen Aufwand."""
+    seite = min(hoehe - Inches(0.5), Inches(4.4))
+    mx, my = x + Inches(0.45), y + Inches(0.1)
+    halb = int(seite / 2)
+    felder = [  # (spalte, zeile, Farbe, Beschriftung)
+        (0, 0, _mischen(thema.primaer, WEISS, 0.8), "QUICK WINS"), (1, 0, thema.karte, "BIG BETS"),
+        (0, 1, thema.karte, "FILL-INS"), (1, 1, _mischen(thema.karte, WEISS, 0.5), "DEPRIORITIZE"),
+    ]
+    for spalte, zeile, farbe, name in felder:
+        fx, fy = mx + spalte * halb, my + zeile * halb
+        _flaeche(folie, fx, fy, halb - Emu(19050), halb - Emu(19050), farbe)
+        # Beschriftung in der Außenecke des Quadranten, weg von den Markern an der Mitte
+        r = _textfeld(folie, fx + Inches(0.05), fy + (Inches(0.05) if zeile == 0 else halb - Inches(0.38)), halb - Inches(0.2), Inches(0.3))
+        _absatz(r, name, groesse=9, farbe=GRAU, fett=True, erster=True, abstand=0, schrift=thema.schrift, sperrung=1, rechts=(spalte == 1))
+    _achsenkreuz(folie, thema, mx, my, seite, "EFFORT  low  →  high", "IMPACT  low  →  high")
+    d = Inches(0.36)
+    for i, p in enumerate(punkte):
+        xr = ((p.get("aufwand") or 2) - 0.5) / 3
+        yr = ((p.get("gewicht") or 3) - 0.5) / 5
+        cx = mx + int(seite * xr) - int(d / 2) + (i % 3 - 1) * Inches(0.12)
+        cy = my + int(seite * (1 - yr)) - int(d / 2) + (i % 2) * Inches(0.1)
+        _nummernkreis(folie, thema, cx, cy, d, str(i + 1), pt=10)
+    lx = mx + seite + Inches(0.5)
+    _legende(folie, thema, punkte, lx, y, x + breite - lx, hoehe)
+
+
+def _pyramide(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, hoehe):
+    """Spitze oben (erster Punkt), Fundament unten."""
+    n = len(punkte)
+    tb = Inches(6.0)
+    luecke = Inches(0.06)
+    sh = int((hoehe - luecke * (n - 1)) / n)
+    cx = x + int(tb / 2)
+    for i, p in enumerate(punkte):
+        oben = 0.35 + 0.65 * i / n
+        unten = 0.35 + 0.65 * (i + 1) / n
+        sy = y + i * (sh + luecke)
+        wo, wu = int(tb * oben), int(tb * unten)
+        builder = folie.shapes.build_freeform(cx - int(wo / 2), sy, scale=1.0)
+        builder.add_line_segments([(cx + int(wo / 2), sy), (cx + int(wu / 2), sy + sh), (cx - int(wu / 2), sy + sh)], close=True)
+        stufe = builder.convert_to_shape()
+        fuellung = _mischen(thema.primaer, WEISS, 0.6 * i / max(1, n - 1))
+        stufe.fill.solid()
+        stufe.fill.fore_color.rgb = fuellung
+        stufe.line.fill.background()
+        stufe.shadow.inherit = False
+        r = _textfeld(folie, cx - int(wo / 2), sy, wo, sh, anker=MSO_ANCHOR.MIDDLE)
+        label = f"{i + 1}  {p.get('kurz') or _kurz(p['punkt'], 24)}"
+        groesse = _passend(label, thema.schrift, wo / Inches(1), sh / Inches(1), 12, 8, fett=True)
+        _absatz(r, label, groesse=groesse, farbe=TEXT if _hell(fuellung) else WEISS, fett=True, erster=True, abstand=0, schrift=thema.schrift, mitte=True)
+    _legende(folie, thema, punkte, x + tb + Inches(0.5), y, breite - tb - Inches(0.5), hoehe)
+
+
+def _kreislauf(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, hoehe):
+    n = len(punkte)
+    feld = Inches(6.2)
+    cx, cy = x + int(feld / 2), y + int(hoehe / 2)
+    r = int(min(hoehe, feld) / 2) - Inches(0.8)
+    ring = _flaeche(folie, cx - r, cy - r, 2 * r, 2 * r, WEISS, MSO_SHAPE.OVAL)
+    ring.fill.background()
+    ring.line.color.rgb = LINIE
+    ring.line.width = Pt(2.5)
+    d = Inches(0.5)
+    for i, p in enumerate(punkte):
+        a = math.radians(-90 + 360 * i / n)
+        nx, ny = cx + int(r * math.cos(a)), cy + int(r * math.sin(a))
+        _nummernkreis(folie, thema, nx - int(d / 2), ny - int(d / 2), d, str(i + 1), pt=12)
+        # Richtungspfeil zwischen den Knoten
+        am = math.radians(-90 + 360 * (i + 0.5) / n)
+        pfeil = _flaeche(folie, cx + int(r * math.cos(am)) - Inches(0.1), cy + int(r * math.sin(am)) - Inches(0.1), Inches(0.2), Inches(0.2), thema.akzent, MSO_SHAPE.CHEVRON)
+        pfeil.rotation = math.degrees(am) + 90
+        # Beschriftung außen
+        lb, lh = Inches(1.7), Inches(0.5)
+        ax = cx + int((r + Inches(0.95)) * math.cos(a))
+        ay = cy + int((r + Inches(0.6)) * math.sin(a))
+        t = _textfeld(folie, ax - int(lb / 2), ay - int(lh / 2), lb, lh, anker=MSO_ANCHOR.MIDDLE)
+        _absatz(t, p.get("kurz") or _kurz(p["punkt"], 20), groesse=10, farbe=thema.primaer, fett=True, erster=True, abstand=0, schrift=thema.schrift_titel, mitte=True)
+    _legende(folie, thema, punkte, x + feld + Inches(0.3), y, breite - feld - Inches(0.3), hoehe)
+
+
+def _saeulen(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, hoehe):
+    kategorien = [p.get("kurz") or _kurz(p["punkt"], 20) for p in punkte]
+    werte = [float(p.get("gewicht") or 3) for p in punkte]
+    db = int(breite * 0.55)
+    _balkendiagramm(folie, thema, x, y, db, hoehe - Inches(0.3), kategorien, werte, senkrecht=True)
+    r = _textfeld(folie, x, y + hoehe - Inches(0.3), db, Inches(0.3))
+    _absatz(r, "IMPORTANCE 1 (LOW) – 5 (CRITICAL)", groesse=9, farbe=GRAU, fett=True, erster=True, abstand=0, schrift=thema.schrift, mitte=True, sperrung=1)
+    _legende(folie, thema, punkte, x + db + Inches(0.4), y, breite - db - Inches(0.4), hoehe, nummern=False)
+
+
+def _gruppen_von(punkte: list[dict[str, Any]], hoechstens: int = 3) -> dict[str, list[dict[str, Any]]]:
+    gruppen: dict[str, list[dict[str, Any]]] = {}
+    for p in punkte:
+        name = p.get("gruppe") or "Other"
+        if name not in gruppen and len(gruppen) >= hoechstens:
+            name = list(gruppen)[-1]
+        gruppen.setdefault(name, []).append(p)
+    return gruppen
+
+
+def _spalten(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, hoehe):
+    gruppen = _gruppen_von(punkte)
+    n = len(gruppen)
+    luecke = Inches(0.3)
+    sb = int((breite - luecke * (n - 1)) / n)
+    meiste = max(len(v) for v in gruppen.values())
+    kopf = Inches(0.46)
+    zh = min(Inches(1.3), int((hoehe - kopf - Inches(0.1)) / meiste))
+    for s, (name, eintraege) in enumerate(gruppen.items()):
+        sx = x + s * (sb + luecke)
+        bandfarbe = thema.primaer if s == 0 else _mischen(thema.primaer, WEISS, 0.25 * s)
+        band = _flaeche(folie, sx, y, sb, kopf, bandfarbe)
+        _form_text(band, name.upper(), groesse=11, farbe=TEXT if _hell(bandfarbe) else WEISS, schrift=thema.schrift, sperrung=1)
+        _flaeche(folie, sx, y + kopf, sb, hoehe - kopf, thema.karte)
+        for i, p in enumerate(eintraege):
+            zy = y + kopf + Inches(0.1) + i * zh
+            _piktogramm(folie, thema, _icon_von(p, i), sx + Inches(0.15), zy + Inches(0.06), Inches(0.42), grund=WEISS)
+            tx = sx + Inches(0.7)
+            tb = sb - Inches(0.85)
+            rahmen = _textfeld(folie, tx, zy, tb, zh - Inches(0.06))
+            kurz = p.get("kurz")
+            if kurz:
+                _absatz(rahmen, kurz, groesse=12, farbe=thema.primaer, fett=True, erster=True, abstand=0, schrift=thema.schrift_titel)
+            groesse = _passend(p["punkt"], thema.schrift, tb / Inches(1), (zh - Inches(0.32 if kurz else 0.08)) / Inches(1), 11, 8)
+            _absatz(rahmen, p["punkt"], groesse=groesse, farbe=TEXT, erster=not kurz, abstand=0, schrift=thema.schrift, zeilenabstand=1.05)
+
+
+SWOT = (("strength", "S", "Strengths"), ("weakness", "W", "Weaknesses"), ("opportunit", "O", "Opportunities"), ("threat", "T", "Threats"))
+
+
+def _swot_feld(p: dict[str, Any]) -> int | None:
+    g = (p.get("gruppe") or "").lower()
+    for i, (schluessel, buchstabe, _) in enumerate(SWOT):
+        if g.startswith(schluessel) or g == buchstabe.lower():
+            return i
+    return None
+
+
+def _swot(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, hoehe):
+    farben = (RISIKO["niedrig"], RISIKO["hoch"], thema.primaer_hell, RISIKO["mittel"])
+    luecke = Inches(0.2)
+    fb, fh = int((breite - luecke) / 2), int((hoehe - luecke) / 2)
+    felder: list[list[dict[str, Any]]] = [[], [], [], []]
+    for p in punkte:
+        i = _swot_feld(p)
+        felder[i if i is not None else 2].append(p)
+    for i, (_, buchstabe, name) in enumerate(SWOT):
+        fx = x + (i % 2) * (fb + luecke)
+        fy = y + (i // 2) * (fh + luecke)
+        _karte(folie, fx, fy, fb, fh, farben[i])
+        r = _textfeld(folie, fx + Inches(0.1), fy + Inches(0.08), Inches(0.8), Inches(0.7), anker=MSO_ANCHOR.MIDDLE)
+        _absatz(r, buchstabe, groesse=30, farbe=thema.primaer, fett=True, erster=True, abstand=0, schrift=thema.schrift_titel)
+        r = _textfeld(folie, fx + Inches(0.85), fy + Inches(0.14), fb - Inches(1.0), Inches(0.5), anker=MSO_ANCHOR.MIDDLE)
+        _absatz(r, name.upper(), groesse=11, farbe=thema.primaer, fett=True, erster=True, abstand=0, schrift=thema.schrift, sperrung=1)
+        eintraege = felder[i]
+        if not eintraege:
+            continue
+        rahmen = _textfeld(folie, fx + Inches(0.2), fy + Inches(0.8), fb - Inches(0.4), fh - Inches(0.9))
+        text = "\n".join(f"•  {p['punkt']}" for p in eintraege)
+        groesse = _passend(text, thema.schrift, (fb - Inches(0.4)) / Inches(1), (fh - Inches(0.9)) / Inches(1), 12, 8, abstand=1.3)
+        for j, p in enumerate(eintraege):
+            _absatz(rahmen, f"•  {p['punkt']}", groesse=groesse, farbe=TEXT, erster=(j == 0), abstand=4, schrift=thema.schrift, zeilenabstand=1.05)
+
+
+AMPEL = {"gruen": (RGBColor(0x3C, 0xB3, 0x71), "On track"), "gelb": (RGBColor(0xE8, 0xB7, 0x30), "At risk"), "rot": (RGBColor(0xD9, 0x53, 0x4F), "Critical"), "": (HELLGRAU, "Open")}
+
+
+def _ampel(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, hoehe):
+    n = len(punkte)
+    spalten = 2 if n > 5 else 1
+    je_spalte = math.ceil(n / spalten)
+    luecke = Inches(0.5)
+    sb = int((breite - luecke * (spalten - 1)) / spalten)
+    kopf = Inches(0.4)
+    zh = min(Inches(1.1), int((hoehe - kopf) / je_spalte))
+    # Legende der Farben oben
+    lx = x
+    for schluessel in ("gruen", "gelb", "rot"):
+        farbe, name = AMPEL[schluessel]
+        _flaeche(folie, lx, y + Inches(0.08), Inches(0.18), Inches(0.18), farbe, MSO_SHAPE.OVAL)
+        r = _textfeld(folie, lx + Inches(0.2), y, Inches(1.2), Inches(0.34), anker=MSO_ANCHOR.MIDDLE)
+        _absatz(r, name.upper(), groesse=9, farbe=GRAU, fett=True, erster=True, abstand=0, schrift=thema.schrift, sperrung=1)
+        lx += Inches(1.35)
+    for i, p in enumerate(punkte):
+        spalte, zeile = divmod(i, je_spalte)
+        zx = x + spalte * (sb + luecke)
+        zy = y + kopf + zeile * zh
+        if zeile % 2 == 0:
+            _flaeche(folie, zx, zy, sb, zh - Inches(0.04), thema.karte)
+        farbe, _ = AMPEL.get(p.get("status") or "", AMPEL[""])
+        _flaeche(folie, zx + Inches(0.2), zy + Inches(0.14), Inches(0.3), Inches(0.3), farbe, MSO_SHAPE.OVAL)
+        tx = zx + Inches(0.7)
+        tb = sb - Inches(0.85)
+        rahmen = _textfeld(folie, tx, zy + Inches(0.04), tb, zh - Inches(0.1))
+        kurz = p.get("kurz")
+        if kurz:
+            _absatz(rahmen, kurz, groesse=12, farbe=thema.primaer, fett=True, erster=True, abstand=0, schrift=thema.schrift_titel)
+        groesse = _passend(p["punkt"], thema.schrift, tb / Inches(1), (zh - Inches(0.36 if kurz else 0.12)) / Inches(1), 11, 8)
+        _absatz(rahmen, p["punkt"], groesse=groesse, farbe=TEXT, erster=not kurz, abstand=0, schrift=thema.schrift, zeilenabstand=1.05)
+
+
+def _meilensteine(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, hoehe):
+    n = len(punkte)
+    wochen = [int(p.get("start") or p.get("ende") or (i + 1)) for i, p in enumerate(punkte)]
+    w0, w1 = min(wochen), max(wochen)
+    spanne = w1 - w0 + 1
+    x0, x1 = x + Inches(0.3), x + breite - Inches(0.3)
+    gb = x1 - x0
+    linie_y = y + int(hoehe * 0.5)
+    _linie(folie, x0, linie_y, x1, linie_y, LINIE, 2.5)
+    for w in range(spanne):
+        wx = x0 + int(gb * w / spanne)
+        _flaeche(folie, wx, linie_y - Inches(0.08), Emu(9525), Inches(0.16), HELLGRAU)
+        r = _textfeld(folie, wx, y + hoehe - Inches(0.3), int(gb / spanne), Inches(0.3))  # Wochenskala am unteren Rand
+        _absatz(r, f"W{w0 + w}", groesse=9, farbe=HELLGRAU, fett=True, erster=True, abstand=0, schrift=thema.schrift, mitte=True)
+    _flaeche(folie, x0, y + hoehe - Inches(0.32), gb, Emu(9525), LINIE)
+    d = Inches(0.42)
+    sb = min(Inches(2.6), int(gb / max(1, math.ceil(n / 2))))
+    for i, (p, w) in enumerate(zip(punkte, wochen)):
+        cx = x0 + int(gb * (w - w0 + 0.5) / spanne)
+        raute = _flaeche(folie, cx - int(d / 2), linie_y - int(d / 2), d, d, thema.akzent, MSO_SHAPE.DIAMOND)
+        _form_text(raute, str(i + 1), groesse=10, farbe=TEXT if _hell(thema.akzent) else WEISS, schrift=thema.schrift, rand=0)
+        oben = i % 2 == 0
+        th = int(hoehe * 0.5) - Inches(0.7)
+        ty = linie_y - int(d / 2) - Inches(0.12) - th if oben else linie_y + Inches(0.4)
+        rahmen = _textfeld(folie, cx - int(sb / 2), ty, sb, th, anker=MSO_ANCHOR.BOTTOM if oben else MSO_ANCHOR.TOP)
+        kurz = p.get("kurz")
+        if kurz:
+            _absatz(rahmen, kurz, groesse=12, farbe=thema.primaer, fett=True, erster=True, abstand=1, schrift=thema.schrift_titel, mitte=True)
+        groesse = _passend(p["punkt"], thema.schrift, sb / Inches(1), (th - Inches(0.34 if kurz else 0.05)) / Inches(1), 11, 8)
+        _absatz(rahmen, p["punkt"], groesse=groesse, farbe=TEXT, erster=not kurz, abstand=0, schrift=thema.schrift, mitte=True, zeilenabstand=1.05)
+        _linie(folie, cx, linie_y - int(d / 2) if oben else linie_y + int(d / 2), cx, ty + th if oben else ty - Inches(0.05), LINIE, 1)
+
+
+def _treiber(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, hoehe, titel: str = "Goal"):
+    n = len(punkte)
+    wb, wh = Inches(2.9), Inches(1.5)
+    wy = y + int((hoehe - wh) / 2)
+    wurzel = _karte(folie, x, wy, wb, wh, thema.primaer)
+    _form_text(wurzel, titel, groesse=14, farbe=TEXT if _hell(thema.primaer) else WEISS, schrift=thema.schrift_titel, rand=Inches(0.15))
+    ax = x + Inches(3.7)
+    ab = x + breite - ax
+    luecke = Inches(0.12)
+    ah = int((hoehe - luecke * (n - 1)) / n)
+    mitte_x = x + wb + Inches(0.4)
+    _linie(folie, x + wb, wy + int(wh / 2), mitte_x, wy + int(wh / 2), LINIE, 1.5)
+    for i, p in enumerate(punkte):
+        ay = y + i * (ah + luecke)
+        cy = ay + int(ah / 2)
+        _linie(folie, mitte_x, cy, ax, cy, LINIE, 1.5)
+        if i == 0 or i == n - 1:
+            _linie(folie, mitte_x, min(cy, wy + int(wh / 2)), mitte_x, max(cy, wy + int(wh / 2)), LINIE, 1.5)
+        _karte(folie, ax, ay, ab, ah, thema.karte)
+        icon = Inches(0.44)
+        _piktogramm(folie, thema, _icon_von(p, i), ax + Inches(0.15), ay + int((ah - icon) / 2), icon, grund=thema.primaer_hell)
+        tx = ax + Inches(0.75)
+        tb = ab - Inches(0.9)
+        rahmen = _textfeld(folie, tx, ay + Inches(0.04), tb, ah - Inches(0.08), anker=MSO_ANCHOR.MIDDLE)
+        kurz = p.get("kurz")
+        if kurz:
+            _absatz(rahmen, kurz, groesse=12, farbe=thema.primaer, fett=True, erster=True, abstand=0, schrift=thema.schrift_titel)
+        groesse = _passend(p["punkt"], thema.schrift, tb / Inches(1), (ah - Inches(0.36 if kurz else 0.1)) / Inches(1), 11, 8)
+        _absatz(rahmen, p["punkt"], groesse=groesse, farbe=TEXT, erster=not kurz, abstand=0, schrift=thema.schrift, zeilenabstand=1.05)
+
+
+def _stufen(folie, thema: Thema, punkte: list[dict[str, Any]], x, y, breite, hoehe):
+    n = len(punkte)
+    cw = int(breite / n)
+    grund = y + Inches(2.9)
+    for i, p in enumerate(punkte):
+        sh = Inches(0.6) + int(Inches(2.2) * i / max(1, n - 1))
+        sx = x + i * cw
+        fuellung = _mischen(thema.primaer, WEISS, 0.55 - 0.55 * i / max(1, n - 1))
+        _flaeche(folie, sx + Inches(0.03), grund - sh, cw - Inches(0.06), sh, fuellung)
+        r = _textfeld(folie, sx + Inches(0.08), grund - sh + Inches(0.06), cw - Inches(0.16), Inches(0.75))
+        label = f"{i + 1}  {p.get('kurz') or _kurz(p['punkt'], 22)}"
+        groesse = _passend(label, thema.schrift, (cw - Inches(0.16)) / Inches(1), 0.7, 12, 8, fett=True)
+        _absatz(r, label, groesse=groesse, farbe=TEXT if _hell(fuellung) else WEISS, fett=True, erster=True, abstand=0, schrift=thema.schrift)
+        th = hoehe - Inches(3.1)
+        rahmen = _textfeld(folie, sx + Inches(0.08), grund + Inches(0.15), cw - Inches(0.16), th)
+        groesse = _passend(p["punkt"], thema.schrift, (cw - Inches(0.16)) / Inches(1), th / Inches(1), 12, 8)
+        _absatz(rahmen, p["punkt"], groesse=groesse, farbe=TEXT, erster=True, abstand=0, schrift=thema.schrift, zeilenabstand=1.1)
+    _flaeche(folie, x, grund, breite, Emu(19050), LINIE)
 
 
 def _storyline(folie, thema: Thema, abschnitte: list[dict[str, Any]], erste_nr: int, x, y, breite, hoehe):
@@ -815,10 +1391,89 @@ def _fokus(praes, thema: Thema, plan: dict[str, Any], nr: int, erste_abschnitt_n
     return True
 
 
-def _abschnittsfolien(praes, thema: Thema, abschnitt: dict[str, Any], nr: int, fuss: str):
-    darstellung = abschnitt.get("darstellung") or "kacheln"
-    if darstellung not in PUNKTE_JE_FOLIE:
-        darstellung = "kacheln"
+# Welche Darstellung stattdessen, wenn die gewünschte im Deck schon vorkam (Abwechslung)
+ERSATZ = {
+    "kacheln": ("nummern", "tabelle", "treiber"), "nummern": ("tabelle", "treiber", "kacheln"), "tabelle": ("nummern", "kacheln"),
+    "schritte_h": ("schritte_v", "stufen"), "schritte_v": ("schritte_h", "kreislauf", "meilensteine"),
+    "prioritaeten": ("kreis", "saeulen", "radar", "tabelle"), "kreis": ("radar", "saeulen", "prioritaeten"),
+    "radar": ("kreis", "saeulen", "prioritaeten"), "saeulen": ("prioritaeten", "kreis", "radar"),
+    "kennzahlen": ("tabelle", "nummern"), "zeitplan": ("meilensteine", "schritte_v", "tabelle"),
+    "trichter": ("pyramide", "stufen", "schritte_v"), "pyramide": ("trichter", "stufen"), "stufen": ("schritte_h", "pyramide"),
+    "risiken": ("matrix", "tabelle", "ampel"), "matrix": ("risiken", "tabelle"), "kreislauf": ("schritte_v", "treiber"),
+    "spalten": ("tabelle", "swot", "kacheln"), "swot": ("spalten", "kacheln"), "ampel": ("tabelle", "nummern"),
+    "meilensteine": ("zeitplan", "schritte_h"), "treiber": ("kacheln", "nummern"),
+}
+BAUSTEINE = {
+    "kacheln": _kacheln, "nummern": _nummern, "tabelle": _tabelle, "kennzahlen": _kennzahlen, "zeitplan": _zeitplan,
+    "trichter": _trichter, "risiken": _risiken, "prioritaeten": _prioritaeten, "kreis": _kreis, "radar": _radar,
+    "schritte_h": lambda *a: _schritte(*a, senkrecht=False), "schritte_v": lambda *a: _schritte(*a, senkrecht=True),
+    "saeulen": _saeulen, "matrix": _matrix, "pyramide": _pyramide, "kreislauf": _kreislauf, "spalten": _spalten,
+    "swot": _swot, "ampel": _ampel, "meilensteine": _meilensteine, "treiber": _treiber, "stufen": _stufen,
+}
+PUNKTE_JE_FOLIE = {
+    "kacheln": 6, "nummern": 8, "tabelle": 8, "kennzahlen": 8, "zeitplan": 8, "trichter": 6, "risiken": 8,
+    "prioritaeten": 8, "kreis": 8, "radar": 8, "schritte_h": 6, "schritte_v": 6, "saeulen": 8, "matrix": 8,
+    "pyramide": 6, "kreislauf": 8, "spalten": 9, "swot": 12, "ampel": 10, "meilensteine": 8, "treiber": 6, "stufen": 6,
+}
+
+
+def _passt(darstellung: str, punkte: list[dict[str, Any]]) -> bool:
+    """Hat der Abschnitt die Daten für diese Darstellung?"""
+    n = len(punkte)
+    if darstellung == "kennzahlen":
+        return sum(bool(p.get("wert")) for p in punkte) * 2 >= n
+    if darstellung == "zeitplan":
+        return any(p.get("ende") or p.get("start") for p in punkte)
+    if darstellung == "meilensteine":
+        return any(p.get("start") for p in punkte)
+    if darstellung == "risiken":
+        return any(p.get("eintritt") and p.get("auswirkung") for p in punkte)
+    if darstellung == "matrix":
+        return any(p.get("aufwand") for p in punkte)
+    if darstellung in ("kreis", "radar"):
+        return n >= 3 and any(p.get("gewicht") for p in punkte)
+    if darstellung in ("prioritaeten", "saeulen"):
+        return n >= 2 and len({p.get("gewicht") for p in punkte}) > 1
+    if darstellung in ("trichter", "pyramide", "stufen", "treiber"):
+        return 2 <= n <= 6
+    if darstellung == "kreislauf":
+        return 3 <= n <= 8
+    if darstellung == "schritte_h":
+        return n <= 6
+    if darstellung == "spalten":
+        return len({p.get("gruppe") for p in punkte if p.get("gruppe")}) >= 2
+    if darstellung == "swot":
+        return len({_swot_feld(p) for p in punkte if _swot_feld(p) is not None}) >= 2
+    if darstellung == "ampel":
+        return any(p.get("status") for p in punkte)
+    return True
+
+
+def darstellung_waehlen(abschnitt: dict[str, Any], benutzt: dict[str, int]) -> str:
+    """Gewünschte Darstellung, sofern die Daten reichen; eine Wiederholung weicht auf eine noch ungenutzte aus."""
+    punkte = abschnitt.get("punkte", [])
+    gewuenscht = abschnitt.get("darstellung") or "kacheln"
+    if gewuenscht == "schritte":
+        gewuenscht = "schritte_h" if len(punkte) <= 4 else "schritte_v"
+    if gewuenscht not in BAUSTEINE or not _passt(gewuenscht, punkte):
+        gewuenscht = {
+            "zeitplan": "schritte_v", "meilensteine": "schritte_v", "trichter": "schritte_v", "pyramide": "schritte_v",
+            "stufen": "schritte_v", "kreislauf": "schritte_v", "treiber": "kacheln", "kennzahlen": "kacheln",
+            "matrix": "nummern", "risiken": "nummern", "spalten": "kacheln", "swot": "kacheln", "ampel": "nummern",
+            "prioritaeten": "nummern", "saeulen": "nummern", "kreis": "nummern", "radar": "nummern",
+        }.get(gewuenscht, "kacheln")
+        if not _passt(gewuenscht, punkte):
+            gewuenscht = "kacheln"
+    if benutzt.get(gewuenscht):
+        for ersatz in ERSATZ.get(gewuenscht, ()):
+            if not benutzt.get(ersatz) and _passt(ersatz, punkte):
+                gewuenscht = ersatz
+                break
+    benutzt[gewuenscht] = benutzt.get(gewuenscht, 0) + 1
+    return gewuenscht
+
+
+def _abschnittsfolien(praes, thema: Thema, abschnitt: dict[str, Any], nr: int, fuss: str, darstellung: str):
     punkte = abschnitt.get("punkte", [])
     je = PUNKTE_JE_FOLIE[darstellung]
     teile = [punkte[i:i + je] for i in range(0, len(punkte), je)] or [[]]
@@ -827,25 +1482,19 @@ def _abschnittsfolien(praes, thema: Thema, abschnitt: dict[str, Any], nr: int, f
     for t, teil in enumerate(teile, start=1):
         kicker = f"{nr:02d} · {abschnitt.get('titel', '')}" + (f" ({t}/{len(teile)})" if len(teile) > 1 else "")
         folie = _kopf(praes, thema, titel, kicker)
-        if not teil:
-            pass
-        elif darstellung == "schritte":
-            _schritte(folie, thema, teil, RAND, INHALT_OBEN, breite, INHALT_HOEHE)
-        elif darstellung == "risiken":
-            _risiken(folie, thema, teil, RAND, INHALT_OBEN, breite, INHALT_HOEHE)
-        elif darstellung == "prioritaeten":
-            _prioritaeten(folie, thema, teil, RAND, INHALT_OBEN, breite, INHALT_HOEHE)
-        else:
-            _kacheln(folie, thema, teil, RAND, INHALT_OBEN, breite, INHALT_HOEHE)
+        if darstellung == "treiber":
+            _treiber(folie, thema, teil, RAND, INHALT_OBEN, breite, INHALT_HOEHE, titel=abschnitt.get("titel", "") or "Goal")
+        elif teil:
+            BAUSTEINE[darstellung](folie, thema, teil, RAND, INHALT_OBEN, breite, INHALT_HOEHE)
         _fuss(praes, folie, thema, fuss)
 
 
-def _kachelfolien(praes, thema: Thema, titel: str, kicker: str, punkte: list[dict[str, Any]], fuss: str, notizen: str = ""):
+def _kachelfolien(praes, thema: Thema, titel: str, kicker: str, punkte: list[dict[str, Any]], fuss: str, notizen: str = "", baustein=_kacheln):
     breite = praes.slide_width - 2 * RAND
     teile = [punkte[i:i + 6] for i in range(0, len(punkte), 6)]
     for t, teil in enumerate(teile, start=1):
         folie = _kopf(praes, thema, titel, kicker + (f" ({t}/{len(teile)})" if len(teile) > 1 else ""))
-        _kacheln(folie, thema, teil, RAND, INHALT_OBEN, breite, INHALT_HOEHE)
+        baustein(folie, thema, teil, RAND, INHALT_OBEN, breite, INHALT_HOEHE)
         if notizen and t == 1:
             folie.notes_slide.notes_text_frame.text = notizen
         _fuss(praes, folie, thema, fuss)
@@ -859,7 +1508,9 @@ def briefing_pptx(
     thema = Thema.aus(marke, logo)
     praes = Presentation()
     praes.slide_width, praes.slide_height = BREITE, HOEHE
-    fuss = f"Briefing  ·  {_kurz(situation, 70)}"
+    titel = plan.get("titel") or _kurz(situation, 60)  # alte Pläne ohne Decktitel: Situation gekürzt
+    untertitel = plan.get("untertitel") or ""
+    fuss = _kurz(titel, 70)
     datum = erstellt_am[:10] if erstellt_am else datetime.now().strftime("%Y-%m-%d")
 
     abschnitte = plan.get("abschnitte", [])
@@ -881,19 +1532,20 @@ def briefing_pptx(
     if schritte:
         kapitel.append({"titel": "Next steps", "sub": "Way forward and timing"})
 
-    _titelfolie(praes, thema, situation, datum)
+    _titelfolie(praes, thema, titel, untertitel, datum)
     _agenda(praes, thema, kapitel, fuss)
     _executive_summary(praes, thema, plan, 1, erste_abschnitt_nr, fuss)
     if mit_fokus:
         _fokus(praes, thema, plan, 1, erste_abschnitt_nr, fuss)
     nr = erste_abschnitt_nr
+    benutzt: dict[str, int] = {}
     for a in abschnitte:
         _kapitelfolie(praes, thema, nr, a.get("titel", ""), a.get("kernaussage", ""), kapitel)
-        _abschnittsfolien(praes, thema, a, nr, fuss)
+        _abschnittsfolien(praes, thema, a, nr, fuss, darstellung_waehlen(a, benutzt))
         nr += 1
     if besonderheiten:
         _kachelfolien(praes, thema, "Watch-outs: where practice differs from the textbook", f"{nr:02d} · Watch-outs",
-                      [{"punkt": b["punkt"], "icon": "warning"} for b in besonderheiten], fuss)
+                      [{"punkt": b["punkt"], "icon": "warning"} for b in besonderheiten], fuss, baustein=_nummern)
         nr += 1
     if luecken:
         notizen = "\n\n".join(

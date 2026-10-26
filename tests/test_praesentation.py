@@ -18,6 +18,8 @@ def punkt(text, kurz="", icon="", gewicht=0, eintritt=0, auswirkung=0, quelle="a
 
 PLAN = {
     "zusammenfassung": "Staffing first. Then escalation.",
+    "titel": "Hypercare Playbook: Warehouse Go-live",
+    "untertitel": "How to stabilize operations in the first four weeks",
     "kernbotschaften": [
         {"titel": "Staff before you stabilize", "text": "Shift leads must be confirmed before go-live."},
         {"titel": "Make escalation boring", "text": "Three levels with named owners."},
@@ -68,8 +70,10 @@ def test_aufbau_beratungsdeck():
     texte = texte_von(praes)
     # Titel, Agenda, Executive Summary, Fokus, je Abschnitt Kapitel + Inhalt (5x2), Watch-outs, Further topics, Next steps
     assert len(praes.slides) == 4 + 10 + 3
-    assert "Hypercare plan" in texte[0] and "BRIEFING" in texte[0] and "Deloitte" in texte[0]
-    assert "Agenda" in texte[1]
+    # Titelfolie zeigt den Decktitel, nicht die Aufgabenbeschreibung; die Fußzeile Marke und Titel
+    assert "Hypercare Playbook" in texte[0] and "first four weeks" in texte[0] and "Deloitte" in texte[0]
+    assert "Hypercare plan" not in texte[0] and "BRIEFING" not in texte[0]
+    assert "Agenda" in texte[1] and "Deloitte  ·  Hypercare Playbook" in texte[1] and "Briefing" not in texte[1]
     for kapitel in ("01", "Executive summary", "02", "Preparation", "06", "Handover", "07", "Watch-outs", "08", "Further topics", "09", "Next steps"):
         assert kapitel in texte[1]
     # Executive Summary: drei Kernbotschaften, Storyline, Notizen mit der Ausarbeitung ohne Marken
@@ -113,6 +117,7 @@ def test_alter_plan_ohne_folienfelder():
     }
     praes = Presentation(io.BytesIO(briefing_pptx("Hypercare planen", alt, {}, marke=None)))
     texte = texte_von(praes)
+    assert "Hypercare planen" in texte[0]  # ohne Decktitel bleibt die Situation die Überschrift
     # Kein Fokus-Diagramm ohne Gewichte; 7 Punkte werden auf zwei Kachelfolien verteilt
     assert len(praes.slides) == 3 + 3 + 2
     assert not any(MSO_SHAPE_TYPE.CHART in typen(f) for f in praes.slides)
@@ -136,6 +141,44 @@ def test_helle_marke_und_piktogramme():
     groessen = [r.font.size.pt for sh in praes.slides[5].shapes if sh.has_text_frame for p in sh.text_frame.paragraphs for r in p.runs
                 if "Fix staffing" in r.text]
     assert groessen and groessen[0] < 26
+
+
+def pkt2(text, kurz, gewicht=3, **extra):
+    return {**punkt(text, kurz, "flag", gewicht), **extra}
+
+
+def test_alle_zwanzig_darstellungen_und_abwechslung():
+    from lessons_vault.briefing import DARSTELLUNGEN
+    from lessons_vault.praesentation import BAUSTEINE, darstellung_waehlen
+
+    assert len(DARSTELLUNGEN) == 20 and set(DARSTELLUNGEN) - {"schritte"} <= set(BAUSTEINE)
+    basis = [pkt2(f"Point {i} with some text.", f"P{i}", gewicht=(i % 5) + 1, aufwand=(i % 3) + 1, start=i + 1, ende=i + 2,
+                  wert=f"{i} d", eintritt=(i % 3) + 1, auswirkung=3, status=("gruen", "gelb", "rot")[i % 3],
+                  gruppe=("strength", "weakness", "opportunity", "threat")[i % 4]) for i in range(4)]
+    abschnitte = [{"titel": d, "kernaussage": f"Message {d}.", "darstellung": d, "punkte": basis} for d in DARSTELLUNGEN]
+    plan = {**PLAN, "abschnitte": abschnitte}
+    praes = Presentation(io.BytesIO(briefing_pptx("All layouts", plan, {}, marke=STANDARD_MARKEN["Beruf"])))
+    texte = texte_von(praes)
+    # Jede Darstellung bekommt eine Kapitel- und eine Inhaltsfolie; Diagramme und Tabellen sind nativ
+    assert len(praes.slides) == 4 + 2 * 20 + 3
+    typen_gesamt = [t for f in praes.slides for t in typen(f)]
+    assert typen_gesamt.count(MSO_SHAPE_TYPE.CHART) == 1 + 4  # Fokus + prioritaeten, radar, kreis, saeulen
+    assert MSO_SHAPE_TYPE.TABLE in typen_gesamt
+    for erwartet in ("QUICK WINS", "STRENGTHS", "ON TRACK", "W1", "IMPACT", "LIKELIHOOD", "WEAKNESS", "Message pyramide."):
+        assert any(erwartet in t for t in texte), erwartet
+    # Wiederholungen weichen aus: dreimal kacheln -> kacheln, nummern, tabelle; zweimal prioritaeten -> kreis
+    benutzt: dict[str, int] = {}
+    k = {"darstellung": "kacheln", "punkte": basis}
+    assert [darstellung_waehlen(k, benutzt) for _ in range(3)] == ["kacheln", "nummern", "tabelle"]
+    p = {"darstellung": "prioritaeten", "punkte": basis}
+    assert [darstellung_waehlen(p, benutzt) for _ in range(2)] == ["prioritaeten", "kreis"]
+    # Fehlende Daten: Darstellung fällt zurück
+    ohne = [punkt("x", "x"), punkt("y", "y"), punkt("z", "z")]
+    assert darstellung_waehlen({"darstellung": "matrix", "punkte": ohne}, {}) == "nummern"
+    assert darstellung_waehlen({"darstellung": "swot", "punkte": ohne}, {}) == "kacheln"
+    assert darstellung_waehlen({"darstellung": "zeitplan", "punkte": ohne}, {}) == "schritte_v"
+    assert darstellung_waehlen({"darstellung": "schritte", "punkte": ohne}, {}) == "schritte_h"
+    assert darstellung_waehlen({"darstellung": "kreislauf", "punkte": ohne[:2]}, {}) == "schritte_v"
 
 
 def test_hilfsfunktionen():

@@ -233,9 +233,21 @@ durch allgemeine Lehrbuchversionen zu ersetzen.
   jeder mit 2 bis 6 konkreten, abhakbaren Punkten. Je Abschnitt zusätzlich:
   - kernaussage: die Botschaft des Abschnitts als vollständiger Satz (Action Title einer Beraterfolie,
     höchstens 110 Zeichen), neutral formuliert, ohne "you".
-  - darstellung: wie der Abschnitt am besten auf einer Folie steht: "schritte" für eine Abfolge,
-    "risiken" für Risiken (dann je Punkt eintritt und auswirkung 1-3), "prioritaeten" für eine
-    Rangfolge nach Gewicht, sonst "kacheln".
+  - darstellung: wie der Abschnitt am besten auf einer Folie steht. Wähle nach Inhalt und sorge für
+    Abwechslung über das Deck (keine Darstellung öfter als zweimal):
+    "schritte" Abfolge (Chevrons), "zeitplan" Aktivitäten mit Zeitfenster (dann je Punkt start und ende in
+    Wochen 1-12 ab Beginn), "risiken" Risiken (dann je Punkt eintritt und auswirkung 1-3),
+    "prioritaeten" Rangfolge nach Gewicht (Balkendiagramm), "kennzahlen" Punkte mit einer prägnanten Größe
+    (dann je Punkt wert, z. B. "2 weeks", "3 levels", "< 5 %"), "trichter" Verengung oder Auswahl in Stufen,
+    "tabelle" gleichartige Punkte zum Vergleichen, "radar" Profil über 4 bis 8 Dimensionen (Gewicht je
+    Dimension), "kreis" Anteile oder Verteilung (Gewicht als Anteil), "saeulen" Vergleich von Größen als
+    Säulendiagramm (Gewicht), "matrix" Nutzen gegen Aufwand als 2x2 (dann je Punkt aufwand 1-3; Gewicht =
+    Nutzen), "pyramide" Hierarchie oder Fundament-zu-Ziel (erster Punkt = Spitze), "kreislauf" wiederkehrender
+    Zyklus, "spalten" Gegenüberstellung von 2 bis 3 Gruppen (dann je Punkt gruppe, z. B. "Before"/"After",
+    "Option A"/"Option B"), "swot" Stärken, Schwächen, Chancen, Risiken (dann je Punkt gruppe = strength |
+    weakness | opportunity | threat), "ampel" Statusliste (dann je Punkt status gruen | gelb | rot),
+    "meilensteine" Ereignisse auf einem Zeitstrahl (dann je Punkt start = Woche), "treiber" Treiberbaum: ein
+    Ziel links, die Hebel rechts, "stufen" aufsteigende Reifegrade oder Ausbaustufen, sonst "kacheln".
   Für jeden Punkt:
   - quelle "erfahrung", wenn der Punkt aus einem seiner Einträge stammt (egal welcher Art); dann lesson_nr = dessen Nummer.
   - quelle "allgemein", wenn er aus deinem Fachwissen stammt; dann lesson_nr = 0.
@@ -244,7 +256,15 @@ durch allgemeine Lehrbuchversionen zu ersetzen.
     shield, search, link, money, calendar, chat, tool, list oder arrow.
   - gewicht: Bedeutung 1 (gering) bis 5 (entscheidend).
   - eintritt, auswirkung: bei darstellung "risiken" 1 (niedrig) bis 3 (hoch), sonst 0.
+  - wert: bei "kennzahlen" die Größe als kurzer Text (höchstens 12 Zeichen), sonst leer.
+  - start, ende: bei "zeitplan" und "meilensteine" Woche 1-12, sonst 0.
+  - aufwand: bei "matrix" 1 (gering) bis 3 (hoch), sonst 0.
+  - gruppe: bei "spalten" und "swot" die Gruppe, sonst leer.
+  - status: bei "ampel" gruen, gelb oder rot, sonst leer.
   Eigene Erfahrungen gehören an die passende Stelle im Plan, nicht in einen Sammelabschnitt.
+- titel: Titel der Präsentation (höchstens 55 Zeichen), formuliert wie der Titel eines Beraterdecks, nicht die
+  Aufgabenbeschreibung wiederholen (z. B. "Hypercare Playbook: Warehouse Go-live").
+- untertitel: eine Zeile darunter (höchstens 90 Zeichen), die Zweck oder Anlass nennt.
 - kernbotschaften: genau 3 Kernbotschaften für die Executive Summary, je titel (höchstens 40 Zeichen) und
   text (ein bis zwei Sätze, höchstens 180 Zeichen), neutral formuliert, ohne "you".
 - naechste_schritte: 3 bis 5 konkrete nächste Schritte in zeitlicher Reihenfolge, je schritt (höchstens 90 Zeichen)
@@ -284,7 +304,11 @@ ICONS = (
     "check", "warning", "gear", "flag", "target", "clock", "users", "chart", "lock", "idea", "document",
     "shield", "search", "link", "money", "calendar", "chat", "tool", "list", "arrow",
 )
-DARSTELLUNGEN = ("kacheln", "schritte", "risiken", "prioritaeten")
+DARSTELLUNGEN = (
+    "kacheln", "schritte", "zeitplan", "risiken", "prioritaeten", "kennzahlen", "trichter", "tabelle", "radar", "kreis",
+    "saeulen", "matrix", "pyramide", "kreislauf", "spalten", "swot", "ampel", "meilensteine", "treiber", "stufen",
+)
+STATUS = ("", "gruen", "gelb", "rot")
 
 
 def kombi_schema(anzahl: int) -> dict[str, Any]:
@@ -300,8 +324,15 @@ def kombi_schema(anzahl: int) -> dict[str, Any]:
             "gewicht": {"type": "integer", "enum": [1, 2, 3, 4, 5]},
             "eintritt": {"type": "integer", "enum": [0, 1, 2, 3]},
             "auswirkung": {"type": "integer", "enum": [0, 1, 2, 3]},
+            "wert": {"type": "string"},
+            "start": {"type": "integer", "enum": list(range(0, 13))},
+            "ende": {"type": "integer", "enum": list(range(0, 13))},
+            "aufwand": {"type": "integer", "enum": [0, 1, 2, 3]},
+            "gruppe": {"type": "string"},
+            "status": {"type": "string", "enum": list(STATUS)},
         },
-        "required": ["punkt", "quelle", "lesson_nr", "kurz", "icon", "gewicht", "eintritt", "auswirkung"],
+        "required": ["punkt", "quelle", "lesson_nr", "kurz", "icon", "gewicht", "eintritt", "auswirkung", "wert", "start", "ende",
+                     "aufwand", "gruppe", "status"],
         "additionalProperties": False,
     }
     kernbotschaft = {
@@ -343,6 +374,8 @@ def kombi_schema(anzahl: int) -> dict[str, Any]:
         "type": "object",
         "properties": {
             "zusammenfassung": {"type": "string"},
+            "titel": {"type": "string"},
+            "untertitel": {"type": "string"},
             "kernbotschaften": {"type": "array", "items": kernbotschaft},
             "abschnitte": {
                 "type": "array",
@@ -363,8 +396,8 @@ def kombi_schema(anzahl: int) -> dict[str, Any]:
             "luecken": {"type": "array", "items": luecke},
             "naechste_schritte": {"type": "array", "items": schritt},
         },
-        "required": ["zusammenfassung", "kernbotschaften", "ausarbeitung", "abschnitte", "besonderheiten", "luecken",
-                     "naechste_schritte"],
+        "required": ["zusammenfassung", "titel", "untertitel", "kernbotschaften", "ausarbeitung", "abschnitte", "besonderheiten",
+                     "luecken", "naechste_schritte"],
         "additionalProperties": False,
     }
 
@@ -441,6 +474,12 @@ def kombi_auswerten(data: dict[str, Any], lessons: list[Lesson]) -> dict[str, An
                 "gewicht": _ganzzahl(p.get("gewicht"), 1, 5, 0),
                 "eintritt": _ganzzahl(p.get("eintritt"), 0, 3, 0),
                 "auswirkung": _ganzzahl(p.get("auswirkung"), 0, 3, 0),
+                "wert": str(p.get("wert", "") or "").strip()[:14],
+                "start": _ganzzahl(p.get("start"), 0, 12, 0),
+                "ende": _ganzzahl(p.get("ende"), 0, 12, 0),
+                "aufwand": _ganzzahl(p.get("aufwand"), 0, 3, 0),
+                "gruppe": str(p.get("gruppe", "") or "").strip()[:24],
+                "status": status if (status := str(p.get("status", "") or "").strip()) in STATUS else "",
             })
         if punkte:
             darstellung = str(abschnitt.get("darstellung", "")).strip()
@@ -465,6 +504,8 @@ def kombi_auswerten(data: dict[str, Any], lessons: list[Lesson]) -> dict[str, An
     alle = [p for a in abschnitte for p in a["punkte"]]
     return {
         "zusammenfassung": str(data.get("zusammenfassung", "")).strip(),
+        "titel": str(data.get("titel", "") or "").strip()[:70],
+        "untertitel": str(data.get("untertitel", "") or "").strip()[:110],
         "kernbotschaften": kernbotschaften,
         "ausarbeitung": marken_aufloesen(str(data.get("ausarbeitung", "") or ""), lesson_id),
         "abschnitte": abschnitte,
