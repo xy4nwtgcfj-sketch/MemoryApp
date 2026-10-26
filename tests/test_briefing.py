@@ -1,3 +1,5 @@
+import re
+
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
@@ -15,17 +17,27 @@ from .test_structuring import FakeClient, payload
 
 KOMBI_ANTWORT = {
     "zusammenfassung": "Hypercare steht und fällt mit klaren Eskalationswegen.",
+    "kernbotschaften": [
+        {"titel": "Staff before you stabilize", "text": "Confirm shift leads in writing before go-live."},
+        {"titel": "", "text": ""},  # leer fällt weg
+    ],
     "ausarbeitung": "## Vorbereitung\n- Eskalationsstufen vorab festlegen\n- Schichtleiter schriftlich einplanen [E1]\n- Erfundene Erfahrung [E7]",
     "abschnitte": [
-        {"titel": "Vorbereitung", "punkte": [
-            {"punkt": "Hypercare-Team und Eskalationsstufen festlegen", "quelle": "allgemein", "lesson_nr": 0},
-            {"punkt": "Schichtleiter für die ersten zwei Wochen schriftlich einplanen", "quelle": "erfahrung", "lesson_nr": 1},
+        {"titel": "Vorbereitung", "kernaussage": "Fix staffing and escalation before go-live.", "darstellung": "schritte", "punkte": [
+            {"punkt": "Hypercare-Team und Eskalationsstufen festlegen", "quelle": "allgemein", "lesson_nr": 0,
+             "kurz": "Escalation path", "icon": "flag", "gewicht": 4, "eintritt": 0, "auswirkung": 0},
+            {"punkt": "Schichtleiter für die ersten zwei Wochen schriftlich einplanen", "quelle": "erfahrung", "lesson_nr": 1,
+             "kurz": "Staffing confirmed", "icon": "users", "gewicht": 5, "eintritt": 0, "auswirkung": 0},
         ]},
-        {"titel": "Betrieb", "punkte": [
-            {"punkt": "Tägliches Hypercare-Meeting", "quelle": "allgemein", "lesson_nr": 0},
+        {"titel": "Betrieb", "darstellung": "quatsch", "punkte": [  # ohne kernaussage, unbekannte Darstellung und Felder
+            {"punkt": "Tägliches Hypercare-Meeting", "quelle": "allgemein", "lesson_nr": 0, "icon": "nixda", "gewicht": 9},
             {"punkt": "Behauptete Erfahrung ohne Lesson", "quelle": "erfahrung", "lesson_nr": 0},
         ]},
         {"titel": "Leer", "punkte": []},
+    ],
+    "naechste_schritte": [
+        {"schritt": "Confirm shift leads in writing", "zeitpunkt": "Go-live −2 weeks"},
+        {"schritt": "", "zeitpunkt": "nie"},
     ],
     "besonderheiten": [
         {"punkt": "Bei dir fehlte das Personal, nicht die Technik: Personal früher bestätigen als üblich", "lesson_nr": 1},
@@ -214,9 +226,16 @@ def test_kombi_auswerten_sichert_quellen():
     plan = kombi_auswerten(KOMBI_ANTWORT, [l])
     punkte = [p for a in plan["abschnitte"] for p in a["punkte"]]
     assert [a["titel"] for a in plan["abschnitte"]] == ["Vorbereitung", "Betrieb"]  # leere Abschnitte fallen weg
-    assert punkte[1] == {"punkt": "Schichtleiter für die ersten zwei Wochen schriftlich einplanen", "quelle": "erfahrung", "lesson_id": "L1"}
+    assert punkte[1] == {"punkt": "Schichtleiter für die ersten zwei Wochen schriftlich einplanen", "quelle": "erfahrung", "lesson_id": "L1",
+                         "kurz": "Staffing confirmed", "icon": "users", "gewicht": 5, "eintritt": 0, "auswirkung": 0}
     # "erfahrung" ohne gültige Lesson wird nie als eigene Erfahrung ausgewiesen
     assert punkte[3]["quelle"] == "allgemein" and punkte[3]["lesson_id"] is None
+    # Folienfelder: Abschnitt 1 vollständig, Abschnitt 2 mit Rückfallwerten
+    assert plan["abschnitte"][0]["kernaussage"] == "Fix staffing and escalation before go-live." and plan["abschnitte"][0]["darstellung"] == "schritte"
+    assert plan["abschnitte"][1]["kernaussage"] == "" and plan["abschnitte"][1]["darstellung"] == "kacheln"
+    assert punkte[2] == {"punkt": "Tägliches Hypercare-Meeting", "quelle": "allgemein", "lesson_id": None, "kurz": "", "icon": "", "gewicht": 0, "eintritt": 0, "auswirkung": 0}
+    assert plan["kernbotschaften"] == [{"titel": "Staff before you stabilize", "text": "Confirm shift leads in writing before go-live."}]
+    assert plan["naechste_schritte"] == [{"schritt": "Confirm shift leads in writing", "zeitpunkt": "Go-live −2 weeks"}]
     assert plan["punkte_erfahrung"] == 1 and plan["punkte_gesamt"] == 4
     assert plan["besonderheiten"] == [{"punkt": KOMBI_ANTWORT["besonderheiten"][0]["punkt"], "lesson_id": "L1"}]
     # Blinde Flecken: nur vollständige Einträge
@@ -290,7 +309,7 @@ def test_marke_und_logo_fuer_powerpoint(env):
     praes = Presentation(io.BytesIO(client.get(f"/api/briefing/{data['id']}/pptx").content))
     texte = [" ".join(sh.text_frame.text for sh in folie.shapes if sh.has_text_frame) for folie in praes.slides]
     assert "Deloitte" in texte[0] and "Internal" in texte[0]
-    assert any("Blind spots" in t and "Define exit criteria" in t for t in texte)
+    assert any("Further topics" in t and "Define exit criteria" in t for t in texte)
     bilder = [sh for folie in praes.slides for sh in folie.shapes if sh.shape_type == 13]  # PICTURE
     assert len(bilder) >= len(praes.slides) - 1  # Logo auf jeder Folie
     # Logo entfernen
@@ -389,7 +408,12 @@ def test_ausarbeitung_marken_und_powerpoint(env):
     praes = Presentation(io.BytesIO(res.content))
     texte = [" ".join(sh.text_frame.text for sh in folie.shapes if sh.has_text_frame) for folie in praes.slides]
     assert "Plan für die Hypercare-Phase" in texte[0]
-    assert any("Vorbereitung" in t for t in texte) and any("Schichtleiter in der Hypercare einplanen" in t for t in texte)
-    # Der ausführliche Text steht in den Notizen der Zusammenfassungsfolie, ohne interne Marken
-    notizen = praes.slides[1].notes_slide.notes_text_frame.text
-    assert "(own experience)" in notizen and "[[E:" not in notizen
+    assert "Agenda" in texte[1] and "Vorbereitung" in texte[1] and "Next steps" in texte[1]
+    assert any("Schichtleiter für die ersten zwei Wochen" in t for t in texte)
+    # Keine Quellen, keine KI, keine Lesson-Titel auf den Folien
+    gesamt = " ".join(texte)
+    assert "Schichtleiter in der Hypercare einplanen" not in gesamt
+    assert not re.search(r"Claude|own experience|knowledge base|★", gesamt)
+    # Der ausführliche Text steht in den Notizen der Executive Summary, ohne interne Marken
+    notizen = praes.slides[2].notes_slide.notes_text_frame.text
+    assert "Schichtleiter schriftlich einplanen" in notizen and "own experience" not in notizen and "[[E:" not in notizen

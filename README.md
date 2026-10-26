@@ -49,6 +49,12 @@ Mustererkennung folgen nach der Abnahme von Phase 1 (drei Wochen echte Nutzung, 
     "Stimmte" oder "Anders". Bestätigte Punkte aus deinen Einträgen zählen als erneut erlebt; Abweichungen,
     bewährtes Fachwissen und dein Fazit werden als neue Einträge strukturiert (Eingang). Das schließt den Kreis
     und bringt 25 Punkte.
+  - **PowerPoint im Beratungsstil (seit 0.9.1):** Titelfolie, Agenda, Executive Summary mit drei Kernbotschaften
+    und Storyline, "Where to focus" (Balkendiagramm der Gewichte je Abschnitt), je Abschnitt eine Kapitelfolie
+    und eine Inhaltsfolie in der vom Plan gewählten Darstellung: Kacheln mit Piktogrammen, Prozessschritte
+    (Chevrons oder Zeitstrahl), Risikomatrix (Eintritt × Auswirkung) oder Prioritäten-Diagramm. Danach Watch-outs,
+    weitere Themen und nächste Schritte als Zeitstrahl. Die Folien sind zum Weitergeben gedacht: kein Hinweis auf
+    Claude, Quellen oder eigene Erfahrung; die Ausarbeitung steht in den Notizen der Executive Summary.
   - **PowerPoint mit Marke:** Jeder Bereich hat unter Mehr → Bereiche eine Folien-Marke (Name, Untertitel,
     Haupt- und Akzentfarbe, Schrift, Logo-Upload). Voreingestellt: Beruf = Deloitte (Schwarz, Grün, Open Sans),
     Immobilien = van Newboert Immobilien. Das Logo liegt als PNG unter `data\marken\` und bleibt auf dem PC.
