@@ -147,11 +147,13 @@ def pkt2(text, kurz, gewicht=3, **extra):
     return {**punkt(text, kurz, "flag", gewicht), **extra}
 
 
-def test_alle_zwanzig_darstellungen_und_abwechslung():
+def test_alle_vierzig_darstellungen_und_abwechslung():
     from lessons_vault.briefing import DARSTELLUNGEN
-    from lessons_vault.praesentation import BAUSTEINE, darstellung_waehlen
+    from lessons_vault.praesentation import BAUSTEINE, ERSATZ, PUNKTE_JE_FOLIE, RUECKFALL, darstellung_waehlen
 
-    assert len(DARSTELLUNGEN) == 20 and set(DARSTELLUNGEN) - {"schritte"} <= set(BAUSTEINE)
+    assert len(DARSTELLUNGEN) == 40 and set(DARSTELLUNGEN) - {"schritte"} <= set(BAUSTEINE)
+    assert set(BAUSTEINE) == set(PUNKTE_JE_FOLIE) == set(ERSATZ)
+    assert set(RUECKFALL.values()) <= {"kacheln", "nummern", "schritte_v"}
     basis = [pkt2(f"Point {i} with some text.", f"P{i}", gewicht=(i % 5) + 1, aufwand=(i % 3) + 1, start=i + 1, ende=i + 2,
                   wert=f"{i} d", eintritt=(i % 3) + 1, auswirkung=3, status=("gruen", "gelb", "rot")[i % 3],
                   gruppe=("strength", "weakness", "opportunity", "threat")[i % 4]) for i in range(4)]
@@ -159,19 +161,21 @@ def test_alle_zwanzig_darstellungen_und_abwechslung():
     plan = {**PLAN, "abschnitte": abschnitte}
     praes = Presentation(io.BytesIO(briefing_pptx("All layouts", plan, {}, marke=STANDARD_MARKEN["Beruf"])))
     texte = texte_von(praes)
-    # Jede Darstellung bekommt eine Kapitel- und eine Inhaltsfolie; Diagramme und Tabellen sind nativ
-    assert len(praes.slides) == 4 + 2 * 20 + 3
+    # Jede Darstellung bekommt eine Kapitel- und eine Inhaltsfolie; Diagramme und Tabellen sind nativ, der Rest Formen
+    assert len(praes.slides) == 4 + 2 * 40 + 3
     typen_gesamt = [t for f in praes.slides for t in typen(f)]
     assert typen_gesamt.count(MSO_SHAPE_TYPE.CHART) == 1 + 4  # Fokus + prioritaeten, radar, kreis, saeulen
     assert MSO_SHAPE_TYPE.TABLE in typen_gesamt
-    for erwartet in ("QUICK WINS", "STRENGTHS", "ON TRACK", "W1", "IMPACT", "LIKELIHOOD", "WEAKNESS", "Message pyramide."):
+    for erwartet in ("QUICK WINS", "STRENGTHS", "ON TRACK", "W1", "IMPACT", "LIKELIHOOD", "WEAKNESS", "Message pyramide.",
+                     "TOTAL", "BENEATH THE SURFACE", "BUBBLE SIZE", "TODAY", "TARGET", "IN PROGRESS", "CORE", "SUPPORTING",
+                     "IMPORTANCE", "Message fischgraete.", "Message zahnraeder."):
         assert any(erwartet in t for t in texte), erwartet
-    # Wiederholungen weichen aus: dreimal kacheln -> kacheln, nummern, tabelle; zweimal prioritaeten -> kreis
+    # Wiederholungen weichen aus: dreimal kacheln -> kacheln, nummern, wabe; zweimal prioritaeten -> skala
     benutzt: dict[str, int] = {}
     k = {"darstellung": "kacheln", "punkte": basis}
-    assert [darstellung_waehlen(k, benutzt) for _ in range(3)] == ["kacheln", "nummern", "tabelle"]
+    assert [darstellung_waehlen(k, benutzt) for _ in range(3)] == ["kacheln", "nummern", "wabe"]
     p = {"darstellung": "prioritaeten", "punkte": basis}
-    assert [darstellung_waehlen(p, benutzt) for _ in range(2)] == ["prioritaeten", "kreis"]
+    assert [darstellung_waehlen(p, benutzt) for _ in range(2)] == ["prioritaeten", "skala"]
     # Fehlende Daten: Darstellung fällt zurück
     ohne = [punkt("x", "x"), punkt("y", "y"), punkt("z", "z")]
     assert darstellung_waehlen({"darstellung": "matrix", "punkte": ohne}, {}) == "nummern"
@@ -179,6 +183,39 @@ def test_alle_zwanzig_darstellungen_und_abwechslung():
     assert darstellung_waehlen({"darstellung": "zeitplan", "punkte": ohne}, {}) == "schritte_v"
     assert darstellung_waehlen({"darstellung": "schritte", "punkte": ohne}, {}) == "schritte_h"
     assert darstellung_waehlen({"darstellung": "kreislauf", "punkte": ohne[:2]}, {}) == "schritte_v"
+    assert darstellung_waehlen({"darstellung": "wasserfall", "punkte": ohne}, {}) == "nummern"  # kein Gewicht
+    assert darstellung_waehlen({"darstellung": "waage", "punkte": ohne}, {}) == "kacheln"  # keine Gruppen
+    assert darstellung_waehlen({"darstellung": "fahrplan", "punkte": ohne}, {}) == "schritte_v"  # keine Wochen
+    assert darstellung_waehlen({"darstellung": "zahnraeder", "punkte": ohne}, {}) == "zahnraeder"
+    assert darstellung_waehlen({"darstellung": "eisberg", "punkte": ohne}, {}) == "eisberg"
+
+
+def test_neue_darstellungen_mit_knappen_daten():
+    """Die 20 Darstellungen seit 0.9.2 vertragen Gruppen ohne Treffer, einen Punkt und beide Marken."""
+    from lessons_vault.praesentation import BAUSTEINE
+
+    einzel = [pkt2("Only one point here.", "Single", gewicht=3)]
+    viele = [pkt2(f"Point {i} text.", f"P{i}", gewicht=(i % 5) + 1, status="gruen", aufwand=1, start=i + 1, gruppe=f"G{i % 2}") for i in range(10)]
+    neue = ("wasserfall", "gestapelt", "blasen", "zielscheibe", "tacho", "skala", "bewertung", "checkliste", "waage", "venn", "eisberg",
+            "fischgraete", "baum", "netzwerk", "schichten", "bruecke", "wabe", "zahnraeder", "zeitachse", "fahrplan")
+    for marke in (STANDARD_MARKEN["Beruf"], STANDARD_MARKEN["Immobilien"]):
+        abschnitte = [{"titel": d, "kernaussage": f"Message {d}.", "darstellung": d, "punkte": viele} for d in neue]
+        praes = Presentation(io.BytesIO(briefing_pptx("Many", {**PLAN, "abschnitte": abschnitte}, {}, marke=marke)))
+        assert len(praes.slides) >= 4 + 2 * 20 + 3  # einige Darstellungen teilen 10 Punkte auf zwei Folien
+    # Jeder Baustein muss mit einem einzelnen Punkt durchlaufen, auch wenn die Auswahl ihn dann nicht wählen würde
+    from pptx import Presentation as P
+    from pptx.util import Inches
+    for name in neue:
+        praes = P()
+        praes.slide_width, praes.slide_height = Inches(13.333), Inches(7.5)
+        folie = praes.slides.add_slide(praes.slide_layouts[6])
+        from lessons_vault.praesentation import Thema
+        if name in ("fischgraete", "netzwerk"):
+            BAUSTEINE[name](folie, Thema.aus(STANDARD_MARKEN["Beruf"], None), einzel, Inches(0.6), Inches(1.85), Inches(12.1), Inches(4.9), titel="T")
+        elif name == "bruecke":
+            BAUSTEINE[name](folie, Thema.aus(None, None), einzel * 3, Inches(0.6), Inches(1.85), Inches(12.1), Inches(4.9))
+        else:
+            BAUSTEINE[name](folie, Thema.aus(None, None), einzel, Inches(0.6), Inches(1.85), Inches(12.1), Inches(4.9))
 
 
 def test_hilfsfunktionen():

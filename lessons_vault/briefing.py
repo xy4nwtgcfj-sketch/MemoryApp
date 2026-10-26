@@ -233,21 +233,32 @@ durch allgemeine Lehrbuchversionen zu ersetzen.
   jeder mit 2 bis 6 konkreten, abhakbaren Punkten. Je Abschnitt zusätzlich:
   - kernaussage: die Botschaft des Abschnitts als vollständiger Satz (Action Title einer Beraterfolie,
     höchstens 110 Zeichen), neutral formuliert, ohne "you".
-  - darstellung: wie der Abschnitt am besten auf einer Folie steht. Wähle nach Inhalt und sorge für
-    Abwechslung über das Deck (keine Darstellung öfter als zweimal):
-    "schritte" Abfolge (Chevrons), "zeitplan" Aktivitäten mit Zeitfenster (dann je Punkt start und ende in
-    Wochen 1-12 ab Beginn), "risiken" Risiken (dann je Punkt eintritt und auswirkung 1-3),
-    "prioritaeten" Rangfolge nach Gewicht (Balkendiagramm), "kennzahlen" Punkte mit einer prägnanten Größe
-    (dann je Punkt wert, z. B. "2 weeks", "3 levels", "< 5 %"), "trichter" Verengung oder Auswahl in Stufen,
-    "tabelle" gleichartige Punkte zum Vergleichen, "radar" Profil über 4 bis 8 Dimensionen (Gewicht je
-    Dimension), "kreis" Anteile oder Verteilung (Gewicht als Anteil), "saeulen" Vergleich von Größen als
-    Säulendiagramm (Gewicht), "matrix" Nutzen gegen Aufwand als 2x2 (dann je Punkt aufwand 1-3; Gewicht =
-    Nutzen), "pyramide" Hierarchie oder Fundament-zu-Ziel (erster Punkt = Spitze), "kreislauf" wiederkehrender
-    Zyklus, "spalten" Gegenüberstellung von 2 bis 3 Gruppen (dann je Punkt gruppe, z. B. "Before"/"After",
-    "Option A"/"Option B"), "swot" Stärken, Schwächen, Chancen, Risiken (dann je Punkt gruppe = strength |
-    weakness | opportunity | threat), "ampel" Statusliste (dann je Punkt status gruen | gelb | rot),
-    "meilensteine" Ereignisse auf einem Zeitstrahl (dann je Punkt start = Woche), "treiber" Treiberbaum: ein
-    Ziel links, die Hebel rechts, "stufen" aufsteigende Reifegrade oder Ausbaustufen, sonst "kacheln".
+  - darstellung: wie der Abschnitt am besten auf einer Folie steht. Wähle nach Inhalt aus allen vier Gruppen,
+    keine Darstellung öfter als zweimal im Deck. In Klammern die Punktfelder, die die Darstellung braucht:
+    Listen und Vergleich: "kacheln" Karten mit Piktogramm (Standard), "tabelle" gleichartige Punkte,
+    "kennzahlen" Punkte mit prägnanter Größe (wert, z. B. "2 weeks", "< 5 %"), "spalten" Gegenüberstellung von
+    2 bis 3 Gruppen (gruppe, z. B. "Before"/"After"), "swot" (gruppe = strength | weakness | opportunity |
+    threat), "ampel" Statusliste (status), "checkliste" erledigt / in Arbeit / blockiert / offen (status),
+    "bewertung" Scorecard mit farbigen Zellen (Gewicht, dazu aufwand und status), "waage" Für und Wider
+    (2 Gruppen), "venn" Überschneidung von 2 bis 3 Gruppen (gruppe; gemeinsame Punkte gruppe "both"),
+    "eisberg" Sichtbares über, Ursachen unter der Wasserlinie (gruppe visible | hidden).
+    Ablauf und Zeit: "schritte" Abfolge (Chevrons), "zeitachse" Ereignisse als Karten an einer Linie,
+    "zeitplan" Aktivitäten mit Zeitfenster (start, ende in Wochen 1-12), "meilensteine" Termine auf einem
+    Zeitstrahl (start = Woche), "fahrplan" Roadmap mit Bahnen (gruppe = Bahn, start, ende), "kreislauf"
+    wiederkehrender Zyklus, "stufen" aufsteigende Reifegrade, "bruecke" von heute (erster Punkt) über Pfeiler
+    zum Ziel (letzter Punkt).
+    Struktur: "trichter" Verengung oder Auswahl, "pyramide" Hierarchie (erster Punkt = Spitze), "schichten"
+    Ebenen eines Aufbaus (erster Punkt = oberste Ebene), "baum" ein Ganzes (erster Punkt) und seine Teile,
+    "treiber" Ziel links, Hebel rechts, "netzwerk" Nabe mit Verbindungen (Gewicht = Stärke), "fischgraete"
+    Ursachen je Kategorie (gruppe) zu einer Wirkung, "wabe" 3 bis 7 Bausteine als Waben, "zahnraeder"
+    ineinandergreifende Mechanismen (3 bis 5).
+    Diagramme und Bewertung: "prioritaeten" Rangfolge als Balken (Gewicht), "saeulen" Vergleich (Gewicht),
+    "kreis" Anteile (Gewicht), "radar" Profil über 4 bis 8 Dimensionen (Gewicht), "wasserfall" Beiträge, die
+    sich zu einem Ganzen aufsummieren (Gewicht), "gestapelt" Zusammensetzung je Gruppe als 100-%-Balken
+    (gruppe, Gewicht), "skala" Einordnung auf einer Skala (Gewicht), "tacho" Erfüllungsgrad je Punkt
+    (Gewicht), "zielscheibe" Nähe zum Kern (Gewicht 5 = Kern), "risiken" Risikomatrix (eintritt, auswirkung),
+    "matrix" Nutzen gegen Aufwand als 2x2 (aufwand; Gewicht = Nutzen), "blasen" Nutzen gegen Aufwand mit
+    Blasengröße (aufwand, Gewicht, auswirkung = Größe).
   Für jeden Punkt:
   - quelle "erfahrung", wenn der Punkt aus einem seiner Einträge stammt (egal welcher Art); dann lesson_nr = dessen Nummer.
   - quelle "allgemein", wenn er aus deinem Fachwissen stammt; dann lesson_nr = 0.
@@ -255,12 +266,13 @@ durch allgemeine Lehrbuchversionen zu ersetzen.
   - icon: passendes Piktogramm: check, warning, gear, flag, target, clock, users, chart, lock, idea, document,
     shield, search, link, money, calendar, chat, tool, list oder arrow.
   - gewicht: Bedeutung 1 (gering) bis 5 (entscheidend).
-  - eintritt, auswirkung: bei darstellung "risiken" 1 (niedrig) bis 3 (hoch), sonst 0.
+  - eintritt, auswirkung: bei "risiken" 1 (niedrig) bis 3 (hoch); auswirkung auch bei "blasen"; sonst 0.
   - wert: bei "kennzahlen" die Größe als kurzer Text (höchstens 12 Zeichen), sonst leer.
-  - start, ende: bei "zeitplan" und "meilensteine" Woche 1-12, sonst 0.
-  - aufwand: bei "matrix" 1 (gering) bis 3 (hoch), sonst 0.
-  - gruppe: bei "spalten" und "swot" die Gruppe, sonst leer.
-  - status: bei "ampel" gruen, gelb oder rot, sonst leer.
+  - start, ende: bei "zeitplan", "meilensteine" und "fahrplan" Woche 1-12, sonst 0.
+  - aufwand: bei "matrix", "blasen" und "bewertung" 1 (gering) bis 3 (hoch), sonst 0.
+  - gruppe: bei "spalten", "swot", "waage", "venn", "eisberg", "fahrplan", "fischgraete" und "gestapelt" die
+    Gruppe, sonst leer.
+  - status: bei "ampel", "checkliste" und "bewertung" gruen, gelb oder rot, sonst leer.
   Eigene Erfahrungen gehören an die passende Stelle im Plan, nicht in einen Sammelabschnitt.
 - titel: Titel der Präsentation (höchstens 55 Zeichen), formuliert wie der Titel eines Beraterdecks, nicht die
   Aufgabenbeschreibung wiederholen (z. B. "Hypercare Playbook: Warehouse Go-live").
@@ -307,6 +319,9 @@ ICONS = (
 DARSTELLUNGEN = (
     "kacheln", "schritte", "zeitplan", "risiken", "prioritaeten", "kennzahlen", "trichter", "tabelle", "radar", "kreis",
     "saeulen", "matrix", "pyramide", "kreislauf", "spalten", "swot", "ampel", "meilensteine", "treiber", "stufen",
+    # seit 0.9.2
+    "wasserfall", "gestapelt", "blasen", "zielscheibe", "tacho", "skala", "bewertung", "checkliste", "waage", "venn",
+    "eisberg", "fischgraete", "baum", "netzwerk", "schichten", "bruecke", "wabe", "zahnraeder", "zeitachse", "fahrplan",
 )
 STATUS = ("", "gruen", "gelb", "rot")
 

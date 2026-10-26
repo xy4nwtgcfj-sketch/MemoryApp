@@ -52,12 +52,15 @@ Mustererkennung folgen nach der Abnahme von Phase 1 (drei Wochen echte Nutzung, 
   - **PowerPoint im Beratungsstil (seit 0.9.1):** Titelfolie mit eigenem Decktitel und Untertitel (nicht die
     Aufgabenbeschreibung; Fußzeile = Marke · Decktitel · Seitenzahl), Agenda, Executive Summary mit drei Kernbotschaften
     und Storyline, "Where to focus" (Balkendiagramm der Gewichte je Abschnitt), je Abschnitt eine Kapitelfolie
-    und eine Inhaltsfolie in einer von 20 Darstellungen, die Claude nach Inhalt wählt: Kacheln mit Piktogrammen,
-    Prozessschritte (Chevrons oder senkrechter Zeitstrahl), Gantt-Zeitplan, Meilensteine, Risikomatrix
-    (Eintritt × Auswirkung), Nutzen-Aufwand-Matrix, Prioritäten-Balken, Säulen-, Ring- und Radardiagramm,
-    Kennzahlen-Kacheln, Trichter, Pyramide, Stufen, Kreislauf, Treiberbaum, Spaltenvergleich, SWOT, Ampel-Status,
-    Tabelle (plus Nummernliste mit Harvey Balls als Variante). Kommt eine Darstellung im Deck schon vor, weicht
-    die App auf eine noch ungenutzte aus; fehlen die Daten für eine Darstellung, fällt sie auf eine passende zurück.
+    und eine Inhaltsfolie in einer von 40 Darstellungen, die Claude nach Inhalt aus vier Gruppen wählt:
+    Listen und Vergleich (Kacheln mit Piktogrammen, Tabelle, Kennzahlen, Spaltenvergleich, SWOT, Ampel,
+    Checkliste, Scorecard, Waage, Venn, Eisberg), Ablauf und Zeit (Chevrons oder senkrechter Zeitstrahl,
+    Zeitachse mit Karten, Gantt-Zeitplan, Meilensteine, Roadmap mit Bahnen, Kreislauf, Stufen, Brücke),
+    Struktur (Trichter, Pyramide, Schichten, Baum, Treiberbaum, Netzwerk, Fischgräte, Waben, Zahnräder) sowie
+    Diagramme und Bewertung (Prioritäten-Balken, Säulen, Ring, Radar, Wasserfall, 100-%-Balken, Skala, Tacho,
+    Zielscheibe, Risikomatrix, Nutzen-Aufwand-Matrix, Blasen). Die 20 Darstellungen seit 0.9.2 nutzen nur die
+    vorhandenen Punktfelder, der Claude-Aufruf wird dadurch kaum teurer. Kommt eine Darstellung im Deck schon
+    vor, weicht die App auf eine noch ungenutzte aus; fehlen die Daten, fällt sie auf eine passende zurück.
     Danach Watch-outs, weitere Themen und nächste Schritte als Zeitstrahl. Die Folien sind zum Weitergeben gedacht:
     kein Hinweis auf Claude, Quellen oder eigene Erfahrung; die Ausarbeitung steht in den Notizen der Executive Summary.
   - **PowerPoint mit Marke:** Jeder Bereich hat unter Mehr → Bereiche eine Folien-Marke (Name, Untertitel,
