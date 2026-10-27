@@ -49,6 +49,9 @@ Mustererkennung folgen nach der Abnahme von Phase 1 (drei Wochen echte Nutzung, 
     "Stimmte" oder "Anders". Bestätigte Punkte aus deinen Einträgen zählen als erneut erlebt; Abweichungen,
     bewährtes Fachwissen und dein Fazit werden als neue Einträge strukturiert (Eingang). Das schließt den Kreis
     und bringt 25 Punkte.
+  - **Blinde Flecken einmal übernehmen (seit 0.9.3):** Übernimmst du einen blinden Fleck als Wissen, merkt sich das
+    Briefing den Eintrag. Beim nächsten Öffnen bleibt die Lücke geschlossen, keine Dublette; nur wenn du den
+    Eintrag löschst, lässt sie sich erneut übernehmen.
   - **PowerPoint im Beratungsstil (seit 0.9.1):** Titelfolie mit eigenem Decktitel und Untertitel (nicht die
     Aufgabenbeschreibung; Fußzeile = Marke · Decktitel · Seitenzahl), Agenda, Executive Summary mit drei Kernbotschaften
     und Storyline, "Where to focus" (Balkendiagramm der Gewichte je Abschnitt), je Abschnitt eine Kapitelfolie

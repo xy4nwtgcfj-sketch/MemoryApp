@@ -588,20 +588,24 @@ function lueckenAbschnitt(data, plan, titelVon) {
   const karte = (l, i) => {
     const box = el("div", { class: "card luecke" });
     const fehlerSlot = el("div");
+    // Übernommen: das Briefing kennt den Eintrag (lesson_id im Plan), die Karte bleibt beim nächsten Öffnen geschlossen
+    const geschlossen = (lessonId) => fill(box,
+      el("p", { class: "overline", style: "color:var(--success)" }, "Lücke geschlossen"),
+      el("p", { class: "lead" }, anf(l.titel)),
+      el("p", { class: "small muted", style: "margin:6px 0 0" }, `Liegt als Wissen in ${bereich}. Ergänze dort deine eigene Erfahrung, sobald du eine hast.`),
+      el("div", { class: "actions" }, el("a", { class: "button text", href: `#/lesson/${lessonId}` }, "Ansehen")));
+    if (l.lesson_id) { geschlossen(l.lesson_id); return box; }
     const uebernehmen = el("button", { type: "button", class: "primary" }, icon("plus", "icon sm"), "Als Wissen übernehmen");
     uebernehmen.addEventListener("click", async () => {
       uebernehmen.setAttribute("aria-disabled", "true");
       try {
-        const res = await api("/api/lessons", { method: "POST", body: {
+        const res = await api(`/api/briefing/${data.id}/luecke/${i}`, { method: "POST", body: {
           art: "wissen", titel: l.titel, situation: l.kontext || `Relevant for: ${data.situation}`, ereignis: l.wissen,
           lesson: l.kern, massnahme: l.anwendung || "", bereich, phase: beruflich ? (l.phase || "") : "",
           tags: [], schweregrad: 3, spezifisch: false, quelle: "text",
         } });
-        fill(box,
-          el("p", { class: "overline", style: "color:var(--success)" }, "Lücke geschlossen"),
-          el("p", { class: "lead" }, anf(l.titel)),
-          el("p", { class: "small muted", style: "margin:6px 0 0" }, `Liegt jetzt als Wissen in ${bereich}. Ergänze dort deine eigene Erfahrung, sobald du eine hast.`),
-          el("div", { class: "actions" }, el("a", { class: "button text", href: `#/lesson/${res.lesson.id}` }, "Ansehen")));
+        l.lesson_id = res.lesson.id;
+        geschlossen(res.lesson.id);
         refreshStats({ anlass: `Lücke geschlossen: „${kuerzen(l.titel, 48)}“ ist jetzt dein Wissen` });
       } catch (err) {
         uebernehmen.removeAttribute("aria-disabled");

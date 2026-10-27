@@ -811,6 +811,10 @@ def create_app(
         einst = repo.einstellungen()
         lokale = lokale_bereiche(einst)
         data["bilder"] = [bild_info(b) for b in repo.bilder_von("briefing", briefing_id)]
+        for luecke in (data.get("plan") or {}).get("luecken") or []:
+            # Übernommene Lücke: der Eintrag könnte inzwischen gelöscht sein, dann darf sie erneut übernommen werden
+            if luecke.get("lesson_id") and not repo.existiert(luecke["lesson_id"]):
+                luecke["lesson_id"] = ""
         if data["bereich"] and data["bereich"] in lokale:
             ki_moeglich, ki_hinweis = False, "Der gewählte Bereich wird lokal verarbeitet, daher keine Claude-Zusammenfassung."
         elif not data["bereich"] and einst.strukturierung_standard == "lokal":
@@ -900,6 +904,21 @@ def create_app(
     @app.delete("/api/briefing/{briefing_id}", dependencies=deps, status_code=204)
     def briefing_loeschen(briefing_id: str) -> None:
         repo.briefing_loeschen(briefing_id)
+
+    @app.post("/api/briefing/{briefing_id}/luecke/{index}", dependencies=deps, status_code=201)
+    def briefing_luecke_uebernehmen(briefing_id: str, index: int, data: LessonIn) -> LessonAntwort:
+        """Blinden Fleck als eigenen Eintrag übernehmen; das Briefing merkt sich den Eintrag, damit die Lücke
+        beim nächsten Öffnen als geschlossen erscheint und keine Dublette entsteht."""
+        plan = repo.briefing_holen(briefing_id)["plan"]
+        luecken = (plan or {}).get("luecken") or []
+        if not 0 <= index < len(luecken):
+            raise HTTPException(status_code=404, detail="Diese Lücke gibt es im Plan nicht.")
+        vorhanden = luecken[index].get("lesson_id")
+        if vorhanden and repo.existiert(vorhanden):
+            raise HTTPException(status_code=409, detail="Diese Lücke ist schon übernommen; der Eintrag liegt in deinem Bestand.")
+        antwort = lesson_anlegen(data)
+        repo.briefing_luecke_setzen(briefing_id, index, antwort.lesson.id)
+        return antwort
 
     @app.post("/api/briefing/{briefing_id}/zusammenfassung", dependencies=deps)
     def briefing_zusammenfassung(

@@ -328,6 +328,12 @@ def test_briefing_kombiniert(server, page):
     page.get_by_role("button", name="Als Wissen übernehmen").click()
     expect(page.get_by_text("Lücke geschlossen", exact=True)).to_be_visible()
     expect(page.locator(".belohnung")).to_contain_text("Lücke geschlossen")
+    # Beim erneuten Öffnen bleibt die Lücke geschlossen (keine Dublette möglich)
+    page.reload()
+    expect(page.get_by_text("Hypercare braucht klare Eskalationswege")).to_be_visible()
+    page.get_by_role("button", name="Ausarbeitung", exact=True).click()
+    expect(page.get_by_text("Lücke geschlossen", exact=True)).to_be_visible()
+    expect(page.get_by_role("button", name="Als Wissen übernehmen")).to_have_count(0)
     # Rückschau: eigener Abschnitt, Planpunkte mit der Wirklichkeit abgleichen
     page.get_by_role("button", name="Rückschau", exact=True).click()
     page.get_by_text("Wie lief es? Plan mit der Wirklichkeit abgleichen").click()

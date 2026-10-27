@@ -425,6 +425,15 @@ class Repository:
                 (modus, briefing_id),
             )
 
+    def briefing_luecke_setzen(self, briefing_id: str, index: int, lesson_id: str) -> None:
+        """Merkt im Plan, welcher Eintrag aus einer Lücke entstand (sonst ließe sie sich beim nächsten Öffnen erneut übernehmen)."""
+        plan = self.briefing_holen(briefing_id)["plan"]
+        if not plan or not 0 <= index < len(plan.get("luecken") or []):
+            raise NotFound(f"luecke {index}")
+        plan["luecken"][index]["lesson_id"] = lesson_id
+        with self.conn:
+            self.conn.execute("UPDATE briefings SET plan_json = ? WHERE id = ?", (json.dumps(plan, ensure_ascii=False), briefing_id))
+
     def briefing_rueckschau_setzen(self, briefing_id: str, rueckschau: dict[str, Any]) -> None:
         self.briefing_holen(briefing_id)
         with self.conn:

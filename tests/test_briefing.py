@@ -281,6 +281,34 @@ def test_rueckschau_bestaetigt_und_erzeugt_entwuerfe(env):
     assert eintrag["rueckschau"] is True and eintrag["plan"] is True
 
 
+def test_luecke_uebernehmen_merkt_sich_den_eintrag(env):
+    """Ein blinder Fleck wird einmal übernommen; beim nächsten Öffnen ist die Lücke geschlossen, keine Dublette."""
+    client, claude, add = env
+    add(titel="Schichtleiter in der Hypercare einplanen", bereich="Beruf",
+        lesson="In der Hypercare die Schichtleiter für zwei Wochen schriftlich einplanen.")
+    data = client.post("/api/briefing", json={"situation": "Plan für die Hypercare-Phase eines SAP-EWM-Projekts"}).json()
+    plan = client.post(f"/api/briefing/{data['id']}/zusammenfassung").json()["plan"]
+    luecke = plan["luecken"][0]
+    assert not luecke.get("lesson_id")
+    eintrag = {"art": "wissen", "titel": luecke["titel"], "situation": luecke["kontext"], "ereignis": luecke["wissen"],
+               "lesson": luecke["kern"], "massnahme": luecke["anwendung"], "bereich": "Beruf", "phase": luecke["phase"],
+               "tags": [], "schweregrad": 3, "spezifisch": False, "quelle": "text"}
+    vorher = client.get("/api/statistik").json()["gesamt"]
+    res = client.post(f"/api/briefing/{data['id']}/luecke/0", json=eintrag)
+    assert res.status_code == 201
+    lesson_id = res.json()["lesson"]["id"]
+    assert client.get(f"/api/lessons/{lesson_id}").json()["lesson"]["art"] == "wissen"
+    # Das Briefing kennt den Eintrag; eine zweite Übernahme wird abgelehnt
+    assert client.get(f"/api/briefing/{data['id']}").json()["plan"]["luecken"][0]["lesson_id"] == lesson_id
+    assert client.post(f"/api/briefing/{data['id']}/luecke/0", json=eintrag).status_code == 409
+    assert client.post(f"/api/briefing/{data['id']}/luecke/7", json=eintrag).status_code == 404
+    assert client.get("/api/statistik").json()["gesamt"] == vorher + 1
+    # Wird der Eintrag gelöscht, ist die Lücke wieder offen und darf erneut übernommen werden
+    client.delete(f"/api/lessons/{lesson_id}")
+    assert client.get(f"/api/briefing/{data['id']}").json()["plan"]["luecken"][0]["lesson_id"] == ""
+    assert client.post(f"/api/briefing/{data['id']}/luecke/0", json=eintrag).status_code == 201
+
+
 def test_marke_und_logo_fuer_powerpoint(env):
     import io
 
