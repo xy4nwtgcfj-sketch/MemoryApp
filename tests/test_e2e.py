@@ -567,6 +567,12 @@ def test_offline_postausgang_und_autosave(server, page):
     expect(page.locator("#toast")).to_contain_text("an den PC gesendet")
     assert page.evaluate("JSON.parse(localStorage.getItem('lv-ausgang')).length") == 0
     assert len(page.request.get(f"{base}/api/entwuerfe").json()["eintraege"]) == vorher + 1
+    # Das Banner verschwindet von selbst, sobald der PC wieder antwortet (leise Nachfrage alle 8 s), auch ohne Eingabe
+    page.context.set_offline(True)
+    page.evaluate("window.dispatchEvent(new Event('offline'))")
+    expect(page.locator("#offline")).to_be_visible()
+    page.context.set_offline(False)
+    expect(page.locator("#offline")).to_be_hidden(timeout=15000)
 
 
 def test_deep_link_und_startbestand(server, page):

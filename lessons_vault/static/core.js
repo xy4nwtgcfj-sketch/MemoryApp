@@ -342,10 +342,15 @@ export function istPruefung(err) {
 // ---------------------------------------------------------------- Offline und Postausgang
 const offlineEl = document.getElementById("offline");
 let offline = false;
+let wiederverbinden = null;
 export function setOffline(wert) {
   if (wert === offline) return;
   offline = wert;
   offlineEl.hidden = !wert;
+  // Offline: alle 8 s leise nachfragen, damit das Banner von selbst verschwindet, sobald der PC wieder da ist
+  // (z. B. nach einem Neustart der App), statt bis zur nächsten Eingabe stehen zu bleiben.
+  clearInterval(wiederverbinden);
+  wiederverbinden = wert ? setInterval(() => { if (!document.hidden) refreshStats(); }, 8000) : null;
   if (!wert) ausgangSenden();
 }
 export function istOffline() { return offline || navigator.onLine === false; }
