@@ -197,6 +197,10 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE briefings ADD COLUMN rueckschau_json TEXT NOT NULL DEFAULT '';
     """,
+    # Dialog zum Plan: Nachfragen, Input und Anpassungen in zeitlicher Folge
+    """
+    ALTER TABLE briefings ADD COLUMN dialog_json TEXT NOT NULL DEFAULT '';
+    """,
 ]
 
 

@@ -5,7 +5,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from lessons_vault import main
-from lessons_vault.briefing import BRIEFING_PROMPT, KOMBI_PROMPT, faktor_bestaetigung, faktor_feedback, faktor_schwere, kombi_auswerten
+from lessons_vault.briefing import (
+    ANPASSEN_PROMPT, BRIEFING_PROMPT, DIALOG_PROMPT, KOMBI_PROMPT, faktor_bestaetigung, faktor_feedback, faktor_schwere,
+    kombi_auswerten,
+)
 from lessons_vault.config import Settings
 from lessons_vault.embeddings import HashingProvider
 from lessons_vault.main import create_app
@@ -59,6 +62,14 @@ def antwort(kwargs):
     """Fake-Claude: Briefing-Aufrufe bekommen eine Zusammenfassung, alles andere einen Lesson-Entwurf."""
     if kwargs["system"] == KOMBI_PROMPT:
         return KOMBI_ANTWORT
+    if kwargs["system"] == DIALOG_PROMPT:
+        return {"antwort": "## Carriers\n- Agree extended pickup windows for the first three days.\n- Your shift leads must be confirmed first [E1]; a fake mark [E9].",
+                "anpassung_sinnvoll": True, "anpassung_hinweis": "Add a section on carrier coordination."}
+    if kwargs["system"] == ANPASSEN_PROMPT:
+        return {**KOMBI_ANTWORT, "titel": "Hypercare Playbook v2",
+                "abschnitte": [*KOMBI_ANTWORT["abschnitte"], {"titel": "Carriers", "kernaussage": "Carriers need extended windows.", "darstellung": "kacheln", "punkte": [
+                    {"punkt": "Agree extended pickup windows", "quelle": "allgemein", "lesson_nr": 0, "kurz": "Pickup windows", "icon": "calendar", "gewicht": 3}]}],
+                "aenderungen": ["Added a Carriers section.", "Kept staffing and escalation unchanged."]}
     if kwargs["system"] == BRIEFING_PROMPT:
         return {
             "zusammenfassung": "Plane die Personalfreigabe früh.",
@@ -307,6 +318,57 @@ def test_luecke_uebernehmen_merkt_sich_den_eintrag(env):
     client.delete(f"/api/lessons/{lesson_id}")
     assert client.get(f"/api/briefing/{data['id']}").json()["plan"]["luecken"][0]["lesson_id"] == ""
     assert client.post(f"/api/briefing/{data['id']}/luecke/0", json=eintrag).status_code == 201
+
+
+def test_dialog_nachfrage_und_plan_anpassen(env):
+    """Nachfragen werden im Dialog beantwortet (mit aufgelösten Marken), Input kann den Plan überarbeiten."""
+    client, claude, add = env
+    l1 = add(titel="Schichtleiter in der Hypercare einplanen", bereich="Beruf",
+             lesson="In der Hypercare die Schichtleiter für zwei Wochen schriftlich einplanen.")
+    data = client.post("/api/briefing", json={"situation": "Plan für die Hypercare-Phase eines SAP-EWM-Projekts"}).json()
+    # Ohne Plan keine Nachfrage
+    assert client.post(f"/api/briefing/{data['id']}/dialog", json={"text": "Was ist mit Carriern?"}).status_code == 409
+    client.post(f"/api/briefing/{data['id']}/zusammenfassung")
+    # Lücke übernehmen, damit die Anpassung sie als geschlossen behalten muss
+    luecke = client.get(f"/api/briefing/{data['id']}").json()["plan"]["luecken"][0]
+    lid = client.post(f"/api/briefing/{data['id']}/luecke/0", json={
+        "art": "wissen", "titel": luecke["titel"], "situation": luecke["kontext"], "ereignis": luecke["wissen"], "lesson": luecke["kern"],
+        "massnahme": "", "bereich": "Beruf", "phase": "", "tags": [], "schweregrad": 3, "spezifisch": False, "quelle": "text"}).json()["lesson"]["id"]
+    # Nachfrage
+    res = client.post(f"/api/briefing/{data['id']}/dialog", json={"text": "What about carriers?", "modus": "frage"})
+    assert res.status_code == 200
+    dialog = res.json()["dialog"]
+    assert [d["rolle"] for d in dialog] == ["nutzer", "claude"] and dialog[0]["art"] == "frage" and dialog[0]["text"] == "What about carriers?"
+    assert dialog[1]["art"] == "antwort" and f"[[E:{l1['id']}]]" in dialog[1]["text"] and "[E9]" not in dialog[1]["text"] and "E:None" not in dialog[1]["text"]
+    assert dialog[1]["anpassung_sinnvoll"] is True and dialog[1]["anpassung_hinweis"] == "Add a section on carrier coordination."
+    assert all(d["zeit"] for d in dialog)
+    # Claude sah Aufgabe, Einträge, Plan und Eingabe; der Plan trägt Eintragsnummern statt IDs
+    nachricht = claude.calls[-1]["messages"][0]["content"]
+    assert "<plan>" in nachricht and "<eingabe>\nWhat about carriers?" in nachricht and "\"lesson_nr\": 1" in nachricht and l1["id"] not in nachricht
+    assert res.json()["plan"]["titel"] == "Hypercare Playbook"  # Nachfrage ändert den Plan nicht
+    # Anpassen: neuer Plan, Änderungen im Dialog, übernommene Lücke bleibt geschlossen, Dialog ging mit
+    res = client.post(f"/api/briefing/{data['id']}/dialog", json={"text": "Add carriers", "modus": "anpassen"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["plan"]["titel"] == "Hypercare Playbook v2" and [a["titel"] for a in body["plan"]["abschnitte"]][-1] == "Carriers"
+    assert body["plan"]["luecken"][0]["lesson_id"] == lid
+    assert [d["art"] for d in body["dialog"]] == ["frage", "antwort", "anpassen", "anpassung"]
+    assert "Added a Carriers section." in body["dialog"][-1]["text"]
+    assert "<dialog>" in claude.calls[-1]["messages"][0]["content"] and "Nutzer: What about carriers?" in claude.calls[-1]["messages"][0]["content"]
+    # PowerPoint nutzt den angepassten Plan
+    from pptx import Presentation
+    import io
+    praes = Presentation(io.BytesIO(client.get(f"/api/briefing/{data['id']}/pptx").content))
+    assert any("Carriers" in sh.text_frame.text for s in praes.slides for sh in s.shapes if sh.has_text_frame)
+    # Sperrliste gilt auch im Dialog; Moduswechsel verwirft den Dialog; nach der Rückschau keine Anpassung mehr
+    client.put("/api/einstellungen", json={"sperrliste": ["Geheimkunde"]})
+    assert client.post(f"/api/briefing/{data['id']}/dialog", json={"text": "Geheimkunde will more"}).status_code == 422
+    punkte = [p for a in body["plan"]["abschnitte"] for p in a["punkte"]]
+    client.post(f"/api/briefing/{data['id']}/rueckschau", json={"punkte": [{**punkte[0], "ergebnis": "bestaetigt"}], "fazit": "ok"})
+    assert client.post(f"/api/briefing/{data['id']}/dialog", json={"text": "Change it", "modus": "anpassen"}).status_code == 409
+    assert client.post(f"/api/briefing/{data['id']}/dialog", json={"text": "Still a question?", "modus": "frage"}).status_code == 200
+    client.post(f"/api/briefing/{data['id']}/zusammenfassung?modus=eigen")
+    assert client.get(f"/api/briefing/{data['id']}").json()["dialog"] == []
 
 
 def test_marke_und_logo_fuer_powerpoint(env):

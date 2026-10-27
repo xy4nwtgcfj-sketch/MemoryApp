@@ -18,7 +18,7 @@ playwright = pytest.importorskip("playwright.sync_api")
 uvicorn = pytest.importorskip("uvicorn")
 
 from lessons_vault import main  # noqa: E402
-from lessons_vault.briefing import BRIEFING_PROMPT, KOMBI_PROMPT  # noqa: E402
+from lessons_vault.briefing import ANPASSEN_PROMPT, BRIEFING_PROMPT, DIALOG_PROMPT, KOMBI_PROMPT  # noqa: E402
 from lessons_vault.foto import ABGLEICH_PROMPT, KANDIDATEN_PROMPT  # noqa: E402
 from lessons_vault.images import Texterkennung  # noqa: E402
 from lessons_vault.config import Settings  # noqa: E402
@@ -52,6 +52,14 @@ def server(tmp_path_factory):
                     {"punkt": "WEG-Protokolle der letzten drei Jahre lesen", "lesson_nr": 2},
                 ],
             }
+        if kwargs["system"] == DIALOG_PROMPT:
+            return {"antwort": "- Agree extended carrier pickup windows for the first three days [E1].",
+                    "anpassung_sinnvoll": True, "anpassung_hinweis": "Add a carrier section to the plan."}
+        if kwargs["system"] == ANPASSEN_PROMPT:
+            basis = antwort({**kwargs, "system": KOMBI_PROMPT})
+            return {**basis, "abschnitte": [*basis["abschnitte"], {"titel": "Carrier coordination", "punkte": [
+                {"punkt": "Agree extended pickup windows with carriers", "quelle": "allgemein", "lesson_nr": 0}]}],
+                "aenderungen": ["Added a carrier coordination section."]}
         if kwargs["system"] == KOMBI_PROMPT:
             return {
                 "zusammenfassung": "Hypercare braucht klare Eskalationswege und eingeplantes Personal vor Ort.",
@@ -334,11 +342,26 @@ def test_briefing_kombiniert(server, page):
     page.get_by_role("button", name="Ausarbeitung", exact=True).click()
     expect(page.get_by_text("Lücke geschlossen", exact=True)).to_be_visible()
     expect(page.get_by_role("button", name="Als Wissen übernehmen")).to_have_count(0)
+    # Dialog: Nachfrage beantwortet Claude im Gespräch, der Vorschlag zur Anpassung überarbeitet den Plan
+    expect(page.get_by_role("heading", name="Nachfragen und anpassen")).to_be_visible()
+    page.locator("textarea[id^=dialog-]").fill("Was ist mit den Carriern?")
+    page.get_by_role("button", name="Frage stellen").click()
+    expect(page.get_by_text("Agree extended carrier pickup windows")).to_be_visible()
+    assert fake.calls[-1]["system"] == DIALOG_PROMPT
+    page.get_by_role("button", name="Plan entsprechend anpassen").click()
+    expect(page.get_by_text("Plan angepasst", exact=True)).to_be_visible()
+    page.get_by_text(re.compile("^Als Checkliste abhaken")).click()  # Checkliste ist nach dem Neuzeichnen wieder eingeklappt
+    expect(page.get_by_role("heading", name="Carrier coordination")).to_be_visible()
+    assert fake.calls[-1]["system"] == ANPASSEN_PROMPT
+    page.reload()
+    expect(page.get_by_text("Hypercare braucht klare Eskalationswege")).to_be_visible()
+    page.get_by_role("button", name="Ausarbeitung", exact=True).click()
+    expect(page.get_by_text("Was ist mit den Carriern?")).to_be_visible()  # Dialog bleibt erhalten
     # Rückschau: eigener Abschnitt, Planpunkte mit der Wirklichkeit abgleichen
     page.get_by_role("button", name="Rückschau", exact=True).click()
     page.get_by_text("Wie lief es? Plan mit der Wirklichkeit abgleichen").click()
     punkte = page.locator(".rs-punkt")
-    expect(punkte).to_have_count(3)
+    expect(punkte).to_have_count(4)  # drei Planpunkte plus der Carrier-Punkt aus der Anpassung
     punkte.nth(1).get_by_role("button", name=re.compile("hat gestimmt")).click()
     punkte.nth(2).get_by_role("button", name=re.compile("lief anders")).click()
     punkte.nth(2).locator("textarea").fill("Meeting nur alle zwei Tage")

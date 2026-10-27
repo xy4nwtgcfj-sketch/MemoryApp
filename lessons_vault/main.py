@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 
 from . import __version__, db
-from .briefing import BriefingSchreiber, kombinieren, lokale_checkliste, rangliste
+from .briefing import BriefingSchreiber, kombinieren, lokale_checkliste, nachfragen, plan_anpassen, rangliste
 from .compliance import lesson_text_fuer_pruefung, pruefen, sperrbegriffe_schwaerzen, sperrliste_treffer
 from .config import Settings, load_settings
 from .foto import abgleich_inhalt, abgleichen, kandidaten_finden, kandidaten_inhalt
@@ -102,6 +102,13 @@ EMBED_BATCH = 16
 class FeedbackIn(BaseModel):
     lesson_id: str
     bewertung: Literal["hilfreich", "nicht_relevant", ""]
+
+
+class DialogIn(BaseModel):
+    """Nachfrage oder Input zum Plan: frage = Antwort im Dialog, anpassen = Plan überarbeiten."""
+
+    text: str = Field(min_length=2, max_length=4000)
+    modus: Literal["frage", "anpassen"] = "frage"
 
 
 class ImportErgebnis(BaseModel):
@@ -967,6 +974,44 @@ def create_app(
         repo.briefing_ki_setzen(
             briefing_id, ergebnis["zusammenfassung"], ergebnis["checkliste"], f"claude:{schreiber.model}", nur_modus="eigen",
         )
+        return briefing_antwort(briefing_id)
+
+    @app.post("/api/briefing/{briefing_id}/dialog", dependencies=deps)
+    def briefing_dialog(briefing_id: str, eingabe: DialogIn, freigabe: bool = False) -> dict[str, Any]:
+        """Nachfrage oder Input zum Plan. frage: Claude antwortet im Dialog; anpassen: Claude überarbeitet den Plan
+        und protokolliert die Änderungen im Dialog. Es gehen dieselben Einträge an Claude wie beim Plan."""
+        data = briefing_antwort(briefing_id)
+        if not data.get("plan"):
+            raise HTTPException(status_code=409, detail="Erst den Plan mit Claude-Fachwissen erstellen, dann nachfragen.")
+        if not data["ki_moeglich"]:
+            raise HTTPException(status_code=409, detail=data["ki_hinweis"] or "Claude ist für dieses Briefing nicht verfügbar.")
+        if eingabe.modus == "anpassen" and data["rueckschau"]:
+            raise HTTPException(status_code=409, detail="Nach der Rückschau bleibt der Plan unverändert. Nachfragen gehen weiterhin.")
+        vorabpruefung(eingabe.text, data["bereich"], freigabe)
+        lokale = lokale_bereiche()
+        lessons = [t["lesson"] for t in data["treffer"] if t["lesson"].bereich not in lokale]
+        try:
+            if eingabe.modus == "anpassen":
+                plan, aenderungen = plan_anpassen(schreiber, data["situation"], lessons, data["plan"], data["dialog"], eingabe.text, settings.briefing_effort)
+                repo.briefing_plan_setzen(briefing_id, plan, f"claude:{schreiber.model}")
+                repo.briefing_dialog_anhaengen(
+                    briefing_id, {"rolle": "nutzer", "art": "anpassen", "text": eingabe.text.strip()},
+                    {"rolle": "claude", "art": "anpassung", "text": "\n".join(f"- {a}" for a in aenderungen) or "- Plan revised."},
+                )
+            else:
+                antwort = nachfragen(schreiber, data["situation"], lessons, data["plan"], data["dialog"], eingabe.text, settings.briefing_effort)
+                repo.briefing_dialog_anhaengen(
+                    briefing_id, {"rolle": "nutzer", "art": "frage", "text": eingabe.text.strip()},
+                    {"rolle": "claude", "art": "antwort", **antwort},
+                )
+        except anthropic.APIConnectionError as exc:
+            raise HTTPException(status_code=502, detail="Claude nicht erreichbar.") from exc
+        except anthropic.RateLimitError as exc:
+            raise HTTPException(status_code=502, detail="Claude-Limit erreicht, später erneut versuchen.") from exc
+        except anthropic.APIStatusError as exc:
+            raise HTTPException(status_code=502, detail=f"Claude-Fehler {exc.status_code}.") from exc
+        except (RuntimeError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
         return briefing_antwort(briefing_id)
 
     @app.post("/api/briefing/{briefing_id}/feedback", dependencies=deps)

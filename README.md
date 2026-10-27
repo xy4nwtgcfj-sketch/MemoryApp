@@ -49,6 +49,12 @@ Mustererkennung folgen nach der Abnahme von Phase 1 (drei Wochen echte Nutzung, 
     "Stimmte" oder "Anders". Bestätigte Punkte aus deinen Einträgen zählen als erneut erlebt; Abweichungen,
     bewährtes Fachwissen und dein Fazit werden als neue Einträge strukturiert (Eingang). Das schließt den Kreis
     und bringt 25 Punkte.
+  - **Nachfragen und anpassen (seit 0.10.0):** Unter der Ausarbeitung steht ein Dialog zum Plan. „Frage stellen“
+    beantwortet Claude im Gespräch, mit Bezug auf Plan, deine Einträge und den bisherigen Dialog; schlägt die Antwort
+    eine Planänderung vor, genügt ein Tipp auf „Plan entsprechend anpassen“. „Plan anpassen“ arbeitet deinen Input
+    direkt ein: Claude überarbeitet den Plan, lässt Unberührtes stehen, protokolliert die Änderungen im Dialog;
+    PowerPoint und Checkliste folgen dem neuen Stand, übernommene blinde Flecken bleiben geschlossen. Nach der
+    Rückschau bleibt der Plan fest, Fragen gehen weiter. Der Dialog bleibt beim Briefing gespeichert.
   - **Blinde Flecken einmal übernehmen (seit 0.9.3):** Übernimmst du einen blinden Fleck als Wissen, merkt sich das
     Briefing den Eintrag. Beim nächsten Öffnen bleibt die Lücke geschlossen, keine Dublette; nur wenn du den
     Eintrag löschst, lässt sie sich erneut übernehmen.

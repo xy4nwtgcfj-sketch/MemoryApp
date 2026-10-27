@@ -264,6 +264,8 @@ function showBriefing(container, data, params = {}) {
   const titelVon = Object.fromEntries(data.treffer.map((t) => [t.lesson.id, t.lesson]));
   const rueckschauSlot = el("div");
   const lueckenSlot = el("div");
+  const dialogSlot = el("div");
+  const dialogStand = { dialog: data.dialog || [], rueckschau: Boolean(data.rueckschau) };
   const feedback = { ...data.feedback };
   const max = data.treffer[0]?.relevanz || 0;
   const stark = data.treffer.filter((t, i) => i < 4 && t.relevanz >= 0.6 * max);
@@ -450,6 +452,7 @@ function showBriefing(container, data, params = {}) {
       el("div", { class: "tile" }, el("p", { class: "num" }, String(alle.length)), el("p", { class: "lbl" }, "Punkte im Plan")),
       el("div", { class: "tile" }, el("p", { class: "num violett" }, String((plan.luecken || []).length)), el("p", { class: "lbl" }, "blinde Flecken"))));
     fill(lueckenSlot, lueckenAbschnitt(data, plan, titelVon));
+    renderDialog();
     fill(rueckschauSlot, rueckschauKarte(data, plan, params.rueckschau === "1") || el("p", { class: "footnote" }, "Für dieses Briefing gibt es keine Planpunkte zum Abgleichen."));
     // Die offene Frage auf der Startseite führt später zur Rückschau dieses Plans
     const offen = store.json("lv-offen", null);
@@ -459,6 +462,84 @@ function showBriefing(container, data, params = {}) {
       pptxGeladen.add(data.id);
       pptxLaden(data.id, data.situation).then(() => toast("PowerPoint erstellt.")).catch((err) => toast(err.message, { fehler: true }));
     }
+  };
+
+  // Dialog zum Plan: Nachfragen beantwortet Claude im Gespräch, Input kann den Plan selbst überarbeiten.
+  const renderDialog = () => {
+    if (!data.ki_moeglich) { fill(dialogSlot); return; }
+    const fehlerSlot = el("div");
+    const warteSlot = el("div");
+    const feldId = `dialog-${data.id}`;
+    const feld = el("textarea", { id: feldId, rows: 3, placeholder: "Nachfrage oder neuer Input, z. B. „Das Lager arbeitet im Dreischichtbetrieb“ oder „Was heißt das für die Carrier?“" });
+    const frageBtn = el("button", { type: "button", class: "primary" }, icon("message-circle", "icon sm"), "Frage stellen");
+    const anpassenBtn = el("button", { type: "button" }, icon("refresh", "icon sm"), "Plan anpassen");
+    const knoepfe = [frageBtn, anpassenBtn];
+    const senden = async (modus, text, freigabe = false) => {
+      if (!text) { feld.setAttribute("aria-invalid", "true"); feld.focus(); return; }
+      feld.removeAttribute("aria-invalid");
+      knoepfe.forEach((b) => b.setAttribute("aria-disabled", "true"));
+      fill(fehlerSlot);
+      fill(warteSlot, el("p", { class: "waiting" }, el("span", { class: "spinner", "aria-hidden": "true" }),
+        modus === "anpassen" ? "Claude überarbeitet den Plan …" : "Claude antwortet …"));
+      say("Claude arbeitet, bitte warten.");
+      try {
+        const res = await api(`/api/briefing/${data.id}/dialog${freigabe ? "?freigabe=true" : ""}`, { method: "POST", body: { text, modus }, timeoutMs: 200000 });
+        dialogStand.dialog = res.dialog || [];
+        data.dialog = dialogStand.dialog;
+        if (modus === "anpassen") {
+          data.plan = res.plan;
+          showSummary(res);  // Plan, Kennzahlen, Lücken und Dialog neu zeichnen
+          toast("Plan angepasst.");
+          say("Plan angepasst.");
+        } else {
+          renderDialog();
+          say("Antwort da.");
+        }
+      } catch (err) {
+        knoepfe.forEach((b) => b.removeAttribute("aria-disabled"));
+        fill(warteSlot);
+        if (istPruefung(err)) {
+          fill(fehlerSlot, el("div", { class: "notice warn" }, icon("shield"), el("div", {},
+            el("strong", {}, err.message), el("ul", {}, err.hinweise.map((h) => el("li", {}, anf(h)))),
+            err.code === "sperrliste" ? null : el("div", { class: "actions" }, el("button", { type: "button", class: "text", onclick: () => senden(modus, text, true) }, "Trotzdem senden")))));
+          return;
+        }
+        fill(fehlerSlot, errorNotice(err, { erneut: () => senden(modus, text) }));
+      }
+    };
+    frageBtn.addEventListener("click", () => senden("frage", feld.value.trim()));
+    anpassenBtn.addEventListener("click", () => senden("anpassen", feld.value.trim()));
+    if (dialogStand.rueckschau) {
+      anpassenBtn.setAttribute("aria-disabled", "true");
+      anpassenBtn.title = "Nach der Rückschau bleibt der Plan unverändert.";
+    }
+    const eintrag = (d) => {
+      if (d.rolle === "nutzer") {
+        return el("div", { class: "card dialog-eintrag nutzer" },
+          el("p", { class: "overline" }, d.art === "anpassen" ? "Du · Plan anpassen" : "Du"),
+          el("p", { style: "margin:0;white-space:pre-wrap" }, d.text));
+      }
+      if (d.art === "anpassung") {
+        return el("div", { class: "card dialog-eintrag claude angepasst" },
+          el("p", { class: "overline", style: "color:var(--success)" }, "Plan angepasst"),
+          ausarbeitungKnoten(d.text, titelVon));
+      }
+      return el("div", { class: "card dialog-eintrag claude" },
+        el("p", { class: "overline" }, "Claude"),
+        ausarbeitungKnoten(d.text, titelVon),
+        d.anpassung_sinnvoll && d.anpassung_hinweis && !dialogStand.rueckschau ? el("div", { class: "notice info", style: "margin:10px 0 0" }, icon("lightbulb"),
+          el("div", {}, el("strong", {}, "Das würde den Plan ändern: "), anf(d.anpassung_hinweis),
+            el("div", { class: "actions" }, el("button", { type: "button", class: "text", onclick: () => senden("anpassen", d.anpassung_hinweis) }, icon("refresh", "icon sm"), "Plan entsprechend anpassen")))) : null);
+    };
+    fill(dialogSlot, el("section", { class: "dialog" },
+      el("h2", { class: "row", style: "gap:8px;margin-top:28px" }, icon("message-circle"), "Nachfragen und anpassen"),
+      el("p", { class: "footnote", style: "margin:0 0 10px" }, "Frag nach, wo der Plan unklar ist, oder gib neuen Input. „Plan anpassen“ arbeitet deinen Input in Plan und PowerPoint ein."),
+      dialogStand.dialog.map(eintrag),
+      el("div", { class: "card" },
+        el("label", { for: feldId, class: "sr-only" }, "Nachfrage oder Input"),
+        el("div", { class: "composer" }, feld, el("div", { class: "tools" }, diktatKnopf(feld))),
+        el("div", { class: "actions", style: "flex-wrap:wrap" }, frageBtn, anpassenBtn),
+        warteSlot, fehlerSlot)));
   };
 
   const renderChecklist = (items, quelle) => {
@@ -505,6 +586,7 @@ function showBriefing(container, data, params = {}) {
       el("p", { class: "lead" }, anf(res.zusammenfassung) || "Claude sah keinen klaren Bezug zu dieser Situation. Die Einträge unten sind trotzdem die besten Treffer."),
       res.ki_hinweis ? el("p", { class: "footnote" }, res.ki_hinweis) : null);
     if (res.plan) {
+      if (res.dialog) dialogStand.dialog = res.dialog;
       renderEigene(res.plan.besonderheiten || []);
       renderPlan(res.plan);
       if (res.plan.punkte_erfahrung) refreshStats({ anlass: `Dein Wissen hat gewirkt: ${res.plan.punkte_erfahrung} von ${res.plan.punkte_gesamt} Planpunkten kommen aus deinen Einträgen` });
@@ -543,7 +625,7 @@ function showBriefing(container, data, params = {}) {
   if (istPlan) {
     fill(rueckschauSlot, el("p", { class: "footnote" }, "Die Rückschau erscheint, sobald der Plan steht."));
     fill(abschnitte.ueberblick, ohneEigene, summaryOderHinweis, kennzahlenSlot, besonderheitenSlot);
-    fill(abschnitte.ausarbeitung, planSlot, lueckenSlot);
+    fill(abschnitte.ausarbeitung, planSlot, dialogSlot, lueckenSlot);
     fill(abschnitte.eigene, eigeneSlot, einladung, weitereBlock);
     fill(abschnitte.rueckschau, rueckschauSlot);
     zeigeAbschnitt(aktiverAbschnitt);

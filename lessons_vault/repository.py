@@ -417,13 +417,22 @@ class Repository:
             )
 
     def briefing_modus_setzen(self, briefing_id: str, modus: str) -> None:
-        """Moduswechsel verwirft das bisherige Claude-Ergebnis, damit nichts Veraltetes angezeigt wird."""
+        """Moduswechsel verwirft das bisherige Claude-Ergebnis samt Dialog, damit nichts Veraltetes angezeigt wird."""
         with self.conn:
             self.conn.execute(
-                "UPDATE briefings SET modus = ?, zusammenfassung = '', ki_checkliste_json = '', plan_json = '', ki_modell = '' "
-                "WHERE id = ?",
+                "UPDATE briefings SET modus = ?, zusammenfassung = '', ki_checkliste_json = '', plan_json = '', ki_modell = '', "
+                "dialog_json = '' WHERE id = ?",
                 (modus, briefing_id),
             )
+
+    def briefing_dialog_anhaengen(self, briefing_id: str, *eintraege: dict[str, Any]) -> list[dict[str, Any]]:
+        """Dialog zum Plan fortschreiben (Nutzer-Eingabe und Claude-Antwort als je ein Eintrag mit Zeitstempel)."""
+        dialog = self.briefing_holen(briefing_id)["dialog"]
+        zeit = jetzt()
+        dialog.extend({**e, "zeit": zeit} for e in eintraege)
+        with self.conn:
+            self.conn.execute("UPDATE briefings SET dialog_json = ? WHERE id = ?", (json.dumps(dialog, ensure_ascii=False), briefing_id))
+        return dialog
 
     def briefing_luecke_setzen(self, briefing_id: str, index: int, lesson_id: str) -> None:
         """Merkt im Plan, welcher Eintrag aus einer Lücke entstand (sonst ließe sie sich beim nächsten Öffnen erneut übernehmen)."""
@@ -445,7 +454,8 @@ class Repository:
     def briefing_holen(self, briefing_id: str) -> dict[str, Any]:
         row = self.conn.execute(
             "SELECT id, situation, bereich, treffer_json, checkliste_json, zusammenfassung, ki_checkliste_json, ki_modell, "
-            "erstellt_am, entwurf_weg, entwurf_text, abgleich_json, modus, plan_json, rueckschau_json FROM briefings WHERE id = ?",
+            "erstellt_am, entwurf_weg, entwurf_text, abgleich_json, modus, plan_json, rueckschau_json, dialog_json "
+            "FROM briefings WHERE id = ?",
             (briefing_id,),
         ).fetchone()
         if row is None:
@@ -453,6 +463,8 @@ class Repository:
         data = dict(row)
         rueckschau = data.pop("rueckschau_json")
         data["rueckschau"] = json.loads(rueckschau) if rueckschau else None
+        dialog = data.pop("dialog_json")
+        data["dialog"] = json.loads(dialog) if dialog else []
         data["treffer"] = json.loads(data.pop("treffer_json"))
         data["checkliste"] = json.loads(data.pop("checkliste_json"))
         raw = data.pop("ki_checkliste_json")
