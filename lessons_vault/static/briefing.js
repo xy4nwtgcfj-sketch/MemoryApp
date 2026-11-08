@@ -358,7 +358,9 @@ function showBriefing(container, data, params = {}) {
     fill(card,
       el("div", { class: "card-head" },
         el("a", { class: "grow", href: `#/lesson/${l.id}`, style: "color:inherit;text-decoration:none" }, el("h3", {}, anf(l.titel))),
-        el("span", { class: "relevanz", title: "Relevanz" }, `${Math.round(t.relevanz * 100)} %`)),
+        (t.gefunden_durch || []).includes("verbindung")
+          ? el("span", { class: "relevanz", title: "Mit einem Treffer verbunden" }, "verbunden")
+          : el("span", { class: "relevanz", title: "Relevanz" }, `${Math.round(t.relevanz * 100)} %`)),
       el("p", { class: `quote ${l.spezifisch ? "own" : ""}`, style: "font-size:1rem;font-weight:400;margin-top:6px" }, anf(l.lesson)),
       l.massnahme ? el("p", { class: "small", style: "margin:8px 0 0" }, el("span", { class: "overline", style: "display:inline;margin-right:6px" }, "Nächstes Mal"), anf(l.massnahme)) : null,
       metaZeile(l, { datum: false }),
@@ -513,7 +515,18 @@ function showBriefing(container, data, params = {}) {
       anpassenBtn.setAttribute("aria-disabled", "true");
       anpassenBtn.title = "Nach der Rückschau bleibt der Plan unverändert.";
     }
-    const eintrag = (d) => {
+    const merken = async (index, knopf) => {
+      knopf.setAttribute("aria-disabled", "true");
+      try {
+        const res = await api(`/api/briefing/${data.id}/dialog/${index}/merken`, { method: "POST" });
+        dialogStand.dialog = res.dialog || [];
+        data.dialog = dialogStand.dialog;
+        renderDialog();
+        refreshStats();
+        toast("Liegt im Eingang. Claude strukturiert es, du prüfst und sicherst.", { ms: 6000 });
+      } catch (err) { knopf.removeAttribute("aria-disabled"); toast(err.message, { fehler: true }); }
+    };
+    const eintrag = (d, index) => {
       if (d.rolle === "nutzer") {
         return el("div", { class: "card dialog-eintrag nutzer" },
           el("p", { class: "overline" }, d.art === "anpassen" ? "Du · Plan anpassen" : "Du"),
@@ -524,9 +537,13 @@ function showBriefing(container, data, params = {}) {
           el("p", { class: "overline", style: "color:var(--success)" }, "Plan angepasst"),
           ausarbeitungKnoten(d.text, titelVon));
       }
+      const merkenKnopf = d.entwurf_id
+        ? el("p", { class: "footnote row", style: "gap:6px;margin:10px 0 0" }, icon("check", "icon sm"), "Als Notiz gemerkt (Eingang)")
+        : el("button", { type: "button", class: "text", style: "margin-top:6px", onclick: (e) => merken(index, e.currentTarget) }, icon("plus", "icon sm"), "Als Wissen merken");
       return el("div", { class: "card dialog-eintrag claude" },
         el("p", { class: "overline" }, "Claude"),
         ausarbeitungKnoten(d.text, titelVon),
+        merkenKnopf,
         d.anpassung_sinnvoll && d.anpassung_hinweis && !dialogStand.rueckschau ? el("div", { class: "notice info", style: "margin:10px 0 0" }, icon("lightbulb"),
           el("div", {}, el("strong", {}, "Das würde den Plan ändern: "), anf(d.anpassung_hinweis),
             el("div", { class: "actions" }, el("button", { type: "button", class: "text", onclick: () => senden("anpassen", d.anpassung_hinweis) }, icon("refresh", "icon sm"), "Plan entsprechend anpassen")))) : null);
@@ -534,7 +551,7 @@ function showBriefing(container, data, params = {}) {
     fill(dialogSlot, el("section", { class: "dialog" },
       el("h2", { class: "row", style: "gap:8px;margin-top:28px" }, icon("message-circle"), "Nachfragen und anpassen"),
       el("p", { class: "footnote", style: "margin:0 0 10px" }, "Frag nach, wo der Plan unklar ist, oder gib neuen Input. „Plan anpassen“ arbeitet deinen Input in Plan und PowerPoint ein."),
-      dialogStand.dialog.map(eintrag),
+      dialogStand.dialog.map((d, i) => eintrag(d, i)),
       el("div", { class: "card" },
         el("label", { for: feldId, class: "sr-only" }, "Nachfrage oder Input"),
         el("div", { class: "composer" }, feld, el("div", { class: "tools" }, diktatKnopf(feld))),

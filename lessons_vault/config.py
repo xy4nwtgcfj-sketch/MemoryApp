@@ -52,6 +52,8 @@ class Settings:
     tesseract_cmd: str = field(default_factory=lambda: os.environ.get("LV_TESSERACT_CMD", ""))
     bilder_pfad: str = field(default_factory=lambda: os.environ.get("LV_BILDER_PATH", ""))
     worker_aktiv: bool = field(default_factory=lambda: os.environ.get("LV_WORKER", "1") != "0")
+    # Nachts neue Einträge Themen zuordnen, geänderte Themenseiten verdichten und wöchentlich den Bestand prüfen
+    wissen_nachtlauf: bool = field(default_factory=lambda: os.environ.get("LV_WISSEN_NACHT", "1") != "0")
 
     @property
     def ki_aktiv(self) -> bool:

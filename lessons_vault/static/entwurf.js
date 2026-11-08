@@ -3,6 +3,7 @@ import {
   ZIEL_LESSONS, MEILENSTEINE, SEVERITY, ART, ARTEN, PHASEN, artInfo, anf, api, bereiche, bestaetigen, debounce, diktatKnopf, el, errorNotice, fill, hinweisBox,
   icon, istPruefung, kuerzen, ersetzenIn, ersetzenKnoepfe, refreshStats, say, statistikSofort, thumbsRow, toast,
 } from "./core.js";
+import { entwurfVerbindungen } from "./wissen.js";
 
 // ---------------------------------------------------------------- Formular
 let formZaehler = 0;
@@ -207,7 +208,8 @@ export async function entwurfKarte(container, eintrag, { onGesichert, onSpaeter,
     form.node,
     pflichtFrage,
     eintrag.bilder?.length ? el("div", {}, el("p", { class: "overline", style: "margin-top:16px" }, "Fotos"), thumbsRow(eintrag.bilder)) : null,
-    aehnlich.length ? el("p", { class: "footnote", style: "margin-top:12px" }, "Ähnlich: ",
+    entwurfVerbindungen(e),
+    aehnlich.length && !(e.beziehungen || []).length ? el("p", { class: "footnote", style: "margin-top:12px" }, "Ähnlich: ",
       aehnlich.map((a, i) => [i ? ", " : "", el("a", { href: `#/lesson/${a.id}` }, anf(a.titel))])) : null));
   teile.push(compliance.node);
 

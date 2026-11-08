@@ -201,6 +201,78 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE briefings ADD COLUMN dialog_json TEXT NOT NULL DEFAULT '';
     """,
+    # Wissensnetz: Verbindungen zwischen Einträgen, von Claude gepflegte Themenseiten, Wiederholung mit
+    # wachsenden Abständen, Pflegeliste aus dem Gesundheitscheck und Zeitpunkte der Hintergrundläufe.
+    """
+    CREATE TABLE beziehungen (
+        von_id      TEXT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+        zu_id       TEXT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+        art         TEXT NOT NULL CHECK (art IN ('ergaenzt', 'widerspricht', 'ersetzt', 'beispiel_fuer')),
+        begruendung TEXT NOT NULL DEFAULT '',
+        quelle      TEXT NOT NULL DEFAULT 'claude',
+        erstellt_am TEXT NOT NULL,
+        PRIMARY KEY (von_id, zu_id),
+        CHECK (von_id != zu_id)
+    );
+    CREATE INDEX idx_beziehungen_zu ON beziehungen(zu_id);
+
+    CREATE TABLE themen (
+        id              TEXT PRIMARY KEY,
+        titel           TEXT NOT NULL,
+        bereich         TEXT NOT NULL DEFAULT '',
+        beschreibung    TEXT NOT NULL DEFAULT '',
+        seite_json      TEXT NOT NULL DEFAULT '',
+        veraltet        INTEGER NOT NULL DEFAULT 1,
+        erstellt_am     TEXT NOT NULL,
+        aktualisiert_am TEXT NOT NULL DEFAULT ''
+    );
+    CREATE TABLE thema_lessons (
+        thema_id  TEXT NOT NULL REFERENCES themen(id) ON DELETE CASCADE,
+        lesson_id TEXT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+        PRIMARY KEY (thema_id, lesson_id)
+    );
+    CREATE INDEX idx_thema_lessons_lesson ON thema_lessons(lesson_id);
+    -- Ändert sich ein Eintrag oder fällt er weg, muss seine Themenseite neu verdichtet werden.
+    CREATE TRIGGER thema_lessons_ai AFTER INSERT ON thema_lessons BEGIN
+        UPDATE themen SET veraltet = 1 WHERE id = new.thema_id;
+    END;
+    CREATE TRIGGER thema_lessons_ad AFTER DELETE ON thema_lessons BEGIN
+        UPDATE themen SET veraltet = 1 WHERE id = old.thema_id;
+    END;
+    CREATE TRIGGER lessons_thema_au AFTER UPDATE OF titel, situation, ereignis, lesson, massnahme, status ON lessons BEGIN
+        UPDATE themen SET veraltet = 1 WHERE id IN (SELECT thema_id FROM thema_lessons WHERE lesson_id = new.id);
+    END;
+
+    CREATE TABLE wiederholungen (
+        lesson_id  TEXT PRIMARY KEY REFERENCES lessons(id) ON DELETE CASCADE,
+        stufe      INTEGER NOT NULL DEFAULT 0,
+        faellig_am TEXT NOT NULL,
+        zuletzt_am TEXT NOT NULL,
+        anzahl     INTEGER NOT NULL DEFAULT 0,
+        vergessen  INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX idx_wiederholungen_faellig ON wiederholungen(faellig_am);
+
+    CREATE TABLE pflege (
+        id          TEXT PRIMARY KEY,
+        art         TEXT NOT NULL,
+        titel       TEXT NOT NULL,
+        hinweis     TEXT NOT NULL DEFAULT '',
+        vorschlag   TEXT NOT NULL DEFAULT '',
+        lesson_ids  TEXT NOT NULL DEFAULT '[]',
+        schluessel  TEXT NOT NULL DEFAULT '',
+        status      TEXT NOT NULL DEFAULT 'offen' CHECK (status IN ('offen', 'erledigt', 'ignoriert')),
+        erstellt_am TEXT NOT NULL,
+        erledigt_am TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX idx_pflege_status ON pflege(status);
+
+    CREATE TABLE laeufe (
+        art        TEXT PRIMARY KEY,
+        zuletzt_am TEXT NOT NULL,
+        ergebnis   TEXT NOT NULL DEFAULT ''
+    );
+    """,
 ]
 
 

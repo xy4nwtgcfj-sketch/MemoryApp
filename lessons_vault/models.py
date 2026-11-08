@@ -16,6 +16,10 @@ ARTEN: tuple[str, ...] = ("erfahrung", "wissen", "vorgehen", "entscheidung")
 # Projektphase, nur für berufliche Bereiche; "" = phasenübergreifend
 Phase = Literal["", "sales", "concept", "build", "test", "cutover", "hypercare"]
 PHASEN: tuple[str, ...] = ("sales", "concept", "build", "test", "cutover", "hypercare")
+# Verbindung von einem Eintrag zu einem anderen: ergänzt ihn, widerspricht ihm, ersetzt ihn (der alte ist dann
+# überholt, sobald der Nutzer zustimmt) oder ist ein konkretes Beispiel für ihn.
+BeziehungsArt = Literal["ergaenzt", "widerspricht", "ersetzt", "beispiel_fuer"]
+BEZIEHUNGSARTEN: tuple[str, ...] = ("ergaenzt", "widerspricht", "ersetzt", "beispiel_fuer")
 
 
 def _clean_tags(tags: list[str]) -> list[str]:
@@ -219,6 +223,9 @@ class Entwurf(BaseModel):
     dublette: DublettenKandidat | None = None
     dublette_begruendung: str = ""
     aehnliche: list[DublettenKandidat] = Field(default_factory=list)
+    # Von Claude erkannte Verbindungen zu bestehenden Einträgen: [{"id", "titel", "art", "begruendung"}].
+    # Sie werden beim Sichern des Entwurfs gespeichert.
+    beziehungen: list[dict] = Field(default_factory=list)
     ki_verwendet: bool = False
     ki_modell: str = ""
     ki_fehler: str = ""
@@ -299,3 +306,19 @@ class BildLinks(BaseModel):
 
 class AntwortIn(BaseModel):
     antwort: str = Field(min_length=1, max_length=4000)
+
+
+class BeziehungIn(BaseModel):
+    zu_id: str = Field(min_length=1)
+    art: BeziehungsArt
+    begruendung: str = Field(default="", max_length=300)
+
+
+class WiederholungIn(BaseModel):
+    """Ergebnis einer Wiederholung: parat = wusste ich, vergessen = hatte ich nicht mehr parat."""
+
+    ergebnis: Literal["parat", "vergessen"]
+
+
+class PflegeStatusIn(BaseModel):
+    status: Literal["offen", "erledigt", "ignoriert"]

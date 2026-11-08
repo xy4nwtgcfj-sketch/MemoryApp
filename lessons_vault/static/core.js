@@ -449,6 +449,13 @@ export function statsAnzeigen(s) {
   badge.textContent = s.offene_entwuerfe || "";
   const link = document.querySelector('.tabbar a[data-tab="mehr"]');
   link.setAttribute("aria-label", s.offene_entwuerfe ? `Mehr, ${s.offene_entwuerfe} im Eingang` : "Mehr");
+  const offen = (s.pflege_offen || 0) + (s.wiederholen_faellig || 0);
+  const wissenBadge = document.getElementById("pflege-count");
+  if (wissenBadge) {
+    wissenBadge.hidden = !offen;
+    wissenBadge.textContent = offen || "";
+    document.querySelector('.tabbar a[data-tab="wissen"]')?.setAttribute("aria-label", offen ? `Wissen, ${offen} offen` : "Wissen");
+  }
 }
 // ---------------------------------------------------------------- Belohnungen: Punkte, Level, Wochenziel, Serie, Wirkung
 // Wochen statt Tage: Ein freier Tag bricht keine Serie. Punkte gibt es für Input (Einträge, Bestätigungen)

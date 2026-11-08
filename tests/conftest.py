@@ -5,6 +5,8 @@ os.environ.setdefault("LV_TOKEN_ERZWINGEN", "0")
 # Ein lokal gesetztes LV_TOKEN aus der .env darf die Tests nicht beeinflussen
 os.environ["LV_TOKEN"] = ""
 os.environ.setdefault("LV_HOSTS", "testserver,127.0.0.1,localhost")
+# Kein nächtlicher Wissenslauf mitten in einem Testlauf um 3 Uhr
+os.environ["LV_WISSEN_NACHT"] = "0"
 
 import pytest
 

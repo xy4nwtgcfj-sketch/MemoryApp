@@ -21,6 +21,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, ValidationError
 
 from . import __version__, db
@@ -40,6 +41,7 @@ from .embeddings import (
 )
 from .models import (
     AntwortIn,
+    BeziehungIn,
     BildLinks,
     Bereich,
     BereichUpdate,
@@ -57,9 +59,11 @@ from .models import (
     LessonUpdate,
     Marke,
     NotizAnfrage,
+    PflegeStatusIn,
     RueckmeldungIn,
     RueckschauIn,
     StrukturierenAnfrage,
+    WiederholungIn,
 )
 from .repository import Invalid, NotFound, Repository
 from .search import Filter, Suche, suchbegriffe
@@ -68,6 +72,8 @@ from .einzelinstanz import Instanzsperre
 from .zugang import SicherheitsMiddleware, zugangstoken
 from .praesentation import briefing_pptx, dateiname as pptx_dateiname
 from .worker import Hintergrund, ModellNichtBereit
+from .wissen import Wissenspflege
+from .mcp_server import McpServer, Werkzeug, WerkzeugFehler
 
 log = logging.getLogger("lessons_vault")
 STATIC_DIR = Path(__file__).parent / "static"
@@ -278,9 +284,25 @@ def create_app(
                 geloescht += 1
         return geloescht
 
+    def claude_bereiche() -> list[str]:
+        """Bereiche, deren Einträge an Claude gehen dürfen (Themenseiten, Gesundheitscheck, MCP)."""
+        lokale = lokale_bereiche()
+        return [b.name for b in repo.bereiche() if b.name not in lokale]
+
+    wissenspflege = Wissenspflege(
+        repo, strukturierer.client if isinstance(strukturierer, Strukturierer) else None,
+        settings.claude_model, settings.claude_effort, claude_bereiche,
+    )
+
+    def pflege() -> None:
+        bilder_aufraeumen()
+        if settings.wissen_nachtlauf:
+            wissenspflege.nachtlauf_wenn_faellig()
+
     worker = Hintergrund(
         repo, provider, verarbeite_entwurf, lokal.name if lokal else "",
-        pflege=bilder_aufraeumen, bereit=(lambda: lokal_bereit(frisch=True)) if lokal else None,
+        pflege=pflege, bereit=(lambda: lokal_bereit(frisch=True)) if lokal else None,
+        pflege_intervall=1800.0,
     )
 
     sperre = Instanzsperre(Path(settings.db_path).parent)
@@ -308,6 +330,7 @@ def create_app(
     app.state.strukturierer = strukturierer
     app.state.worker = worker
     app.state.bilder_aufraeumen = bilder_aufraeumen
+    app.state.wissenspflege = wissenspflege
     app.state.speicher = speicher
 
     def auth(request: Request) -> None:
@@ -629,6 +652,9 @@ def create_app(
         if data.bild_ids:
             repo.bilder_verknuepfen(data.bild_ids, "lesson", lesson.id)
         if eintrag:
+            # Von Claude erkannte Verbindungen zu bestehenden Einträgen gleich mitspeichern
+            for b in (eintrag.entwurf.beziehungen if eintrag.entwurf else []):
+                repo.beziehung_setzen(lesson.id, str(b.get("id", "")), str(b.get("art", "")), str(b.get("begruendung", "")))
             repo.links_umhaengen("entwurf", eintrag.id, "lesson", lesson.id)
             repo.entwurf_loeschen(eintrag.id)
         return LessonAntwort(lesson=lesson, compliance_hinweise=compliance(data), embedding_fehler=fehler)
@@ -642,7 +668,22 @@ def create_app(
             "compliance_hinweise": compliance(lesson),
             "bilder": [bild_info(b) for b in repo.bilder_von("lesson", lesson_id)],
             "hilfreich": repo.hilfreich_zaehlen(lesson_id),
+            "beziehungen": repo.beziehungen_von(lesson_id),
+            "themen": repo.themen_von([lesson_id]).get(lesson_id, []),
         }
+
+    @app.post("/api/lessons/{lesson_id}/beziehungen", dependencies=deps, status_code=201)
+    def beziehung_anlegen(lesson_id: str, data: BeziehungIn) -> list[dict[str, Any]]:
+        repo.holen(lesson_id)
+        repo.holen(data.zu_id)
+        if not repo.beziehung_setzen(lesson_id, data.zu_id, data.art, data.begruendung, quelle="manuell"):
+            raise HTTPException(status_code=409, detail="Diese Einträge sind schon verbunden.")
+        return repo.beziehungen_von(lesson_id)
+
+    @app.delete("/api/lessons/{lesson_id}/beziehungen/{anderer_id}", dependencies=deps)
+    def beziehung_loeschen(lesson_id: str, anderer_id: str) -> list[dict[str, Any]]:
+        repo.beziehung_loeschen(lesson_id, anderer_id)
+        return repo.beziehungen_von(lesson_id)
 
     @app.put("/api/lessons/{lesson_id}", dependencies=deps)
     def lesson_aendern(lesson_id: str, update: LessonUpdate) -> LessonAntwort:
@@ -871,6 +912,13 @@ def create_app(
         gespeichert = [
             {k: v for k, v in t.as_dict().items() if k != "lesson"} | {"lesson_id": t.lesson.id} for t in treffer
         ]
+        # Verbundene Einträge (Widerspruch, Ersatz, Ergänzung) gehören zum Bild, auch wenn die Suche sie nicht trifft
+        verbunden = [l for l in repo.verbundene([t.lesson.id for t in treffer], limit=4) if not vorgabe or l.bereich == vorgabe][:2]
+        gespeichert += [
+            {"score": 0.0, "relevanz": 0.0, "faktoren": {"schwere": 1.0, "bestaetigung": 1.0, "feedback": 1.0},
+             "gefunden_durch": ["verbindung"], "lesson_id": l.id}
+            for l in verbunden
+        ]
         briefing_id = repo.briefing_anlegen(
             situation, vorgabe, gespeichert, lokale_checkliste([t.lesson for t in treffer]),
             vektor, provider.name if vektor is not None else "", anfrage.modus,
@@ -959,7 +1007,7 @@ def create_app(
                 )
                 return briefing_antwort(briefing_id)
             if data["modus"] == "kombiniert":
-                plan = kombinieren(schreiber, data["situation"], lessons, settings.briefing_effort)
+                plan = kombinieren(schreiber, data["situation"], lessons, settings.briefing_effort, wissen_kontext(lessons))
                 repo.briefing_plan_setzen(briefing_id, plan, f"claude:{schreiber.model}")
                 return briefing_antwort(briefing_id)
             ergebnis = schreiber.schreiben(data["situation"], lessons)
@@ -1162,6 +1210,233 @@ def create_app(
     @app.post("/api/rueckmeldung", dependencies=deps, status_code=204)
     def rueckmeldung(data: RueckmeldungIn) -> None:
         repo.rueckmeldung_speichern(data.art, data.wert)
+
+    # Wissensnetz: Themenseiten, Landkarte, Pflege, Wiederholen -------------------------
+    def heute_tag() -> str:
+        return datetime.now().date().isoformat()
+
+    @app.get("/api/wissen", dependencies=deps)
+    def wissen_uebersicht() -> dict[str, Any]:
+        """Alles für die Wissensseite: Zahlen, Themen samt Nähe zueinander, Stand der Hintergrundläufe."""
+        themen = repo.themen()
+        bekannt = {t["id"] for t in themen}
+        return {
+            "zahlen": repo.wissen_zahlen(heute_tag()),
+            "themen": themen,
+            "kanten": [k for k in repo.themen_kanten() if k["von"] in bekannt and k["zu"] in bekannt],
+            "lauf": dict(wissenspflege.status),
+            "laeufe": {a: repo.lauf_holen(a) for a in ("zuordnen", "verdichten", "pruefen")},
+            "ki": wissenspflege.verfuegbar,
+            "pro_bereich": repo.statistik()["pro_bereich"],
+            "lokale_bereiche": sorted(lokale_bereiche()),
+        }
+
+    @app.post("/api/wissen/lauf", dependencies=deps, status_code=202)
+    def wissen_lauf(arten: str = Query("zuordnen,verdichten", pattern=r"^(zuordnen|verdichten|pruefen)(,(zuordnen|verdichten|pruefen))*$")) -> dict[str, Any]:
+        if not wissenspflege.verfuegbar:
+            raise HTTPException(status_code=409, detail="Claude ist nicht eingerichtet (ANTHROPIC_API_KEY fehlt).")
+        if not wissenspflege.im_hintergrund(arten.split(",")):
+            raise HTTPException(status_code=409, detail="Es läuft schon eine Wissenspflege. Bitte warten.")
+        return {"lauf": dict(wissenspflege.status)}
+
+    @app.get("/api/themen/{thema_id}", dependencies=deps)
+    def thema_holen(thema_id: str) -> dict[str, Any]:
+        thema = repo.thema_holen(thema_id)
+        ids = {l.id for l in thema["lessons"]}
+        thema["beziehungen"] = [b for b in repo.beziehungen_alle() if b["von_id"] in ids and b["zu_id"] in ids]
+        return thema
+
+    @app.post("/api/themen/{thema_id}/verdichten", dependencies=deps)
+    def thema_verdichten(thema_id: str) -> dict[str, Any]:
+        repo.thema_holen(thema_id)
+        if not wissenspflege.verfuegbar:
+            raise HTTPException(status_code=409, detail="Claude ist nicht eingerichtet (ANTHROPIC_API_KEY fehlt).")
+        try:
+            wissenspflege.seite_verdichten(thema_id)
+        except PermissionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except anthropic.APIConnectionError as exc:
+            raise HTTPException(status_code=502, detail="Claude nicht erreichbar.") from exc
+        except anthropic.RateLimitError as exc:
+            raise HTTPException(status_code=502, detail="Claude-Limit erreicht, später erneut versuchen.") from exc
+        except anthropic.APIStatusError as exc:
+            raise HTTPException(status_code=502, detail=f"Claude-Fehler {exc.status_code}.") from exc
+        except (RuntimeError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return thema_holen(thema_id)
+
+    @app.get("/api/pflege", dependencies=deps)
+    def pflege_liste(status: str = Query("offen", pattern="^(offen|erledigt|ignoriert)$")) -> list[dict[str, Any]]:
+        return repo.pflege_liste(status)
+
+    @app.patch("/api/pflege/{pflege_id}", dependencies=deps)
+    def pflege_aendern(pflege_id: str, data: PflegeStatusIn) -> dict[str, str]:
+        repo.pflege_status(pflege_id, data.status)
+        return {"id": pflege_id, "status": data.status}
+
+    @app.get("/api/wiederholen", dependencies=deps)
+    def wiederholen_liste(limit: int = Query(10, ge=1, le=50)) -> dict[str, Any]:
+        tag = heute_tag()
+        return {"lessons": repo.wiederholung_liste(tag, limit), "stand": repo.wiederholung_stand(tag)}
+
+    @app.post("/api/wiederholen/{lesson_id}", dependencies=deps)
+    def wiederholen(lesson_id: str, data: WiederholungIn) -> dict[str, Any]:
+        tag = heute_tag()
+        return {**repo.wiederholung_eintragen(lesson_id, data.ergebnis, tag), "stand": repo.wiederholung_stand(tag)}
+
+    @app.post("/api/briefing/{briefing_id}/dialog/{index}/merken", dependencies=deps, status_code=201)
+    def briefing_dialog_merken(briefing_id: str, index: int, hintergrund: BackgroundTasks) -> dict[str, Any]:
+        """Eine gute Antwort aus dem Dialog als Notiz in den Eingang legen; Claude strukturiert sie wie jede Notiz
+        (mit Datenschutzprüfung, Dublettenabgleich und Verbindungen), der Nutzer prüft und sichert."""
+        briefing = repo.briefing_holen(briefing_id)
+        dialog = briefing["dialog"]
+        if not 0 <= index < len(dialog) or dialog[index].get("rolle") != "claude" or dialog[index].get("art") != "antwort":
+            raise HTTPException(status_code=404, detail="Diese Antwort gibt es im Dialog nicht.")
+        vorhanden = dialog[index].get("entwurf_id")
+        if vorhanden:
+            raise HTTPException(status_code=409, detail="Diese Antwort liegt schon in deinem Eingang oder Bestand.")
+        frage = next((d.get("text", "") for d in reversed(dialog[:index]) if d.get("rolle") == "nutzer"), "")
+        text = re.sub(r"\s?\[\[E:[\w-]+\]\]", "", dialog[index].get("text", "")).strip()
+        rohtext = (f"Knowledge from a briefing follow-up on \"{briefing['situation']}\"."
+                   + (f" Question: {frage.strip()}" if frage.strip() else "") + f"\n\n{text}")[:7900]
+        bereich = briefing["bereich"]
+        einst = repo.einstellungen()
+        privat = (bereich and bereich in lokale_bereiche(einst)) or (not bereich and privat_aktiv(einst))
+        modus = "lokal" if privat else modus_fuer(bereich, einst)
+        eintrag = repo.entwurf_anlegen(rohtext, "text", bereich, None, modus=modus)
+        dialog[index]["entwurf_id"] = eintrag.id
+        repo.briefing_dialog_setzen(briefing_id, dialog)
+        einplanen(eintrag, hintergrund, warten=False)
+        return briefing_antwort(briefing_id)
+
+    def wissen_kontext(lessons: list[Lesson]) -> str:
+        """Themenseiten zu den Einträgen eines Briefings und Verbindungen zwischen ihnen, als Zusatz für Claude."""
+        if not lessons:
+            return ""
+        nr_von = {l.id: i for i, l in enumerate(lessons, start=1)}
+        zaehler: Counter[str] = Counter()
+        for themen in repo.themen_von(nr_von).values():
+            zaehler.update(t["id"] for t in themen)
+        teile = []
+        for thema_id, _ in zaehler.most_common(3):
+            thema = repo.thema_holen(thema_id)
+            seite = thema["seite"]
+            if not seite or thema["bereich"] in lokale_bereiche():
+                continue
+            zeilen = [f"## {thema['titel']}", seite.get("zusammenfassung", "")]
+            zeilen += [f"- {a['text']}" for a in seite.get("kernaussagen", [])[:6]]
+            zeilen += [f"- Pitfall: {a['text']}" for a in seite.get("fallstricke", [])[:3]]
+            zeilen += [f"- Contradiction: {a['text']}" for a in seite.get("widersprueche", [])[:2]]
+            teile.append("\n".join(z for z in zeilen if z))
+        verbindungen = [
+            f"E{nr_von[b['von_id']]} {b['art']} E{nr_von[b['zu_id']]}" + (f" ({b['begruendung']})" if b.get("begruendung") else "")
+            for b in repo.beziehungen_alle() if b["von_id"] in nr_von and b["zu_id"] in nr_von
+        ]
+        text = ""
+        if teile:
+            text += "<themen>\n" + "\n\n".join(teile) + "\n</themen>\n"
+        if verbindungen:
+            text += "Verbindungen zwischen seinen Einträgen: " + "; ".join(verbindungen) + "\n"
+        return text
+
+    # MCP: Claude Code und andere Clients greifen direkt auf den Vault zu ------------------
+    def mcp_lesson(l: Lesson, voll: bool = False) -> dict[str, Any]:
+        kurz = {"id": l.id, "titel": l.titel, "kernaussage": l.lesson, "art": l.art, "bereich": l.bereich, "phase": l.phase,
+                "tags": l.tags, "status": l.status, "gewicht": l.schweregrad, "bestaetigt": l.bestaetigungen}
+        if voll:
+            kurz.update(kontext=l.situation, inhalt=l.ereignis, anwendung=l.massnahme, erfasst_am=l.erstellt_am)
+        return kurz
+
+    def mcp_suchen(args: dict[str, Any]) -> Any:
+        anfrage = str(args.get("anfrage", "")).strip()
+        limit = max(1, min(int(args.get("limit") or 10), 30))
+        erlaubt = set(claude_bereiche())
+        bereich = str(args.get("bereich") or "").strip() or None
+        if bereich and bereich not in erlaubt:
+            raise WerkzeugFehler("Dieser Bereich ist nicht freigegeben.")
+        filt = Filter(bereich=bereich, ohne_ueberholt=not args.get("mit_ueberholten"))
+        try:
+            treffer = suche.suchen(anfrage, "hybrid", filt, limit * 2)
+        except EmbeddingFehler:
+            treffer = suche.suchen(anfrage, "volltext", filt, limit * 2)
+        return [mcp_lesson(t.lesson) for t in treffer if t.lesson.bereich in erlaubt][:limit]
+
+    def mcp_eintrag(args: dict[str, Any]) -> Any:
+        try:
+            l = repo.holen(str(args.get("id", "")))
+        except NotFound as exc:
+            raise WerkzeugFehler("Eintrag nicht gefunden.") from exc
+        if l.bereich not in set(claude_bereiche()):
+            raise WerkzeugFehler("Dieser Eintrag gehört zu einem lokal verarbeiteten Bereich.")
+        return {**mcp_lesson(l, voll=True), "verbindungen": repo.beziehungen_von(l.id), "themen": repo.themen_von([l.id]).get(l.id, [])}
+
+    def mcp_themen(args: dict[str, Any]) -> Any:
+        return [{k: t[k] for k in ("id", "titel", "bereich", "anzahl", "zusammenfassung")} for t in repo.themen(claude_bereiche())]
+
+    def mcp_thema(args: dict[str, Any]) -> Any:
+        try:
+            thema = repo.thema_holen(str(args.get("id", "")))
+        except NotFound as exc:
+            raise WerkzeugFehler("Thema nicht gefunden.") from exc
+        if thema["bereich"] not in set(claude_bereiche()):
+            raise WerkzeugFehler("Dieses Thema gehört zu einem lokal verarbeiteten Bereich.")
+        return {"id": thema["id"], "titel": thema["titel"], "bereich": thema["bereich"], "seite": thema["seite"],
+                "eintraege": [mcp_lesson(l) for l in thema["lessons"]]}
+
+    def mcp_notiz(args: dict[str, Any]) -> Any:
+        text = str(args.get("text", "")).strip()
+        if len(text) < 3 or len(text) > 8000:
+            raise WerkzeugFehler("Der Text muss zwischen 3 und 8000 Zeichen lang sein.")
+        bereich = str(args.get("bereich") or "").strip()
+        if bereich and not repo.bereich_existiert(bereich):
+            raise WerkzeugFehler(f"Unbekannter Bereich. Vorhanden: {', '.join(b.name for b in repo.bereiche())}")
+        if sperrliste_treffer(text, repo.einstellungen().sperrliste):
+            raise WerkzeugFehler("Der Text enthält einen Begriff aus der Sperrliste. Bitte abstrahieren (z. B. \"my employer\").")
+        einst = repo.einstellungen()
+        privat = (bereich and bereich in lokale_bereiche(einst)) or (not bereich and privat_aktiv(einst))
+        eintrag = repo.entwurf_anlegen(text, "text", bereich, None, modus="lokal" if privat else modus_fuer(bereich, einst))
+        einplanen(eintrag, None, warten=False)
+        return {"entwurf_id": eintrag.id, "hinweis": "Die Notiz liegt im Eingang der App. Der Nutzer prüft und sichert sie dort."}
+
+    text_feld = {"type": "string"}
+    mcp = McpServer("lessons-vault", __version__, [
+        Werkzeug("suchen", "Search the user's personal knowledge and lessons-learned vault (hybrid keyword and semantic search). "
+                 "Returns entries with id, title, key statement, type (erfahrung = experience, wissen = knowledge, vorgehen = "
+                 "procedure, entscheidung = decision), area and tags.",
+                 {"type": "object", "properties": {"anfrage": {**text_feld, "description": "Search query"},
+                                                   "bereich": {**text_feld, "description": "Optional area, e.g. Beruf or Immobilien"},
+                                                   "limit": {"type": "integer", "minimum": 1, "maximum": 30},
+                                                   "mit_ueberholten": {"type": "boolean"}},
+                  "required": ["anfrage"]}, mcp_suchen),
+        Werkzeug("eintrag", "Read one vault entry in full, including its links to other entries and its topics.",
+                 {"type": "object", "properties": {"id": text_feld}, "required": ["id"]}, mcp_eintrag),
+        Werkzeug("themen", "List the compiled topic pages of the vault with a short summary each.",
+                 {"type": "object", "properties": {}}, mcp_themen),
+        Werkzeug("thema", "Read one compiled topic page: summary, key statements, what worked, pitfalls, contradictions, "
+                 "open questions (sources are entry ids) and the entries of the topic.",
+                 {"type": "object", "properties": {"id": text_feld}, "required": ["id"]}, mcp_thema),
+        Werkzeug("notiz_anlegen", "Put a note into the vault's inbox. The app structures it into an entry; the user reviews "
+                 "and saves it. Write in English, without customer, person or employer names (use \"my employer\").",
+                 {"type": "object", "properties": {"text": text_feld, "bereich": text_feld}, "required": ["text"]},
+                 mcp_notiz, nur_lesen=False),
+    ], anleitung="Personal lessons-learned and knowledge vault of an SAP EWM lead. Search before answering questions about "
+                 "his experience; cite entry titles. Content is English, the user writes German.")
+
+    @app.post("/mcp", dependencies=deps)
+    async def mcp_post(request: Request) -> Response:
+        try:
+            nachricht = await request.json()
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Kein gültiges JSON"}}, status_code=400)
+        if isinstance(nachricht, list):
+            antworten = [a for a in (await run_in_threadpool(mcp.behandeln, n) for n in nachricht) if a is not None]
+            return JSONResponse(antworten) if antworten else Response(status_code=202)
+        antwort = await run_in_threadpool(mcp.behandeln, nachricht)
+        return JSONResponse(antwort) if antwort is not None else Response(status_code=202)
+
+    @app.get("/mcp", dependencies=deps)
+    def mcp_get() -> Response:
+        return Response(status_code=405, headers={"Allow": "POST"})
 
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
     return app

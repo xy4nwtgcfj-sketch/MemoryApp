@@ -13,6 +13,9 @@ import numpy as np
 
 from .models import Bereich, Einstellungen, Entwurf, EntwurfEintrag, Lesson, LessonImport, LessonIn, LessonUpdate
 
+# Abstand in Tagen bis zur nächsten Wiederholung je Stufe: "vergessen" setzt auf Stufe 0, "parat" steigt eine Stufe.
+INTERVALLE = (2, 6, 14, 30, 70, 150)
+
 LESSON_COLUMNS = (
     "id, titel, situation, ereignis, lesson, massnahme, bereich, tags, schweregrad, status, "
     "bestaetigungen, erstellt_am, geaendert_am, quelle, embedding_modell, erfassung_sekunden, spezifisch, art, phase"
@@ -434,6 +437,10 @@ class Repository:
             self.conn.execute("UPDATE briefings SET dialog_json = ? WHERE id = ?", (json.dumps(dialog, ensure_ascii=False), briefing_id))
         return dialog
 
+    def briefing_dialog_setzen(self, briefing_id: str, dialog: list[dict[str, Any]]) -> None:
+        with self.conn:
+            self.conn.execute("UPDATE briefings SET dialog_json = ? WHERE id = ?", (json.dumps(dialog, ensure_ascii=False), briefing_id))
+
     def briefing_luecke_setzen(self, briefing_id: str, index: int, lesson_id: str) -> None:
         """Merkt im Plan, welcher Eintrag aus einer Lücke entstand (sonst ließe sie sich beim nächsten Öffnen erneut übernehmen)."""
         plan = self.briefing_holen(briefing_id)["plan"]
@@ -680,6 +687,9 @@ class Repository:
             "pro_phase": {r[0]: r[1] for r in q("SELECT phase, COUNT(*) FROM lessons WHERE phase != '' GROUP BY phase")},
             # Geschlossene Kreise: Briefings mit Rückschau
             "rueckschauen": q("SELECT COUNT(*) FROM briefings WHERE rueckschau_json != ''").fetchone()[0],
+            # Wissensnetz: offene Pflegepunkte und heute fällige Wiederholungen (Zähler am Tab "Wissen")
+            "pflege_offen": q("SELECT COUNT(*) FROM pflege WHERE status = 'offen'").fetchone()[0],
+            "wiederholen_faellig": self.wiederholung_stand(date.today().isoformat())["faellig"],
         }
 
     def _wochen_zaehler(self, anzahl_wochen: int) -> list[dict[str, Any]]:
@@ -705,21 +715,6 @@ class Repository:
             "SELECT COUNT(*) FROM briefing_feedback WHERE lesson_id = ? AND bewertung = 'hilfreich'", (lesson_id,)
         ).fetchone()[0]
 
-    def wiedersehen(self, tag: str, ausser: list[str] | None = None) -> Lesson | None:
-        """Eine ältere, gültige Lesson zum Wiedersehen, für denselben Tag immer dieselbe."""
-        ausser = ausser or []
-        platzhalter = ",".join("?" * len(ausser)) or "''"
-        ids = [
-            r[0] for r in self.conn.execute(
-                f"SELECT id FROM lessons WHERE status != 'überholt' AND id NOT IN ({platzhalter}) "
-                "AND erstellt_am <= strftime('%Y-%m-%dT%H:%M:%S', 'now', '-7 days') ORDER BY id",
-                ausser,
-            )
-        ]
-        if not ids:
-            return None
-        return self.holen(random.Random(tag).choice(ids))
-
     def rueckmeldung_speichern(self, art: str, wert: str) -> None:
         with self.conn:
             self.conn.execute(
@@ -731,4 +726,329 @@ class Repository:
             r[0]: r[1] for r in self.conn.execute(
                 "SELECT wert, COUNT(*) FROM rueckmeldungen WHERE art = ? GROUP BY wert ORDER BY 2 DESC", (art,)
             )
+        }
+
+    # Wiederholen mit wachsenden Abständen ---------------------------------
+    def _wiederholbar(self, tag: str, ausser: list[str], nur_faellige: bool = False) -> list[str]:
+        """Fällige Wiederholungen zuerst (älteste Fälligkeit vorn), dann noch nie wiederholte, ältere Einträge."""
+        platzhalter = ",".join("?" * len(ausser)) or "''"
+        faellig = [
+            r[0] for r in self.conn.execute(
+                "SELECT w.lesson_id FROM wiederholungen w JOIN lessons l ON l.id = w.lesson_id "
+                f"WHERE l.status != 'überholt' AND w.faellig_am <= ? AND w.lesson_id NOT IN ({platzhalter}) "
+                "ORDER BY w.faellig_am, w.lesson_id",
+                (tag, *ausser),
+            )
+        ]
+        if nur_faellige:
+            return faellig
+        neu = [
+            r[0] for r in self.conn.execute(
+                f"SELECT id FROM lessons WHERE status != 'überholt' AND id NOT IN ({platzhalter}) "
+                "AND id NOT IN (SELECT lesson_id FROM wiederholungen) "
+                "AND erstellt_am <= strftime('%Y-%m-%dT%H:%M:%S', 'now', '-7 days') ORDER BY id",
+                ausser,
+            )
+        ]
+        random.Random(tag).shuffle(neu)
+        return faellig + neu
+
+    def wiedersehen(self, tag: str, ausser: list[str] | None = None) -> Lesson | None:
+        """Ein Eintrag zum Wiederholen: zuerst fällige, sonst ein noch nie wiederholter (für denselben Tag derselbe)."""
+        ids = self._wiederholbar(tag, ausser or [])
+        return self.holen(ids[0]) if ids else None
+
+    def wiederholung_liste(self, tag: str, limit: int = 10) -> list[Lesson]:
+        return [self.holen(i) for i in self._wiederholbar(tag, [])[:limit]]
+
+    def wiederholung_eintragen(self, lesson_id: str, ergebnis: str, tag: str) -> dict[str, Any]:
+        self.holen(lesson_id)
+        row = self.conn.execute("SELECT stufe, anzahl, vergessen FROM wiederholungen WHERE lesson_id = ?", (lesson_id,)).fetchone()
+        stufe, anzahl, vergessen = (row["stufe"], row["anzahl"], row["vergessen"]) if row else (0, 0, 0)
+        if ergebnis == "parat":
+            stufe = min(stufe + 1, len(INTERVALLE) - 1) if row else 1
+        else:
+            stufe, vergessen = 0, vergessen + 1
+        faellig = (date.fromisoformat(tag) + timedelta(days=INTERVALLE[stufe])).isoformat()
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO wiederholungen(lesson_id, stufe, faellig_am, zuletzt_am, anzahl, vergessen) VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(lesson_id) DO UPDATE SET stufe = excluded.stufe, faellig_am = excluded.faellig_am, "
+                "zuletzt_am = excluded.zuletzt_am, anzahl = excluded.anzahl, vergessen = excluded.vergessen",
+                (lesson_id, stufe, faellig, tag, anzahl + 1, vergessen),
+            )
+        return {"lesson_id": lesson_id, "stufe": stufe, "faellig_am": faellig, "tage": INTERVALLE[stufe]}
+
+    def wiederholung_stand(self, tag: str) -> dict[str, int]:
+        q = self.conn.execute
+        return {
+            "faellig": q(
+                "SELECT COUNT(*) FROM wiederholungen w JOIN lessons l ON l.id = w.lesson_id "
+                "WHERE l.status != 'überholt' AND w.faellig_am <= ?", (tag,)
+            ).fetchone()[0],
+            "im_kreislauf": q("SELECT COUNT(*) FROM wiederholungen").fetchone()[0],
+            "gefestigt": q("SELECT COUNT(*) FROM wiederholungen WHERE stufe >= 3").fetchone()[0],
+            "heute_wiederholt": q("SELECT COUNT(*) FROM wiederholungen WHERE zuletzt_am = ?", (tag,)).fetchone()[0],
+        }
+
+    # Verbindungen zwischen Einträgen ----------------------------------------
+    def beziehung_setzen(self, von_id: str, zu_id: str, art: str, begruendung: str = "", quelle: str = "claude") -> bool:
+        """Legt eine Verbindung an oder ändert ihre Art. Gibt es schon die Gegenrichtung, bleibt sie die einzige."""
+        if von_id == zu_id or not (self.existiert(von_id) and self.existiert(zu_id)):
+            return False
+        with self.conn:
+            if self.conn.execute("SELECT 1 FROM beziehungen WHERE von_id = ? AND zu_id = ?", (zu_id, von_id)).fetchone():
+                return False
+            self.conn.execute(
+                "INSERT INTO beziehungen(von_id, zu_id, art, begruendung, quelle, erstellt_am) VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(von_id, zu_id) DO UPDATE SET art = excluded.art, begruendung = excluded.begruendung",
+                (von_id, zu_id, art, begruendung.strip()[:300], quelle, jetzt()),
+            )
+        return True
+
+    def beziehung_loeschen(self, a: str, b: str) -> None:
+        with self.conn:
+            if self.conn.execute(
+                "DELETE FROM beziehungen WHERE (von_id = ? AND zu_id = ?) OR (von_id = ? AND zu_id = ?)", (a, b, b, a)
+            ).rowcount == 0:
+                raise NotFound(f"Verbindung {a} {b}")
+
+    def beziehungen_von(self, lesson_id: str) -> list[dict[str, Any]]:
+        """Verbindungen aus Sicht eines Eintrags: richtung "aus" = dieser Eintrag ergänzt, ersetzt ... den anderen."""
+        rows = self.conn.execute(
+            "SELECT b.von_id, b.art, b.begruendung, l.id AS anderer, l.titel, l.status, l.art AS eintragsart "
+            "FROM beziehungen b JOIN lessons l ON l.id = CASE WHEN b.von_id = ? THEN b.zu_id ELSE b.von_id END "
+            "WHERE b.von_id = ? OR b.zu_id = ? ORDER BY b.erstellt_am",
+            (lesson_id, lesson_id, lesson_id),
+        )
+        return [
+            {"id": r["anderer"], "titel": r["titel"], "status": r["status"], "eintragsart": r["eintragsart"], "art": r["art"],
+             "begruendung": r["begruendung"], "richtung": "aus" if r["von_id"] == lesson_id else "ein"}
+            for r in rows
+        ]
+
+    def beziehungen_alle(self) -> list[dict[str, str]]:
+        return [dict(r) for r in self.conn.execute("SELECT von_id, zu_id, art, begruendung FROM beziehungen")]
+
+    def verbundene(self, ids: list[str], limit: int = 2) -> list[Lesson]:
+        """Gültige Einträge, die mit den gegebenen verbunden sind, aber nicht selbst dazugehören (Graph-Erweiterung)."""
+        if not ids:
+            return []
+        platzhalter = ",".join("?" * len(ids))
+        rows = self.conn.execute(
+            f"SELECT CASE WHEN von_id IN ({platzhalter}) THEN zu_id ELSE von_id END AS anderer, "
+            "CASE art WHEN 'widerspricht' THEN 0 WHEN 'ersetzt' THEN 1 WHEN 'ergaenzt' THEN 2 ELSE 3 END AS rang "
+            f"FROM beziehungen WHERE von_id IN ({platzhalter}) OR zu_id IN ({platzhalter}) ORDER BY rang, erstellt_am",
+            (*ids, *ids, *ids),
+        )
+        ergebnis: list[Lesson] = []
+        for r in rows:
+            if r["anderer"] in ids or any(l.id == r["anderer"] for l in ergebnis):
+                continue
+            lesson = self.holen(r["anderer"])
+            if lesson.status != "überholt":
+                ergebnis.append(lesson)
+            if len(ergebnis) >= limit:
+                break
+        return ergebnis
+
+    # Themenseiten -------------------------------------------------------------
+    def thema_anlegen(self, titel: str, bereich: str, beschreibung: str = "") -> str:
+        thema_id = str(uuid.uuid4())
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO themen(id, titel, bereich, beschreibung, erstellt_am) VALUES (?, ?, ?, ?, ?)",
+                (thema_id, titel.strip()[:80], bereich, beschreibung.strip()[:400], jetzt()),
+            )
+        return thema_id
+
+    def thema_zuordnen(self, thema_id: str, lesson_ids: Iterable[str]) -> int:
+        with self.conn:
+            return sum(
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO thema_lessons(thema_id, lesson_id) SELECT ?, id FROM lessons WHERE id = ?", (thema_id, lid)
+                ).rowcount
+                for lid in lesson_ids
+            )
+
+    def themen(self, bereiche: Iterable[str] | None = None) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT t.id, t.titel, t.bereich, t.beschreibung, t.seite_json, t.veraltet, t.aktualisiert_am, "
+            "(SELECT COUNT(*) FROM thema_lessons tl JOIN lessons l ON l.id = tl.lesson_id "
+            " WHERE tl.thema_id = t.id AND l.status != 'überholt') AS anzahl "
+            "FROM themen t ORDER BY t.bereich, anzahl DESC, t.titel"
+        )
+        erlaubt = set(bereiche) if bereiche is not None else None
+        ergebnis = []
+        for r in rows:
+            if erlaubt is not None and r["bereich"] not in erlaubt:
+                continue
+            seite = json.loads(r["seite_json"]) if r["seite_json"] else {}
+            ergebnis.append({
+                "id": r["id"], "titel": r["titel"], "bereich": r["bereich"], "beschreibung": r["beschreibung"],
+                "anzahl": r["anzahl"], "veraltet": bool(r["veraltet"]), "aktualisiert_am": r["aktualisiert_am"],
+                "zusammenfassung": seite.get("zusammenfassung", ""), "widersprueche": len(seite.get("widersprueche", [])),
+            })
+        return ergebnis
+
+    def thema_holen(self, thema_id: str) -> dict[str, Any]:
+        row = self.conn.execute("SELECT * FROM themen WHERE id = ?", (thema_id,)).fetchone()
+        if row is None:
+            raise NotFound(thema_id)
+        data = dict(row)
+        seite = data.pop("seite_json")
+        data["seite"] = json.loads(seite) if seite else None
+        data["veraltet"] = bool(data["veraltet"])
+        spalten = ", ".join(f"l.{c.strip()}" for c in LESSON_COLUMNS.split(","))
+        data["lessons"] = [
+            row_to_lesson(r) for r in self.conn.execute(
+                f"SELECT {spalten} FROM lessons l JOIN thema_lessons tl ON tl.lesson_id = l.id WHERE tl.thema_id = ? "
+                "ORDER BY l.status = 'überholt', l.schweregrad DESC, l.bestaetigungen DESC, l.erstellt_am",
+                (thema_id,),
+            )
+        ]
+        return data
+
+    def thema_seite_setzen(self, thema_id: str, seite: dict[str, Any]) -> None:
+        with self.conn:
+            self.conn.execute(
+                "UPDATE themen SET seite_json = ?, veraltet = 0, aktualisiert_am = ? WHERE id = ?",
+                (json.dumps(seite, ensure_ascii=False), jetzt(), thema_id),
+            )
+
+    def thema_veraltet_setzen(self, thema_id: str) -> None:
+        with self.conn:
+            if self.conn.execute("UPDATE themen SET veraltet = 1 WHERE id = ?", (thema_id,)).rowcount == 0:
+                raise NotFound(thema_id)
+
+    def themen_veraltet(self, bereiche: Iterable[str], limit: int = 50) -> list[str]:
+        erlaubt = list(bereiche)
+        if not erlaubt:
+            return []
+        platzhalter = ",".join("?" * len(erlaubt))
+        return [
+            r[0] for r in self.conn.execute(
+                f"SELECT id FROM themen WHERE veraltet = 1 AND bereich IN ({platzhalter}) "
+                "AND EXISTS (SELECT 1 FROM thema_lessons WHERE thema_id = themen.id) ORDER BY aktualisiert_am LIMIT ?",
+                (*erlaubt, limit),
+            )
+        ]
+
+    def leere_themen_entfernen(self) -> int:
+        with self.conn:
+            return self.conn.execute(
+                "DELETE FROM themen WHERE NOT EXISTS (SELECT 1 FROM thema_lessons WHERE thema_id = themen.id)"
+            ).rowcount
+
+    def lessons_ohne_thema(self, bereiche: Iterable[str], limit: int = 1000) -> list[Lesson]:
+        erlaubt = list(bereiche)
+        if not erlaubt:
+            return []
+        platzhalter = ",".join("?" * len(erlaubt))
+        rows = self.conn.execute(
+            f"SELECT {LESSON_COLUMNS} FROM lessons WHERE status != 'überholt' AND bereich IN ({platzhalter}) "
+            "AND id NOT IN (SELECT lesson_id FROM thema_lessons) ORDER BY erstellt_am LIMIT ?",
+            (*erlaubt, limit),
+        )
+        return [row_to_lesson(r) for r in rows]
+
+    def themen_von(self, lesson_ids: Iterable[str]) -> dict[str, list[dict[str, str]]]:
+        ids = list(lesson_ids)
+        if not ids:
+            return {}
+        platzhalter = ",".join("?" * len(ids))
+        ergebnis: dict[str, list[dict[str, str]]] = {}
+        for r in self.conn.execute(
+            "SELECT tl.lesson_id, t.id, t.titel FROM thema_lessons tl JOIN themen t ON t.id = tl.thema_id "
+            f"WHERE tl.lesson_id IN ({platzhalter}) ORDER BY t.titel",
+            ids,
+        ):
+            ergebnis.setdefault(r["lesson_id"], []).append({"id": r["id"], "titel": r["titel"]})
+        return ergebnis
+
+    def themen_kanten(self) -> list[dict[str, Any]]:
+        """Nähe zwischen Themen: gemeinsame Einträge plus Verbindungen über Themengrenzen hinweg."""
+        gewicht: dict[tuple[str, str], int] = {}
+        for r in self.conn.execute(
+            "SELECT a.thema_id AS x, b.thema_id AS y, COUNT(*) AS n FROM thema_lessons a "
+            "JOIN thema_lessons b ON a.lesson_id = b.lesson_id AND a.thema_id < b.thema_id GROUP BY x, y"
+        ):
+            gewicht[(r["x"], r["y"])] = gewicht.get((r["x"], r["y"]), 0) + r["n"]
+        for r in self.conn.execute(
+            "SELECT ta.thema_id AS x, tb.thema_id AS y, COUNT(*) AS n FROM beziehungen b "
+            "JOIN thema_lessons ta ON ta.lesson_id = b.von_id JOIN thema_lessons tb ON tb.lesson_id = b.zu_id "
+            "WHERE ta.thema_id != tb.thema_id GROUP BY x, y"
+        ):
+            a, b = sorted((r["x"], r["y"]))
+            gewicht[(a, b)] = gewicht.get((a, b), 0) + r["n"]
+        return [{"von": a, "zu": b, "gewicht": g} for (a, b), g in gewicht.items()]
+
+    # Pflegeliste ---------------------------------------------------------------
+    def pflege_anlegen(self, art: str, titel: str, hinweis: str, vorschlag: str, lesson_ids: list[str]) -> bool:
+        """Neuer Pflegepunkt. Derselbe Befund (gleiche Art, gleiche Einträge) kommt nie zweimal, auch nicht nach Ignorieren."""
+        ids = sorted({i for i in lesson_ids if self.existiert(i)})
+        schluessel = f"{art}:{','.join(ids)}" if ids else f"{art}:{titel.strip().lower()}"
+        if self.conn.execute("SELECT 1 FROM pflege WHERE schluessel = ?", (schluessel,)).fetchone():
+            return False
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO pflege(id, art, titel, hinweis, vorschlag, lesson_ids, schluessel, erstellt_am) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (str(uuid.uuid4()), art, titel.strip()[:120], hinweis.strip()[:1000], vorschlag.strip()[:600],
+                 json.dumps(ids), schluessel, jetzt()),
+            )
+        return True
+
+    def pflege_liste(self, status: str = "offen") -> list[dict[str, Any]]:
+        ergebnis = []
+        for r in self.conn.execute("SELECT * FROM pflege WHERE status = ? ORDER BY erstellt_am DESC", (status,)):
+            data = dict(r)
+            data.pop("schluessel", None)
+            lessons = []
+            for lesson_id in json.loads(data.pop("lesson_ids")):
+                x = self.conn.execute("SELECT id, titel, status, art FROM lessons WHERE id = ?", (lesson_id,)).fetchone()
+                if x is not None:
+                    lessons.append(dict(x))
+            data["lessons"] = lessons
+            ergebnis.append(data)
+        return ergebnis
+
+    def pflege_status(self, pflege_id: str, status: str) -> None:
+        with self.conn:
+            if self.conn.execute(
+                "UPDATE pflege SET status = ?, erledigt_am = ? WHERE id = ?",
+                (status, "" if status == "offen" else jetzt(), pflege_id),
+            ).rowcount == 0:
+                raise NotFound(pflege_id)
+
+    def pflege_bekannt(self) -> list[str]:
+        """Titel bisheriger Befunde (auch erledigte und ignorierte), damit der Check sie nicht erneut meldet."""
+        return [r[0] for r in self.conn.execute("SELECT titel FROM pflege ORDER BY erstellt_am DESC LIMIT 80")]
+
+    # Hintergrundläufe -----------------------------------------------------------
+    def lauf_holen(self, art: str) -> dict[str, str] | None:
+        row = self.conn.execute("SELECT zuletzt_am, ergebnis FROM laeufe WHERE art = ?", (art,)).fetchone()
+        return dict(row) if row else None
+
+    def lauf_setzen(self, art: str, ergebnis: str = "") -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO laeufe(art, zuletzt_am, ergebnis) VALUES (?, ?, ?) "
+                "ON CONFLICT(art) DO UPDATE SET zuletzt_am = excluded.zuletzt_am, ergebnis = excluded.ergebnis",
+                (art, jetzt(), ergebnis[:500]),
+            )
+
+    def wissen_zahlen(self, tag: str) -> dict[str, Any]:
+        q = self.conn.execute
+        return {
+            "eintraege": q("SELECT COUNT(*) FROM lessons WHERE status != 'überholt'").fetchone()[0],
+            "themen": q("SELECT COUNT(*) FROM themen").fetchone()[0],
+            "themen_veraltet": q("SELECT COUNT(*) FROM themen WHERE veraltet = 1").fetchone()[0],
+            "ohne_thema": q(
+                "SELECT COUNT(*) FROM lessons WHERE status != 'überholt' AND id NOT IN (SELECT lesson_id FROM thema_lessons)"
+            ).fetchone()[0],
+            "beziehungen": q("SELECT COUNT(*) FROM beziehungen").fetchone()[0],
+            "widersprueche": q("SELECT COUNT(*) FROM beziehungen WHERE art = 'widerspricht'").fetchone()[0],
+            "pflege_offen": q("SELECT COUNT(*) FROM pflege WHERE status = 'offen'").fetchone()[0],
+            "wiederholung": self.wiederholung_stand(tag),
         }

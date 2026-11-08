@@ -618,3 +618,29 @@ def test_deep_link_und_startbestand(server, page):
     assert any(e["rohtext"].startswith("Was prüfst du bei der nächsten Besichtigung zuerst?") for e in eintraege), [e["rohtext"][:60] for e in eintraege]
     kein_null(page)
     assert page.errors == []
+
+
+def test_wissen_tab_und_verbindungen(server, page):
+    base, _ = server
+    expect = playwright.expect
+    lessons = page.request.get(f"{base}/api/lessons?limit=2").json()
+    assert len(lessons) == 2
+    a, b = lessons
+    page.request.delete(f"{base}/api/lessons/{a['id']}/beziehungen/{b['id']}")
+    r = page.request.post(f"{base}/api/lessons/{a['id']}/beziehungen", data=json.dumps({"zu_id": b["id"], "art": "ergaenzt", "begruendung": "Adds a detail."}),
+                          headers={"Content-Type": "application/json"})
+    assert r.status == 201
+    frisch(page, base)
+    page.locator('.tabbar a[data-tab="wissen"]').click()
+    expect(page.get_by_role("heading", name="Wissen", level=1)).to_be_visible()
+    expect(page.get_by_role("button", name="Themenseiten aufbauen")).to_be_visible()
+    expect(page.locator(".wissen-tiles")).to_contain_text("Verbindung")
+    page.get_by_role("link", name=re.compile("Pflege")).click()
+    expect(page.get_by_role("heading", name="Pflege", level=1)).to_be_visible()
+    expect(page.get_by_text("Alles gepflegt")).to_be_visible()
+    page.goto(f"{base}/#/lesson/{a['id']}")
+    expect(page.get_by_role("heading", name="Verbindungen")).to_be_visible()
+    expect(page.locator(".verbindung")).to_contain_text("Ergänzt")
+    expect(page.locator(".verbindung")).to_contain_text("Adds a detail.")
+    kein_null(page)
+    assert not page.errors

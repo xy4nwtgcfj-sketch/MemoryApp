@@ -5,6 +5,7 @@ import { viewEingang, viewEntwurf } from "./eingang.js";
 import { themaAnwenden, viewEinstellungen, viewFortschritt, viewZugang } from "./einstellungen.js";
 import { viewErfassen, viewErnte } from "./erfassen.js";
 import { editLesson, viewLesson, viewSuche } from "./suche.js";
+import { viewPflege, viewThema, viewWiederholen, viewWissen } from "./wissen.js";
 
 // Erscheinungsbild: Dunkel ist Standard ("" oder altes "dark"), "light" und "system" wählbar
 themaAnwenden(store.get("lv-theme", ""));
@@ -21,6 +22,10 @@ const routes = [
   [/^#\/suche$/, (p) => viewSuche(p), "suche"],
   [/^#\/lesson\/([\w-]+)$/, (p, id) => viewLesson(id), "suche"],
   [/^#\/lesson\/([\w-]+)\/bearbeiten$/, (p, id) => editLesson(id), "suche"],
+  [/^#\/wissen$/, () => viewWissen(), "wissen"],
+  [/^#\/thema\/([\w-]+)$/, (p, id) => viewThema(id), "wissen"],
+  [/^#\/pflege$/, (p) => viewPflege(p), "wissen"],
+  [/^#\/wiederholen$/, () => viewWiederholen(), "wissen"],
   [/^#\/fortschritt$/, () => viewFortschritt(), "mehr"],
   [/^#\/einstellungen$/, () => viewEinstellungen(""), "mehr"],
   [/^#\/einstellungen\/([a-z]+)$/, (p, teil) => viewEinstellungen(teil), "mehr"],

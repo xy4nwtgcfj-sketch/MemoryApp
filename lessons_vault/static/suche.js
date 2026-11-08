@@ -5,6 +5,7 @@ import {
   refreshStats, say, skeleton, thumbsRow, toast, bestaetigen, ART, ARTEN, PHASEN, artInfo, statistikSofort,
 } from "./core.js";
 import { lessonForm, loeschenBestaetigen } from "./entwurf.js";
+import { verbindungenAbschnitt } from "./wissen.js";
 
 const searchState = { q: "", modus: "hybrid", art: "", phase: "", bereich: "", status: "", schweregrad_min: "", von: "", bis: "", aktiv: "" };
 const FILTER = ["art", "phase", "bereich", "status", "schweregrad_min", "von", "bis", "modus"];
@@ -215,6 +216,7 @@ async function lessonDetail(id, { neuLaden, titel = () => {}, seite = false }) {
       feld("Stichworte", l.tags.join(", "))),
     compliance,
     el("div", { class: "actions", style: "margin-top:24px" }, erneut),
+    verbindungenAbschnitt(l, data, neuLaden),
     fotoSection(l, data.bilder || [], neuLaden),
     el("h2", {}, "Verlauf"),
     el("ul", { class: "timeline" }, data.protokoll.map((p) => el("li", {}, el("span", { class: "footnote" }, formatDate(p.datum)), p.notiz && p.notiz !== "erstmals erlebt" ? el("span", {}, ` · ${anf(p.notiz)}`) : el("span", {}, p.notiz === "erstmals erlebt" ? (l.art === "erfahrung" ? " · erstmals erlebt" : " · erfasst") : "")))),

@@ -49,6 +49,29 @@ Mustererkennung folgen nach der Abnahme von Phase 1 (drei Wochen echte Nutzung, 
     "Stimmte" oder "Anders". Bestätigte Punkte aus deinen Einträgen zählen als erneut erlebt; Abweichungen,
     bewährtes Fachwissen und dein Fazit werden als neue Einträge strukturiert (Eingang). Das schließt den Kreis
     und bringt 25 Punkte.
+  - **Wissensnetz (seit 0.11.0), Tab „Wissen“:** angelehnt an Karpathys „LLM Wiki“ und Projekte wie Basic Memory,
+    Project Nexus und COG.
+    - *Verbindungen:* Beim Strukturieren meldet Claude, ob ein neuer Eintrag einen bestehenden ergänzt, ihm
+      widerspricht, ihn ersetzt oder ein Beispiel dafür ist (kein Zusatzaufruf). Gespeichert wird beim Sichern; im
+      Eintrag lassen sich Verbindungen lösen oder von Hand anlegen, „ersetzt“ bietet „als überholt markieren“ an.
+      Briefings nehmen bis zu zwei verbundene Einträge mit.
+    - *Themenseiten:* Claude ordnet Einträge Themen zu und verdichtet je Thema eine Seite (Gesamtbild,
+      Kernaussagen, Bewährt, Fallstricke, Widersprüche, offene Fragen; jede Aussage mit Quellen E1, E2 …). Ändert
+      sich ein Eintrag, wird seine Seite als veraltet markiert und nachts (2 bis 6 Uhr) neu verdichtet. Briefings
+      mit Claude-Fachwissen bekommen die passenden Themenseiten als Hintergrund. Den ersten Aufbau startest du
+      selbst („Themenseiten aufbauen“).
+    - *Landkarte:* Themen als Kreise (Größe = Einträge, Farbe = Bereich, roter Punkt = Widerspruch), Linien =
+      gemeinsame Einträge. Antippen zeigt die Zusammenfassung.
+    - *Pflege:* Einmal pro Woche sucht Claude nach Widersprüchen, Veraltetem, Unklarem, Doppeltem, dünnen Themen
+      und Lücken. Punkte lassen sich erledigen oder ignorieren; derselbe Befund kommt nicht wieder.
+    - *Wiederholen:* „Erinnerst du dich?“ ist jetzt eine Karteikarte (Kontext, selbst erinnern, aufdecken). „Wusste
+      ich“ verlängert den Abstand (2, 6, 14, 30, 70, 150 Tage), „vergessen“ holt den Eintrag in zwei Tagen zurück.
+    - *Antworten merken:* Im Briefing-Dialog legt „Als Wissen merken“ eine Antwort als Notiz in den Eingang.
+    - *MCP-Server:* `POST /mcp` mit dem App-Token (Werkzeuge suchen, eintrag, themen, thema, notiz_anlegen).
+      Lokale Bereiche sind ausgeschlossen. Claude Code:
+      `claude mcp add --transport http lessons-vault https://<pc>.ts.net/mcp --header "Authorization: Bearer <LV_TOKEN>"`.
+    - Lokale Bereiche gehen nie an Claude (keine Themenseiten, keine Prüfung). `LV_WISSEN_NACHT=0` schaltet den
+      Nachtlauf ab.
   - **Nachfragen und anpassen (seit 0.10.0):** Unter der Ausarbeitung steht ein Dialog zum Plan. „Frage stellen“
     beantwortet Claude im Gespräch, mit Bezug auf Plan, deine Einträge und den bisherigen Dialog; schlägt die Antwort
     eine Planänderung vor, genügt ein Tipp auf „Plan entsprechend anpassen“. „Plan anpassen“ arbeitet deinen Input

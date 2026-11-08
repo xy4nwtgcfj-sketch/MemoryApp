@@ -1,9 +1,9 @@
 // App-Shell-Cache: sofort aus dem Cache starten, im Hintergrund aktualisieren.
 // API-Aufrufe gehen immer ans Netz, damit keine veralteten Daten angezeigt werden.
-const CACHE = "lessons-vault-v5";
+const CACHE = "lessons-vault-v6";
 const SHELL = [
   "./", "index.html", "style.css", "app.js", "core.js", "entwurf.js", "erfassen.js", "eingang.js", "briefing.js",
-  "suche.js", "einstellungen.js", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png",
+  "suche.js", "einstellungen.js", "wissen.js", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png",
   "icon-maskable-512.png", "apple-touch-icon.png", "chevron.svg",
 ];
 

@@ -6,6 +6,7 @@ import {
   wochenSchluessel, ersetzenIn,
 } from "./core.js";
 import { abschlussKarte, entwurfKarte, rueckgaengig, uebernehmen } from "./entwurf.js";
+import { wiederholKarte } from "./wissen.js";
 
 // ---------------------------------------------------------------- Zustand (überlebt Neustart der App)
 export const capture = Object.assign(
@@ -582,24 +583,18 @@ async function wiedersehenKarte(s) {
   let l;
   try { l = await api(`/api/wiedersehen?tag=${heute()}`); } catch { return null; }
   if (!l) return null;
-  const erledigt = () => { store.setJson("lv-wiedersehen", { tag: heute() }); karte.remove(); };
-  const karte = el("div", { class: "card" },
-    el("p", { class: "overline" }, "Erinnerst du dich?"),
-    el("p", { class: `quote ${l.spezifisch ? "own" : ""}` }, anf(l.lesson)),
-    el("p", { class: "footnote" }, el("a", { href: `#/lesson/${l.id}` }, anf(l.titel)), ` · ${l.bereich}`),
-    el("div", { class: "actions" },
-      el("button", { type: "button", onclick: () => { erledigt(); say("Gut, bleibt so."); } }, "Gilt noch"),
-      el("button", { type: "button", onclick: () => { erledigt(); location.hash = `#/lesson/${l.id}/bearbeiten`; } }, "Schärfen"),
-      el("button", {
-        type: "button", class: "text",
-        onclick: async () => {
-          erledigt();
-          try {
-            await api(`/api/lessons/${l.id}`, { method: "PUT", body: { status: "überholt" } });
-            toast("Als überholt markiert.", { aktion: { text: "Rückgängig", onclick: () => api(`/api/lessons/${l.id}`, { method: "PUT", body: { status: l.status } }).catch(() => {}) } });
-          } catch (err) { toast(err.message, { fehler: true }); }
-        },
-      }, "Überholt")));
+  const erledigt = () => store.setJson("lv-wiedersehen", { tag: heute() });
+  const ausblenden = el("button", { type: "button", class: "icon-btn", "aria-label": "Heute nicht", onclick: () => { erledigt(); karte.remove(); } }, icon("x"));
+  const karte = wiederholKarte(l, {
+    zusatz: ausblenden,
+    onFertig: (ergebnis, r) => {
+      erledigt();
+      const mehr = r?.stand?.faellig || 0;
+      fill(karte, el("p", { class: "overline row", style: "gap:6px;color:var(--success)" }, icon("check", "icon sm"),
+        ergebnis === "parat" ? `Gewusst · wieder in ${r.tage} Tagen` : ergebnis === "vergessen" ? `Aufgefrischt · wieder in ${r.tage} Tagen` : "Als überholt markiert"),
+      el("div", { class: "actions" }, el("a", { class: "button text", href: "#/wiederholen" }, mehr ? `Noch ${mehr} fällig` : "Weiter wiederholen", icon("chevron-right", "icon sm"))));
+    },
+  });
   return karte;
 }
 
