@@ -54,11 +54,11 @@ Mustererkennung folgen nach der Abnahme von Phase 1 (drei Wochen echte Nutzung, 
     - *Verbindungen:* Beim Strukturieren meldet Claude, ob ein neuer Eintrag einen bestehenden ergänzt, ihm
       widerspricht, ihn ersetzt oder ein Beispiel dafür ist (kein Zusatzaufruf). Gespeichert wird beim Sichern; im
       Eintrag lassen sich Verbindungen lösen oder von Hand anlegen, „ersetzt“ bietet „als überholt markieren“ an.
-      Briefings nehmen bis zu zwei verbundene Einträge mit.
+      Briefings nehmen alle direkt verbundenen Einträge mit.
     - *Themenseiten:* Claude ordnet Einträge Themen zu und verdichtet je Thema eine Seite (Gesamtbild,
       Kernaussagen, Bewährt, Fallstricke, Widersprüche, offene Fragen; jede Aussage mit Quellen E1, E2 …). Ändert
       sich ein Eintrag, wird seine Seite als veraltet markiert und nachts (2 bis 6 Uhr) neu verdichtet. Briefings
-      mit Claude-Fachwissen bekommen die passenden Themenseiten als Hintergrund. Den ersten Aufbau startest du
+      mit Claude-Fachwissen bekommen alle Themenseiten ihrer Einträge vollständig als Hintergrund. Den ersten Aufbau startest du
       selbst („Themenseiten aufbauen“).
     - *Landkarte:* Themen als Kreise (Größe = Einträge, Farbe = Bereich, roter Punkt = Widerspruch), Linien =
       gemeinsame Einträge. Antippen zeigt die Zusammenfassung.

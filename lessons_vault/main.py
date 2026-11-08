@@ -913,7 +913,7 @@ def create_app(
             {k: v for k, v in t.as_dict().items() if k != "lesson"} | {"lesson_id": t.lesson.id} for t in treffer
         ]
         # Verbundene Einträge (Widerspruch, Ersatz, Ergänzung) gehören zum Bild, auch wenn die Suche sie nicht trifft
-        verbunden = [l for l in repo.verbundene([t.lesson.id for t in treffer], limit=4) if not vorgabe or l.bereich == vorgabe][:2]
+        verbunden = [l for l in repo.verbundene([t.lesson.id for t in treffer], limit=1000) if not vorgabe or l.bereich == vorgabe]
         gespeichert += [
             {"score": 0.0, "relevanz": 0.0, "faktoren": {"schwere": 1.0, "bestaetigung": 1.0, "feedback": 1.0},
              "gefunden_durch": ["verbindung"], "lesson_id": l.id}
@@ -1314,19 +1314,24 @@ def create_app(
         if not lessons:
             return ""
         nr_von = {l.id: i for i, l in enumerate(lessons, start=1)}
-        zaehler: Counter[str] = Counter()
-        for themen in repo.themen_von(nr_von).values():
-            zaehler.update(t["id"] for t in themen)
+        # Alle Themen, zu denen einer der Einträge gehört; die meistgetroffenen zuerst
+        mitglieder: dict[str, list[int]] = {}
+        for lesson_id, themen in repo.themen_von(nr_von).items():
+            for t in themen:
+                mitglieder.setdefault(t["id"], []).append(nr_von[lesson_id])
+        lokale = lokale_bereiche()
         teile = []
-        for thema_id, _ in zaehler.most_common(3):
+        for thema_id, nrs in sorted(mitglieder.items(), key=lambda x: -len(x[1])):
             thema = repo.thema_holen(thema_id)
             seite = thema["seite"]
-            if not seite or thema["bereich"] in lokale_bereiche():
+            if not seite or thema["bereich"] in lokale:
                 continue
-            zeilen = [f"## {thema['titel']}", seite.get("zusammenfassung", "")]
-            zeilen += [f"- {a['text']}" for a in seite.get("kernaussagen", [])[:6]]
-            zeilen += [f"- Pitfall: {a['text']}" for a in seite.get("fallstricke", [])[:3]]
-            zeilen += [f"- Contradiction: {a['text']}" for a in seite.get("widersprueche", [])[:2]]
+            zeilen = [f"## {thema['titel']} (covers {', '.join(f'E{n}' for n in sorted(nrs))})", seite.get("zusammenfassung", "")]
+            zeilen += [f"- {a['text']}" for a in seite.get("kernaussagen", [])]
+            zeilen += [f"- Worked: {a['text']}" for a in seite.get("bewaehrt", [])]
+            zeilen += [f"- Pitfall: {a['text']}" for a in seite.get("fallstricke", [])]
+            zeilen += [f"- Contradiction: {a['text']}" for a in seite.get("widersprueche", [])]
+            zeilen += [f"- Open question: {f}" for f in seite.get("offene_fragen", [])]
             teile.append("\n".join(z for z in zeilen if z))
         verbindungen = [
             f"E{nr_von[b['von_id']]} {b['art']} E{nr_von[b['zu_id']]}" + (f" ({b['begruendung']})" if b.get("begruendung") else "")

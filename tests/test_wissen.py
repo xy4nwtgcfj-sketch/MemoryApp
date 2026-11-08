@@ -277,16 +277,24 @@ def test_briefing_nimmt_verbundene_eintraege_und_themen_mit(env):
     treffer = add(titel="Cutover rehearsal", situation="Cutover", ereignis="Rehearsal missed steps.", lesson="Always rehearse the cutover.", bereich="Beruf")
     fern = add(titel="Unrelated words", situation="Zzz", ereignis="Qqq", lesson="Xyz completely different.", bereich="Beruf")
     repo.beziehung_setzen(fern["id"], treffer["id"], "widerspricht", "Says rehearsal is optional.")
-    thema = repo.thema_anlegen("Cutover", "Beruf")
-    repo.thema_zuordnen(thema, [treffer["id"]])
-    repo.thema_seite_setzen(thema, {"zusammenfassung": "Rehearse twice.", "kernaussagen": [{"text": "Dress rehearsal is mandatory.", "quellen": []}],
-                                    "fallstricke": [], "widersprueche": []})
+    weitere = [add(titel=f"Qqq other {i}", situation="Zzz", ereignis="Qqq", lesson=f"Xyz different {i}.", bereich="Beruf") for i in range(3)]
+    for w in weitere:  # alle Verbindungen zählen, nicht nur die ersten zwei
+        repo.beziehung_setzen(w["id"], treffer["id"], "ergaenzt", "")
+    for i, titel in enumerate(["Cutover", "Rehearsals", "Testing"]):
+        thema = repo.thema_anlegen(titel, "Beruf")
+        repo.thema_zuordnen(thema, [treffer["id"]] if i < 2 else [weitere[0]["id"]])
+        repo.thema_seite_setzen(thema, {"zusammenfassung": f"Summary {titel}.", "kernaussagen": [{"text": f"Key {titel} {k}.", "quellen": []} for k in range(8)],
+                                        "bewaehrt": [{"text": f"Worked {titel}.", "quellen": []}], "fallstricke": [], "widersprueche": [],
+                                        "offene_fragen": [f"Open {titel}?"]})
     b = client.post("/api/briefing", json={"situation": "Cutover rehearsal planen", "modus": "kombiniert"}).json()
     durch = {t["lesson"]["id"]: t["gefunden_durch"] for t in b["treffer"]}
-    assert durch[fern["id"]] == ["verbindung"]
+    assert all(durch[x["id"]] == ["verbindung"] for x in [fern, *weitere])
     client.post(f"/api/briefing/{b['id']}/zusammenfassung")
     nachricht = claude.calls[-1]["messages"][0]["content"]
-    assert "<themen>" in nachricht and "Dress rehearsal is mandatory." in nachricht and "widerspricht" in nachricht
+    assert "<themen>" in nachricht and "widerspricht" in nachricht
+    for titel in ["Cutover", "Rehearsals", "Testing"]:  # alle Themen, vollständig
+        assert f"## {titel} (covers" in nachricht and f"Key {titel} 7." in nachricht
+        assert f"Worked: Worked {titel}." in nachricht and f"Open question: Open {titel}?" in nachricht
 
 
 # ---------------------------------------------------------------- MCP
